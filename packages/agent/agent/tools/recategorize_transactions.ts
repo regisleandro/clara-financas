@@ -57,19 +57,13 @@ export default defineTool({
     return forTenant(
       tenantId,
       async (tx) => {
-        // Só categorias que existem na constituição. Sem esta checagem, a
-        // recategorização poderia reintroduzir taxonomia inventada — que é
-        // exatamente o problema que ela veio resolver.
+        // Categorias válidas vêm dos DOIS bundles: a constituição semeia, e o
+        // que a pessoa aprovou depois vale igual. Restringir à constituição
+        // tornaria inútil criar categoria nova — ela nunca poderia ser usada.
         const known = await tx
           .select({ conceptId: concepts.conceptId })
           .from(concepts)
-          .where(
-            and(
-              eq(concepts.tenantId, tenantId),
-              eq(concepts.bundle, "constitution"),
-              eq(concepts.type, "Category"),
-            ),
-          );
+          .where(and(eq(concepts.tenantId, tenantId), eq(concepts.type, "Category")));
 
         const valid = new Set(
           known.map((row) => row.conceptId.replace(/^categories\//, "")),

@@ -35,6 +35,13 @@ export const tenants = pgTable(
     dbCredentialRef: text("db_credential_ref"),
 
     provisionedAt: timestamp("provisioned_at", { withTimezone: true }),
+
+    /**
+     * Versão da constituição já semeada neste espaço. Quando o bundle em disco
+     * muda, este valor fica defasado e a semeadura roda de novo — é o que faz
+     * uma edição no repositório chegar a quem já tem conta.
+     */
+    constitutionVersion: text("constitution_version"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()

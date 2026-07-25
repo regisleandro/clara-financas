@@ -27,7 +27,19 @@ import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
  */
 const AGENT_ACTOR = "clara/coordinator@0.1";
 
+/**
+ * `Category` está aqui de propósito.
+ *
+ * A constituição semeia uma taxonomia inicial, mas gasto é pessoal: quem tem
+ * animal precisa de Pets, quem não tem, não. Taxonomia fixa força o modelo a
+ * encaixar o que não encaixa — observado em fatura real, `cloud_services` foi
+ * parar em `transport` porque não havia para onde ir.
+ *
+ * Categoria aprendida é a hipótese H4 aplicada onde ela mais aparece: passa
+ * pelo gate, fica legível e é reversível como qualquer outro aprendizado.
+ */
 const LEARNED_TYPES = [
+  "Category",
   "Merchant",
   "CategorizationRule",
   "Commitment",

@@ -42,13 +42,27 @@ export function findChildSessions(events: readonly unknown[]): string[] {
   return ids;
 }
 
+/**
+ * `generation` identifica a rodada. Turno novo ou conversa nova mudam a chave,
+ * e os resultados anteriores são descartados — sem isso o artefato de uma
+ * pergunta antiga continuava na tela ao lado da resposta nova, dando a
+ * impressão de que aqueles números pertenciam a ela.
+ */
 export function useSubagentResults(
   host: string,
   childSessionIds: readonly string[],
   getToken: () => Promise<string>,
+  generation: string,
 ): SubagentToolResult[] {
   const [results, setResults] = useState<SubagentToolResult[]>([]);
   const subscribed = useRef(new Set<string>());
+  const lastGeneration = useRef(generation);
+
+  if (lastGeneration.current !== generation) {
+    lastGeneration.current = generation;
+    subscribed.current = new Set();
+    if (results.length > 0) setResults([]);
+  }
 
   useEffect(() => {
     const controllers: AbortController[] = [];

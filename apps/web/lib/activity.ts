@@ -43,6 +43,8 @@ export type Activity = {
   steps: ActivityStep[];
   /** O que está acontecendo agora, ou null quando o turno acabou. */
   current: ActivityStep | null;
+  /** Turno corrente. Serve de chave para descartar artefato de rodada antiga. */
+  turnId: string;
 };
 
 /** Nomes de tool → o que a pessoa entende que está acontecendo. */
@@ -102,6 +104,7 @@ export function deriveActivity(events: readonly unknown[]): Activity {
   const steps = new Map<string, ActivityStep>();
   let turnActive = false;
   let writing = false;
+  let turnId = "";
 
   for (const raw of events) {
     const event = asRecord(raw);
@@ -116,6 +119,7 @@ export function deriveActivity(events: readonly unknown[]): Activity {
         steps.clear();
         turnActive = true;
         writing = false;
+        turnId = asString(data?.turnId) ?? `${turnId}+`;
         break;
       }
 
@@ -207,5 +211,5 @@ export function deriveActivity(events: readonly unknown[]): Activity {
     current = { id: "thinking", kind: "thinking", label: "Pensando", icon: "brain", status: "running" };
   }
 
-  return { steps: ordered, current };
+  return { steps: ordered, current, turnId };
 }

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -66,6 +66,23 @@ export async function seedConstitution(
     },
     db,
   );
+}
+
+/**
+ * Versão da constituição = hash do conteúdo em disco.
+ *
+ * Existe porque a constituição é "alterada por edição direta no repositório",
+ * e sem isto essa edição nunca chegava a quem já tinha conta: a semeadura só
+ * rodava no nascimento do tenant. Na prática, acrescentei Pets, Compras e
+ * Encargos ao bundle e a Clara seguia dizendo que essas categorias não
+ * existiam — porque, para aquele tenant, não existiam mesmo.
+ */
+export async function constitutionVersion(): Promise<string> {
+  const bundle = await loadBundle(BUNDLE_ROOT);
+  const payload = bundle
+    .map((concept) => `${concept.id}\u0000${JSON.stringify(concept.frontmatter)}\u0000${concept.body}`)
+    .join("\u0001");
+  return createHash("sha256").update(payload).digest("hex").slice(0, 16);
 }
 
 /** Avisos de conformidade do bundle em disco (link quebrado, por exemplo). */

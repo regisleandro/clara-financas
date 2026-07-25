@@ -3,7 +3,7 @@ import "server-only";
 import { getAuth } from "@clara-financas/auth";
 import { getDb } from "@clara-financas/db";
 import { provisioningJobs, tenants, type TenantStatus } from "@clara-financas/db/schema/tenant";
-import { seedConstitution } from "@clara-financas/db/seed-constitution";
+import { constitutionVersion, seedConstitution } from "@clara-financas/db/seed-constitution";
 import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 
@@ -42,6 +42,18 @@ export async function ensureTenant(
   });
 
   if (existing) {
+    // A constituição é editada direto no repositório. Sem esta verificação, a
+    // edição só chegaria a contas novas — e quem já tinha conta continuaria
+    // vendo uma taxonomia antiga sem saber por quê.
+    const version = await constitutionVersion();
+    if (existing.constitutionVersion !== version) {
+      await seedConstitution(existing.id);
+      await getDb()
+        .update(tenants)
+        .set({ constitutionVersion: version })
+        .where(eq(tenants.id, existing.id));
+    }
+
     return {
       userId,
       name,
@@ -75,6 +87,10 @@ export async function ensureTenant(
   // A constituição é copiada para o espaço do tenant no nascimento. É
   // idempotente, então uma corrida entre duas requisições não duplica nada.
   await seedConstitution(created.id);
+  await getDb()
+    .update(tenants)
+    .set({ constitutionVersion: await constitutionVersion() })
+    .where(eq(tenants.id, created.id));
 
   return {
     userId,

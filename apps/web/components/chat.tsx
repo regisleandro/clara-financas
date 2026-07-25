@@ -93,7 +93,15 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
   // stream do pai. Sem assinar aquela sessão, o artefato de análise não teria
   // de onde tirar número — sobraria a prosa do modelo.
   const childSessions = useMemo(() => findChildSessions(agent.events), [agent.events]);
-  const subagentResults = useSubagentResults(agentHost, childSessions, bearer);
+  // A chave de geração é o turno: rodada nova descarta o artefato da anterior,
+  // e "Nova conversa" zera tudo. Sem isso, o painel exibia o resultado de uma
+  // pergunta antiga ao lado da resposta nova.
+  const subagentResults = useSubagentResults(
+    agentHost,
+    childSessions,
+    bearer,
+    `${agent.session?.sessionId ?? "none"}:${activity.turnId}`,
+  );
 
   const answerRef = useRef<(optionId: string) => void>(() => {});
   answerRef.current = (optionId: string) => {
