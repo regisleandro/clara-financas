@@ -2,9 +2,25 @@ import { getDb } from "@clara-financas/db";
 import { transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import type { Transaction } from "@clara-financas/ledger";
-import { and, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
 
 import { categoryLabel, type CategoryLabels } from "../../../lib/categories";
+
+/**
+ * Recorte do razão.
+ *
+ * `batchId` existe porque o razão era um pool achatado, filtrável só por data
+ * — e fatura NÃO é intervalo de datas. Um ciclo que fecha em 07/07 cobre
+ * compras de 31/05 a 30/06, e duas faturas consecutivas se tocam na virada.
+ * Sem esta dimensão, "nesta fatura" era literalmente inexprimível no sistema
+ * inteiro: a pessoa perguntava sobre um documento e recebia a soma de todos.
+ */
+export type LedgerRange = {
+  from?: string;
+  to?: string;
+  /** Restringe a UMA fatura, pelo id do lote que a registrou. */
+  batchId?: string;
+};
 
 /**
  * Carrega transações CONFIRMADAS do razão, no escopo do tenant.
@@ -14,11 +30,12 @@ import { categoryLabel, type CategoryLabels } from "../../../lib/categories";
  */
 export async function loadLedger(
   tenantId: string,
-  range: { from?: string; to?: string } = {},
+  range: LedgerRange = {},
 ): Promise<Transaction[]> {
   const filters: SQL[] = [inArray(transactions.status, ["confirmed", "adjustment"])];
   if (range.from !== undefined) filters.push(gte(transactions.date, range.from));
   if (range.to !== undefined) filters.push(lte(transactions.date, range.to));
+  if (range.batchId !== undefined) filters.push(eq(transactions.batchId, range.batchId));
 
   const rows = await forTenant(
     tenantId,
@@ -67,6 +84,7 @@ export function toDomain(row: typeof transactions.$inferSelect): Transaction {
     merchant: row.merchant,
     amount: row.amount,
     kind: row.kind,
+    merchantKey: row.merchantKey,
     installment:
       row.installmentCurrent !== null && row.installmentTotal !== null
         ? { current: row.installmentCurrent, total: row.installmentTotal }

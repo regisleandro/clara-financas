@@ -116,6 +116,17 @@ export const transactions = pgTable(
     date: text("date").notNull(),
     originalDescription: text("original_description").notNull(),
     merchant: text("merchant"),
+    /**
+     * Identidade do comerciante, derivada de forma determinística na proposta
+     * (`merchantKey()` em @clara-financas/ledger). É o que permite reconhecer
+     * a mesma assinatura entre faturas que imprimem o comerciante de formas
+     * diferentes — com máscara do cartão, com câmbio na descrição, embrulhado
+     * em "IOF de".
+     *
+     * Chave INTERNA: nunca é exibida. O que a pessoa lê continua sendo
+     * `merchant`, o texto que está no documento dela.
+     */
+    merchantKey: text("merchant_key"),
     /** Centavos, SINALIZADO: despesa > 0, crédito < 0. */
     amount: bigint("amount", { mode: "number" }).notNull(),
     kind: text("kind", { enum: ENTRY_KINDS }).notNull().default("purchase"),
@@ -144,6 +155,7 @@ export const transactions = pgTable(
     index("transactions_batch_idx").on(table.batchId),
     index("transactions_tenant_date_idx").on(table.tenantId, table.date),
     index("transactions_adjusts_idx").on(table.adjustsTransactionId),
+    index("transactions_tenant_merchant_idx").on(table.tenantId, table.merchantKey),
   ],
 );
 

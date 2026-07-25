@@ -48,6 +48,7 @@ export async function loadLedgerView(tenantId: string) {
     date: transaction.date,
     originalDescription: transaction.originalDescription,
     merchant: transaction.merchant,
+    merchantKey: transaction.merchantKey,
     amount: transaction.amount,
     kind: transaction.kind,
     installment:

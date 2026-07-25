@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "@clara-financas/db";
 import { batches, documents, transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import { ProposedBatchSchema, verifyChecksum } from "@clara-financas/ledger";
+import { ProposedBatchSchema, merchantKey, verifyChecksum } from "@clara-financas/ledger";
 import { and, eq } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
@@ -153,6 +153,15 @@ export default defineTool({
       ...transaction,
       id: id("txn"),
       merchant: transaction.merchant ?? null,
+      // A identidade do comerciante é derivada AQUI, na fronteira, e não pelo
+      // extrator. O extrator é isolado do razão de propósito, então ele não
+      // tem como saber que "Anthropic* Claude Sub" já apareceu como outra
+      // grafia — e pedir que ele normalize produziria uma normalização
+      // diferente a cada documento. Determinístico, testado, fora do modelo.
+      merchantKey: merchantKey({
+        originalDescription: transaction.originalDescription,
+        merchant: transaction.merchant ?? null,
+      }),
       kind: transaction.kind ?? ("purchase" as const),
       installment: transaction.installment ?? null,
       category: transaction.category ?? null,
@@ -220,6 +229,7 @@ export default defineTool({
               date: transaction.date,
               originalDescription: transaction.originalDescription,
               merchant: transaction.merchant,
+              merchantKey: transaction.merchantKey,
               amount: transaction.amount,
               kind: transaction.kind,
               installmentCurrent: transaction.installment?.current ?? null,

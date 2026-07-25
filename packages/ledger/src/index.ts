@@ -16,6 +16,11 @@ export {
   type Recurrence,
 } from "./analysis";
 export {
+  merchantKey,
+  isTruncationOf,
+  clusterMerchantKeys,
+} from "./merchant";
+export {
   parseRules,
   matchRules,
   type LearnedRule,

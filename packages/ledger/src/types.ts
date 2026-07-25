@@ -35,6 +35,13 @@ export const TransactionSchema = z.object({
   /** O texto como aparece no documento. Nunca normalizado na extração. */
   originalDescription: z.string().min(1),
   merchant: z.string().nullable().default(null),
+  /**
+   * Identidade do comerciante, derivada por `merchantKey()` no momento da
+   * proposta. É chave interna: agrupa entre faturas que escrevem o mesmo
+   * comerciante de formas diferentes. Nunca é exibida — o que a pessoa lê é
+   * `merchant`. `null` quando não há identidade a extrair.
+   */
+  merchantKey: z.string().nullable().default(null),
   /** Centavos, sinalizado: despesa > 0, crédito < 0. */
   amount: z.number().int(),
   kind: z.enum(ENTRY_KINDS).default("purchase"),

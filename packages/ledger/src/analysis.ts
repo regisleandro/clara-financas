@@ -1,4 +1,5 @@
 import { countsTowardDeclaredTotal } from "./checksum";
+import { clusterMerchantKeys, merchantKey } from "./merchant";
 import type { Transaction } from "./types";
 
 /**
@@ -139,10 +140,11 @@ function index(totals: CategoryTotal[]): Map<string | null, CategoryTotal> {
 
 export type Recurrence = Provenance & {
   merchant: string;
+  /** Quantas COBRANÇAS, não quantas linhas: o IOF anda junto da compra. */
   occurrences: number;
-  /** Valor da cobrança mais recente, em centavos. */
+  /** Valor da cobrança mais recente, em centavos, encargos incluídos. */
   latestAmount: number;
-  /** Valor da primeira cobrança observada. */
+  /** Valor da primeira cobrança observada, encargos incluídos. */
   firstAmount: number;
   /** Variação entre a primeira e a última, ou `null` se a primeira era zero. */
   priceChangeRatio: number | null;
@@ -150,59 +152,140 @@ export type Recurrence = Provenance & {
   medianIntervalDays: number;
   /** Projeção anual pelo valor mais recente. */
   annualizedCents: number;
+  /**
+   * `false` quando só há duas cobranças. Duas cobranças a 31 dias são um
+   * padrão PROVÁVEL, não um fato — e quem lê precisa saber a diferença.
+   */
+  confirmed: boolean;
 };
+
+/** Uma cobrança: a compra mais os encargos que ela gerou no mesmo dia. */
+type Charge = { date: string; amount: number; transactionIds: string[] };
 
 /**
  * Cobranças que se repetem no mesmo comerciante.
  *
  * O critério é intervalo regular, não valor igual: assinatura que reajustou
  * continua sendo assinatura — e é justamente a que interessa apontar.
+ *
+ * Três decisões que vieram de errar contra dados reais:
+ *
+ *  1. **Agrupa por identidade, não pelo texto impresso.** O emissor escreve o
+ *     mesmo comerciante de formas diferentes a cada fatura; agrupar pela
+ *     string fazia cada assinatura virar duas entradas de uma cobrança só, e
+ *     nenhuma atingia o mínimo.
+ *
+ *  2. **O IOF não é uma cobrança.** Ele entra na MESMA cobrança que o gerou.
+ *     Antes, cada assinatura internacional tinha o dobro de linhas — o que
+ *     passava no mínimo de ocorrências — mas com intervalos `[0, 31, 0]`, cuja
+ *     mediana é zero, fora da janela mensal. Resultado: Claude, OpenAI,
+ *     Cursor, GitHub e DigitalOcean, que são justamente as recorrências mais
+ *     caras, eram as únicas que nunca apareciam.
+ *
+ *  3. **O mínimo é 2, marcado como não confirmado.** Exigir 3 significa não
+ *     responder nada até a terceira fatura. Com duas faturas o padrão já é
+ *     visível; o que não se pode é apresentá-lo com a mesma segurança.
  */
 export function detectRecurrences(
   transactions: Transaction[],
-  options: { minOccurrences?: number } = {},
+  options: { minOccurrences?: number; merchantAliases?: string[][] } = {},
 ): Recurrence[] {
-  const minOccurrences = options.minOccurrences ?? 3;
-  const byMerchant = new Map<string, Transaction[]>();
+  const minOccurrences = options.minOccurrences ?? 2;
 
-  for (const transaction of spendable(transactions)) {
-    const merchant = transaction.merchant;
-    if (merchant === null || merchant === "") continue;
-    byMerchant.set(merchant, [...(byMerchant.get(merchant) ?? []), transaction]);
+  const counted = spendable(transactions).filter(
+    (transaction) => identityOf(transaction) !== null,
+  );
+
+  // Agrupa as grafias equivalentes antes de qualquer contagem.
+  const cluster = clusterMerchantKeys(
+    counted.map((t) => identityOf(t)!),
+    options.merchantAliases ?? [],
+  );
+  const byIdentity = new Map<string, Transaction[]>();
+
+  for (const transaction of counted) {
+    const identity = cluster.get(identityOf(transaction)!)!;
+    byIdentity.set(identity, [...(byIdentity.get(identity) ?? []), transaction]);
   }
 
   const recurrences: Recurrence[] = [];
 
-  for (const [merchant, group] of byMerchant) {
-    if (group.length < minOccurrences) continue;
+  for (const group of byIdentity.values()) {
+    const charges = toCharges(group);
+    if (charges.length < minOccurrences) continue;
 
-    const ordered = [...group].sort((a, b) => a.date.localeCompare(b.date));
     const intervals: number[] = [];
-    for (let index = 1; index < ordered.length; index += 1) {
-      intervals.push(daysBetween(ordered[index - 1]!.date, ordered[index]!.date));
+    for (let index = 1; index < charges.length; index += 1) {
+      intervals.push(daysBetween(charges[index - 1]!.date, charges[index]!.date));
     }
 
     const medianInterval = median(intervals);
     // Entre 3 e 5 semanas cobre mensal com variação de dia de fechamento.
     if (medianInterval < 21 || medianInterval > 38) continue;
 
-    const first = ordered[0]!;
-    const latest = ordered[ordered.length - 1]!;
+    const first = charges[0]!;
+    const latest = charges[charges.length - 1]!;
 
     recurrences.push({
-      merchant,
-      occurrences: ordered.length,
-      value: ordered.reduce((sum, transaction) => sum + transaction.amount, 0),
-      transactionIds: ordered.map((transaction) => transaction.id),
+      // O rótulo é o texto que a pessoa reconhece, não a chave interna. Vem da
+      // cobrança mais recente: é a grafia que ela acabou de ver na fatura.
+      merchant: labelOf(group),
+      occurrences: charges.length,
+      value: charges.reduce((sum, charge) => sum + charge.amount, 0),
+      transactionIds: charges.flatMap((charge) => charge.transactionIds),
       firstAmount: first.amount,
       latestAmount: latest.amount,
       priceChangeRatio: first.amount === 0 ? null : (latest.amount - first.amount) / first.amount,
       medianIntervalDays: medianInterval,
       annualizedCents: latest.amount * 12,
+      confirmed: charges.length >= 3,
     });
   }
 
   return recurrences.sort((a, b) => b.annualizedCents - a.annualizedCents);
+}
+
+/**
+ * Colapsa encargos na compra do mesmo dia.
+ *
+ * O IOF de uma assinatura internacional é lançado como linha própria, na mesma
+ * data e com o mesmo comerciante. Ele é parte do custo — entra no valor — mas
+ * não é um evento de cobrança e não pode contar como intervalo.
+ *
+ * Um encargo sem compra no mesmo dia vira cobrança por si: é anuidade, juros,
+ * multa. Descartá-lo esconderia dinheiro que saiu.
+ */
+function toCharges(group: Transaction[]): Charge[] {
+  const byDate = new Map<string, Charge>();
+
+  for (const transaction of [...group].sort((a, b) => a.date.localeCompare(b.date))) {
+    const existing = byDate.get(transaction.date);
+    if (existing === undefined) {
+      byDate.set(transaction.date, {
+        date: transaction.date,
+        amount: transaction.amount,
+        transactionIds: [transaction.id],
+      });
+      continue;
+    }
+    existing.amount += transaction.amount;
+    existing.transactionIds.push(transaction.id);
+  }
+
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** A chave persistida quando existe; o texto cru normalizado quando não. */
+function identityOf(transaction: Transaction): string | null {
+  if (transaction.merchantKey !== null && transaction.merchantKey !== undefined) {
+    return transaction.merchantKey;
+  }
+  return merchantKey(transaction);
+}
+
+function labelOf(group: Transaction[]): string {
+  const latest = [...group].sort((a, b) => a.date.localeCompare(b.date)).at(-1)!;
+  return latest.merchant ?? latest.originalDescription;
 }
 
 function daysBetween(from: string, to: string): number {

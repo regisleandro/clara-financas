@@ -166,14 +166,102 @@ describe("detectRecurrences", () => {
     assert.deepEqual(detectRecurrences(rows), [], "3 compras na mesma semana não é assinatura");
   });
 
-  it("exige um mínimo de ocorrências", () => {
-    assert.deepEqual(detectRecurrences(mensal("Curta", [1000, 1000])), []);
-  });
-
   it("ordena pelo custo anual, que é o que importa decidir", () => {
     const rows = [...mensal("Cara", [5000, 5000, 5000]), ...mensal("Barata", [900, 900, 900])];
     const result = detectRecurrences(rows);
 
     assert.equal(result[0]?.merchant, "Cara");
+  });
+
+  /**
+   * Com duas faturas — que é o estado de quem começou a usar hoje — o mínimo
+   * antigo de 3 tornava a análise impossível de responder. Ela passa a
+   * responder, dizendo que ainda não é certeza.
+   */
+  it("aponta o padrão com duas cobranças, mas não o dá como confirmado", () => {
+    const [provavel] = detectRecurrences(mensal("Curta", [1000, 1000]));
+
+    assert.equal(provavel?.occurrences, 2);
+    assert.equal(provavel?.confirmed, false, "duas cobranças são indício, não fato");
+
+    const [certa] = detectRecurrences(mensal("Longa", [1000, 1000, 1000]));
+    assert.equal(certa?.confirmed, true);
+  });
+
+  it("ainda aceita exigir mais, para quem quer só o confirmado", () => {
+    assert.deepEqual(detectRecurrences(mensal("Curta", [1000, 1000]), { minOccurrences: 3 }), []);
+  });
+
+  /**
+   * O defeito que escondia as assinaturas mais caras do razão real. O IOF é
+   * lançado na mesma data e com o mesmo comerciante da compra: contando como
+   * cobrança, os intervalos viravam [0, 31, 0], cuja mediana é zero, e a
+   * recorrência era descartada por não parecer mensal.
+   */
+  it("soma o IOF na cobrança que o gerou em vez de contá-lo como cobrança", () => {
+    const rows = [
+      tx({ id: "c1", merchant: "Cursor, Ai Powered Ide", amount: 5268, date: "2026-05-17" }),
+      tx({
+        id: "iof1",
+        originalDescription: 'IOF de "Cursor, Ai Powered Ide"',
+        merchant: "Cursor, Ai Powered Ide",
+        kind: "fee",
+        amount: 184,
+        date: "2026-05-17",
+      }),
+      tx({ id: "c2", merchant: "Cursor, Ai Powered Ide", amount: 10562, date: "2026-06-17" }),
+      tx({
+        id: "iof2",
+        originalDescription: 'IOF de "Cursor, Ai Powered Ide"',
+        merchant: "Cursor, Ai Powered Ide",
+        kind: "fee",
+        amount: 370,
+        date: "2026-06-17",
+      }),
+    ];
+
+    const [recorrencia] = detectRecurrences(rows);
+
+    assert.equal(recorrencia?.occurrences, 2, "quatro linhas, duas cobranças");
+    assert.equal(recorrencia?.medianIntervalDays, 31, "o intervalo é mensal, não zero");
+    assert.equal(recorrencia?.latestAmount, 10562 + 370, "o encargo faz parte do custo");
+    assert.equal(recorrencia?.transactionIds.length, 4, "a proveniência mantém as quatro linhas");
+  });
+
+  it("agrupa a mesma assinatura escrita de formas diferentes entre faturas", () => {
+    // Literal das duas faturas reais: a máscara do cartão e o câmbio na
+    // descrição faziam a mesma cobrança virar dois comerciantes distintos.
+    const rows = [
+      tx({
+        id: "a",
+        originalDescription: "•••• 4851 Github, Inc. USD 10.00 Conversão: USD 1 = R$ 5,22",
+        merchant: "Github, Inc.",
+        amount: 5222,
+        date: "2026-05-27",
+      }),
+      tx({ id: "b", originalDescription: "Github, Inc.", merchant: "Github, Inc.", amount: 5376, date: "2026-06-27" }),
+    ];
+
+    const result = detectRecurrences(rows);
+    assert.equal(result.length, 1, "é uma assinatura, não duas");
+    assert.equal(result[0]?.occurrences, 2);
+  });
+
+  it("um encargo isolado continua sendo uma cobrança", () => {
+    // Anuidade e juros não têm compra no mesmo dia. Colapsá-los sumiria com
+    // dinheiro que de fato saiu.
+    const rows = [1, 2, 3].map((month) =>
+      tx({
+        id: `anuidade-${month}`,
+        originalDescription: "Anuidade diferenciada",
+        merchant: "Anuidade diferenciada",
+        kind: "fee",
+        amount: 3000,
+        date: `2026-0${month}-10`,
+      }),
+    );
+
+    const [recorrencia] = detectRecurrences(rows);
+    assert.equal(recorrencia?.occurrences, 3);
   });
 });

@@ -38,9 +38,22 @@ const AGENT_ACTOR = "clara/coordinator@0.1";
  * Categoria aprendida é a hipótese H4 aplicada onde ela mais aparece: passa
  * pelo gate, fica legível e é reversível como qualquer outro aprendizado.
  */
+/**
+ * `MerchantAlias` cobre o que a normalização determinística recusa a chutar.
+ *
+ * A derivação de identidade limpa o ruído do emissor — máscara do cartão,
+ * câmbio na descrição, parcela, invólucro do IOF —, mas não tem como saber que
+ * "Anthropic* Claude Sub" e "Claude.Ai Subscription" são a mesma empresa. Isso
+ * é conhecimento sobre o mundo, e adivinhar produziria fusão errada silenciosa:
+ * dinheiro somindo de um comerciante e aparecendo em outro, sem nada na tela.
+ *
+ * Então vira aprendizado, com aprovação — o mesmo caminho de qualquer outra
+ * coisa que a Clara passa a saber sobre esta pessoa.
+ */
 const LEARNED_TYPES = [
   "Category",
   "Merchant",
+  "MerchantAlias",
   "CategorizationRule",
   "Commitment",
   "IssuerPattern",

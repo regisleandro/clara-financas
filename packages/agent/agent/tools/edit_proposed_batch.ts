@@ -1,7 +1,7 @@
 import { getDb } from "@clara-financas/db";
 import { batches, transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import { verifyChecksum } from "@clara-financas/ledger";
+import { merchantKey, verifyChecksum } from "@clara-financas/ledger";
 import { and, eq } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
@@ -63,10 +63,32 @@ export default defineTool({
 
         for (const edit of input.edits) {
           const { transactionId, ...fields } = edit;
-          const changes = Object.fromEntries(
+          const changes: Record<string, unknown> = Object.fromEntries(
             Object.entries(fields).filter(([, value]) => value !== undefined),
           );
           if (Object.keys(changes).length === 0) continue;
+
+          // Corrigir o comerciante tem de corrigir a IDENTIDADE junto. Deixar
+          // a chave antiga faria a linha corrigida continuar agrupando com o
+          // comerciante errado — e de forma invisível, porque a tela mostra
+          // `merchant`, que já estaria certo.
+          if (fields.merchant !== undefined || fields.originalDescription !== undefined) {
+            const [current] = await tx
+              .select({
+                merchant: transactions.merchant,
+                originalDescription: transactions.originalDescription,
+              })
+              .from(transactions)
+              .where(and(eq(transactions.id, transactionId), eq(transactions.tenantId, tenantId)))
+              .limit(1);
+
+            if (current) {
+              changes.merchantKey = merchantKey({
+                originalDescription: fields.originalDescription ?? current.originalDescription,
+                merchant: fields.merchant ?? current.merchant,
+              });
+            }
+          }
 
           await tx
             .update(transactions)
@@ -114,6 +136,7 @@ export default defineTool({
             date: row.date,
             originalDescription: row.originalDescription,
             merchant: row.merchant,
+            merchantKey: row.merchantKey,
             amount: row.amount,
             kind: row.kind,
             installment:

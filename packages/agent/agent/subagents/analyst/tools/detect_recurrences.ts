@@ -2,6 +2,7 @@ import { detectRecurrences, formatCents } from "@clara-financas/ledger";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
+import { loadMerchantAliases } from "../../../lib/aliases";
 import { requireTenantCaller } from "../../../lib/tenant";
 import { loadLedger } from "../lib/query";
 
@@ -22,21 +23,33 @@ export default defineTool({
       .min(2)
       .max(24)
       .optional()
-      .describe("Minimum number of charges to count as a recurrence. Defaults to 3."),
+      .describe(
+        "Minimum number of charges to count as a recurrence. Defaults to 2, which surfaces likely patterns from only two invoices; each result carries `confirmed` so you can say which are certain. Raise to 3 to see only confirmed ones.",
+      ),
   }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);
-    const ledger = await loadLedger(tenantId);
+    const [ledger, merchantAliases] = await Promise.all([
+      loadLedger(tenantId),
+      // Apelidos aprovados entram no agrupamento. Sem esta linha o conceito
+      // MerchantAlias seria gravável e inerte.
+      loadMerchantAliases(tenantId),
+    ]);
 
-    const recurrences = detectRecurrences(ledger, {
-      minOccurrences: input.minOccurrences ?? 3,
-    });
+    // Sem `?? 3`: o default do domínio é 2, e repeti-lo aqui com outro valor
+    // era o que mantinha a análise muda para quem tem duas faturas.
+    const recurrences = detectRecurrences(
+      ledger,
+      input.minOccurrences === undefined
+        ? { merchantAliases }
+        : { minOccurrences: input.minOccurrences, merchantAliases },
+    );
 
     if (recurrences.length === 0) {
       return {
         empty: true as const,
         message:
-          "No recurring charge identified. This may simply mean there are few months of history — a pattern needs at least three charges to surface.",
+          "No repeating charge found. A pattern needs at least two charges roughly a month apart, so with a single invoice on file this is expected rather than informative — say so instead of implying the person has no subscriptions.",
       };
     }
 
@@ -49,6 +62,9 @@ export default defineTool({
       recurrences: recurrences.map((recurrence) => ({
         merchant: recurrence.merchant,
         occurrences: recurrence.occurrences,
+        // Duas cobranças são indício; três ou mais, padrão estabelecido. Sem
+        // este campo o modelo apresentaria as duas com a mesma segurança.
+        confirmed: recurrence.confirmed,
         latestCents: recurrence.latestAmount,
         latestFormatted: formatCents(recurrence.latestAmount),
         firstCents: recurrence.firstAmount,
