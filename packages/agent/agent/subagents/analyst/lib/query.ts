@@ -4,6 +4,8 @@ import { forTenant } from "@clara-financas/db/tenant-scope";
 import type { Transaction } from "@clara-financas/ledger";
 import { and, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
 
+import { categoryLabel, type CategoryLabels } from "../../../lib/categories";
+
 /**
  * Carrega transações CONFIRMADAS do razão, no escopo do tenant.
  *
@@ -82,7 +84,7 @@ export function toDomain(row: typeof transactions.$inferSelect): Transaction {
  * Deliberadamente enxuto: mandar a linha inteira gastaria contexto e faria o
  * modelo repetir dado em vez de referenciar por id.
  */
-export function brief(transaction: Transaction) {
+export function brief(transaction: Transaction, labels: CategoryLabels = {}) {
   return {
     id: transaction.id,
     date: transaction.date,
@@ -90,6 +92,8 @@ export function brief(transaction: Transaction) {
     merchant: transaction.merchant,
     amountCents: transaction.amount,
     category: transaction.category,
+    // O rótulo vai junto para o modelo escrever "Restaurantes" e não "dining".
+    categoryLabel: categoryLabel(labels, transaction.category),
     page: transaction.page,
   };
 }

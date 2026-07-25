@@ -2,6 +2,7 @@ import { formatCents, totalSpend } from "@clara-financas/ledger";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
+import { loadCategoryLabels } from "../../../lib/categories";
 import { requireTenantCaller } from "../../../lib/tenant";
 import { optionalText } from "../../../lib/schema";
 import { brief, loadLedger } from "../lib/query";
@@ -59,6 +60,7 @@ export default defineTool({
 
     const total = totalSpend(rows);
     const truncated = rows.length > LIMIT;
+    const labels = await loadCategoryLabels(tenantId);
 
     return {
       matched: rows.length,
@@ -67,7 +69,7 @@ export default defineTool({
       // parcial como se fosse o conjunto inteiro.
       note: truncated ? `Mostrando as ${LIMIT} primeiras de ${rows.length}.` : undefined,
       total: { cents: total.value, formatted: formatCents(total.value) },
-      transactions: rows.slice(0, LIMIT).map(brief),
+      transactions: rows.slice(0, LIMIT).map((row) => brief(row, labels)),
     };
   },
 });

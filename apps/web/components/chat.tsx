@@ -21,10 +21,11 @@ import { InputGroupAddon } from "@/components/ui/input-group";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { ChatHeader, ChatWelcome, type Starter } from "@/components/chat-welcome";
 import { ExecutionTrace } from "@/components/execution-trace";
+import { ViewPanel } from "@/components/view-panel";
 import { deriveActivity } from "@/lib/activity";
-import { analysisArtifact, batchArtifact, type BatchProposal } from "@/lib/artifact";
+import { batchArtifact, type BatchProposal } from "@/lib/artifact";
 import { findLatestBatchProposal, findPendingRequest } from "@/lib/input-request";
-import { findChildSessions, useSubagentResults } from "@/lib/use-subagent-stream";
+import { findPresentedView } from "@clara-financas/views/stream";
 
 /**
  * A conversa, em duas colunas.
@@ -89,20 +90,6 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
   const pending = findPendingRequest(agent.data.messages);
   const isWelcome = agent.data.messages.length === 0;
 
-  // As ferramentas do especialista rodam na sessão FILHA e não chegam ao
-  // stream do pai. Sem assinar aquela sessão, o artefato de análise não teria
-  // de onde tirar número — sobraria a prosa do modelo.
-  const childSessions = useMemo(() => findChildSessions(agent.events), [agent.events]);
-  // A chave de geração é o turno: rodada nova descarta o artefato da anterior,
-  // e "Nova conversa" zera tudo. Sem isso, o painel exibia o resultado de uma
-  // pergunta antiga ao lado da resposta nova.
-  const subagentResults = useSubagentResults(
-    agentHost,
-    childSessions,
-    bearer,
-    `${agent.session?.sessionId ?? "none"}:${activity.turnId}`,
-  );
-
   const answerRef = useRef<(optionId: string) => void>(() => {});
   answerRef.current = (optionId: string) => {
     if (!pending) return;
@@ -141,26 +128,34 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
   const canApprove = pending?.toolName === "commit_batch" && answered === null;
 
   /**
-   * O artefato aparece sempre que EXISTE — não só quando há aprovação
-   * pendente. Condicionar ao gate era o bug: quando a Clara faz uma pergunta
-   * em vez de pedir aprovação, o dado existe e o painel sumia.
+   * O painel que a CLARA mandou desenhar, lido do stream.
+   *
+   * Substitui a inferência que existia aqui — o frontend olhava o retorno das
+   * ferramentas do analista e adivinhava um painel. Adivinhação errava nos dois
+   * sentidos: montava painel quando a resposta era uma pergunta, e não montava
+   * nada quando o formato do retorno mudava.
+   */
+  const presented = useMemo(() => findPresentedView(agent.events), [agent.events]);
+
+  /**
+   * A conferência de um lote é a exceção que continua sendo derivada aqui: ela
+   * precisa carregar os botões do gate, e esses botões são estado do cliente
+   * (`answerRef`), não algo que a Clara possa mandar no payload.
    */
   const artifact = useMemo(() => {
-    if (proposal !== null) {
-      return batchArtifact(proposal, {
-        onApprove: () => answerRef.current("approve"),
-        onReject: () => answerRef.current("deny"),
-        disabled: busy || !canApprove,
-      });
-    }
-    return analysisArtifact(subagentResults);
-  }, [proposal, subagentResults, busy, canApprove]);
+    if (proposal === null) return null;
+    return batchArtifact(proposal, {
+      onApprove: () => answerRef.current("approve"),
+      onReject: () => answerRef.current("deny"),
+      disabled: busy || !canApprove,
+    });
+  }, [proposal, busy, canApprove]);
 
-  // Artefato novo reabre o painel: a pessoa acabou de pedir algo que o produz.
-  const artifactTitle = artifact?.title ?? null;
+  // Painel novo reabre a coluna: a pessoa acabou de pedir algo que o produz.
+  const openKey = artifact?.title ?? presented?.title ?? null;
   useEffect(() => {
-    if (artifactTitle !== null) setArtifactOpen(true);
-  }, [artifactTitle]);
+    if (openKey !== null) setArtifactOpen(true);
+  }, [openKey]);
 
   return (
     <div className="flex">
@@ -171,7 +166,9 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
               <ChatHeader
                 onReset={isWelcome ? null : () => agent.reset()}
                 onToggleArtifact={
-                  artifact === null ? null : () => setArtifactOpen((open) => !open)
+                  artifact === null && presented === null
+                    ? null
+                    : () => setArtifactOpen((open) => !open)
                 }
                 artifactOpen={artifactOpen}
               />
@@ -277,8 +274,12 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
         </div>
       </div>
 
-      {artifact !== null && artifactOpen ? (
+      {/* A conferência tem precedência: quando há decisão pendente sobre um
+          lote, é ela que precisa estar na tela, não a análise anterior. */}
+      {artifactOpen && artifact !== null ? (
         <ArtifactPanel data={artifact} onClose={() => setArtifactOpen(false)} />
+      ) : artifactOpen && presented !== null ? (
+        <ViewPanel view={presented} onClose={() => setArtifactOpen(false)} />
       ) : null}
 
       <input

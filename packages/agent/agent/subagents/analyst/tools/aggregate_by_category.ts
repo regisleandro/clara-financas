@@ -2,6 +2,7 @@ import { aggregateByCategory, formatCents, totalSpend } from "@clara-financas/le
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
+import { categoryLabel, loadCategoryLabels } from "../../../lib/categories";
 import { requireTenantCaller } from "../../../lib/tenant";
 import { optionalText } from "../../../lib/schema";
 import { ledgerCoverage, loadLedger } from "../lib/query";
@@ -40,6 +41,7 @@ export default defineTool({
     const total = totalSpend(ledger);
     const categories = aggregateByCategory(ledger);
     const uncategorized = categories.find((bucket) => bucket.category === null);
+    const labels = await loadCategoryLabels(tenantId);
 
     return {
       period: { from: input.from ?? null, to: input.to ?? null },
@@ -50,6 +52,9 @@ export default defineTool({
       },
       categories: categories.map((bucket) => ({
         category: bucket.category,
+        // O rótulo acompanha o id: é o que o modelo deve escrever na resposta
+        // e o que o painel deve exibir. O id fica para proveniência e regra.
+        label: categoryLabel(labels, bucket.category),
         cents: bucket.value,
         formatted: formatCents(bucket.value),
         sharePercent: Math.round(bucket.share * 1000) / 10,

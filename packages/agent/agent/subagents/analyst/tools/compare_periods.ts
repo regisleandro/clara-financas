@@ -2,6 +2,7 @@ import { comparePeriods, formatCents, totalSpend } from "@clara-financas/ledger"
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
+import { categoryLabel, loadCategoryLabels } from "../../../lib/categories";
 import { requireTenantCaller } from "../../../lib/tenant";
 import { loadLedger } from "../lib/query";
 
@@ -34,6 +35,7 @@ export default defineTool({
     }
 
     const { totalDelta, categories } = comparePeriods(current, previous);
+    const labels = await loadCategoryLabels(tenantId);
 
     return {
       currentTotal: {
@@ -47,6 +49,7 @@ export default defineTool({
       totalDelta: { cents: totalDelta, formatted: formatCents(totalDelta) },
       categories: categories.map((entry) => ({
         category: entry.category,
+        label: categoryLabel(labels, entry.category),
         currentCents: entry.current.value,
         previousCents: entry.previous.value,
         deltaCents: entry.delta,

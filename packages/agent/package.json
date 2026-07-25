@@ -19,6 +19,7 @@
     "@clara-financas/db": "workspace:*",
     "@clara-financas/ledger": "workspace:*",
     "@clara-financas/okf": "workspace:*",
+    "@clara-financas/views": "workspace:*",
     "@vercel/connect": "0.4.2",
     "ai": "catalog:",
     "dotenv": "catalog:",
