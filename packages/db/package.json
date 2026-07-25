@@ -10,23 +10,22 @@
     }
   },
   "scripts": {
-    "db:local": "turso dev --db-file local.db",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "check-types": "tsc --noEmit"
   },
   "dependencies": {
     "@clara-financas/env": "workspace:*",
-    "@libsql/client": "0.17.4",
     "dotenv": "catalog:",
-    "drizzle-orm": "^0.45.2",
-    "libsql": "0.5.29",
+    "drizzle-orm": "catalog:",
+    "postgres": "^3.4.7",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@clara-financas/config": "workspace:*",
-    "drizzle-kit": "^0.31.10",
+    "drizzle-kit": "catalog:",
     "typescript": "catalog:"
   }
 }

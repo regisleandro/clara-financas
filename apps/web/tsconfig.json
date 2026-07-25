@@ -1,17 +1,18 @@
 {
+  "extends": "@clara-financas/config/tsconfig.base.json",
   "compilerOptions": {
-    "strict": true,
-    "esModuleInterop": true,
-    "jsx": "react-jsx",
-    "target": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "jsx": "preserve",
     "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "skipLibCheck": true,
-    "types": ["vite/client"],
-    "rootDirs": ["."],
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "allowJs": true,
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
     "paths": {
-      "@/*": ["./src/*"],
-      "@clara-financas/ui/*": ["../../packages/ui/src/*"]
+      "@/*": ["./*"]
     }
-  }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
 }

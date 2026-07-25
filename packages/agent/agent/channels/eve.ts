@@ -1,33 +1,100 @@
 import { eveChannel } from "eve/channels/eve";
-import { localDev, placeholderAuth, vercelOidc } from "eve/channels/auth";
+import {
+  ForbiddenError,
+  extractBearerToken,
+  localDev,
+  verifyJwtHmac,
+  type AuthFn,
+} from "eve/channels/auth";
+
+import { instanceTenantId } from "../lib/tenant";
 
 /**
  * Canal HTTP do agente.
  *
- * Topologia: o agente NÃO é montado dentro do app Next (`withEve`). Ele roda
- * como deployment próprio e o navegador fala com ele cross-origin. Isso é
- * exigência do modelo silo (um projeto Vercel por tenant) e foi validado no
- * spike da Etapa 0: preflight e POST cross-origin funcionam, e uma origem não
- * declarada é bloqueada pelo navegador.
- *
- * TODO(Etapa 0): trocar a cadeia de auth por `tenantToken()` — verifica o JWT
- * ECDSA emitido pelo control plane e confere o claim `tenantId` contra
- * `process.env.TENANT_ID`, além da ACL de posse de sessão sobre
- * `/eve/v1/session/:id[/stream|/cancel]`. O spike confirmou que o AuthFn
- * enxerga a URL completa em todas as rotas protegidas, inclusive `cancel`.
+ * Topologia: o agente NÃO é montado dentro do app Next (`withEve`). Roda como
+ * deployment próprio e o navegador fala com ele cross-origin. Exigência do
+ * modelo silo (um projeto Vercel por tenant), validada no spike da Etapa 0:
+ * preflight e POST cross-origin funcionam, e origem não declarada é bloqueada.
  */
+
+const AUDIENCE = "clara-agent";
+
+function appOrigin(): string {
+  const value = process.env.APP_ORIGIN ?? "http://localhost:3000";
+  return value;
+}
+
+/**
+ * Camada 1 da defesa em profundidade: token do control plane com claim de
+ * tenant, conferido contra a identidade desta instância.
+ *
+ * Um token válido do tenant B é recusado pela instância do A porque a
+ * instância conhece a própria identidade por variável de ambiente — sem
+ * lookup, sem tabela, sem depender de acerto de roteamento.
+ *
+ * Por que NÃO devolvemos `result.sessionAuth` direto (verificado no código do
+ * eve 0.27.6, não suposto):
+ *  - a estratégia jwt-hmac fixa `principalType: "service"`, então o guard
+ *    canônico da doc (`principalType !== "user"` → recusa) rejeitaria tudo;
+ *  - `principalId` vira `${iss}:${sub}` composto, não o userId puro.
+ * Normalizamos aqui para a forma que `requireTenantCaller` espera.
+ */
+function tenantToken(): AuthFn<Request> {
+  return async (request) => {
+    const token = extractBearerToken(request.headers.get("authorization"));
+    if (token === null) return null; // sem bearer: segue a cadeia (localDev)
+
+    const secret = process.env.AGENT_TOKEN_SECRET;
+    if (secret === undefined || secret.length === 0) {
+      throw new ForbiddenError({ message: "Agent token verification is not configured." });
+    }
+
+    const result = await verifyJwtHmac(token, {
+      algorithm: "HS256",
+      audiences: [AUDIENCE],
+      issuer: appOrigin(),
+      secret,
+    });
+    if (!result.ok) return null;
+
+    // Só claims string/string[] sobrevivem à projeção do eve — daí os guards.
+    const attributes = result.sessionAuth.attributes;
+    const tenantId = attributes.tenantId;
+    const userId = attributes.userId;
+
+    if (typeof tenantId !== "string" || typeof userId !== "string") {
+      throw new ForbiddenError({ message: "Token is missing tenantId/userId claims." });
+    }
+
+    const instance = instanceTenantId();
+    if (instance !== undefined && tenantId !== instance) {
+      throw new ForbiddenError({ message: "Token tenant does not match this instance." });
+    }
+
+    return {
+      attributes: { tenantId, userId },
+      authenticator: "control-plane",
+      issuer: appOrigin(),
+      principalId: userId,
+      principalType: "user",
+      subject: userId,
+    };
+  };
+}
+
 export default eveChannel({
   cors: {
-    origin: process.env.APP_ORIGIN ?? "http://localhost:3000",
+    origin: appOrigin(),
     methods: ["GET", "POST"],
     allowedHeaders: ["authorization", "content-type"],
   },
   auth: [
-    // Permite que a TUI do eve e deployments Vercel alcancem o agente.
-    vercelOidc(),
+    tenantToken(),
     // Aberto em localhost para `eve dev` e o REPL; ignorado em produção.
+    // NUNCA sozinho: confia no header Host. E como devolve
+    // `principalType: "local-dev"`, o guard das tools recusa mesmo assim —
+    // em dev o fluxo real de token é obrigatório para exercitar as tools.
     localDev(),
-    // Placeholder: devolve 401 em produção. Sai quando `tenantToken()` entrar.
-    placeholderAuth(),
   ],
 });
