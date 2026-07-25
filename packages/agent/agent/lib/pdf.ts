@@ -33,16 +33,32 @@ export type ExtractOptions = {
 /**
  * Carrega o PDF a partir da chave de armazenamento.
  *
- * Em desenvolvimento a chave é um caminho de arquivo; em produção passa a ser
- * uma chave do Vercel Blob. O ponto de troca é só este.
+ * Em desenvolvimento a chave é um caminho de arquivo; em produção é um blob do
+ * Vercel, gravado com acesso PRIVADO. O ponto de troca é só este.
+ *
+ * Privado muda como se lê: um `fetch` cru no URL não basta mais, porque o blob
+ * exige autenticação — e é exatamente esse o ponto. O SDK anexa o token do
+ * store. Se o `fetch` cru voltar a funcionar num documento destes, é sinal de
+ * que alguém regrediu o armazenamento para público.
  */
 async function loadPdf(blobKey: string): Promise<Uint8Array> {
   if (blobKey.startsWith("http://") || blobKey.startsWith("https://")) {
-    const response = await fetch(blobKey);
-    if (!response.ok) {
-      throw new Error(`não foi possível baixar o documento (${response.status})`);
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    if (typeof token !== "string" || token.length === 0) {
+      throw new Error(
+        "BLOB_READ_WRITE_TOKEN não está definida nesta instância do agente. " +
+          "Os documentos são privados e não podem ser lidos sem o token do store.",
+      );
     }
-    return new Uint8Array(await response.arrayBuffer());
+
+    const { get } = await import("@vercel/blob");
+    const result = await get(blobKey, { access: "private", token });
+
+    if (result === null || result.statusCode !== 200 || result.stream === null) {
+      throw new Error(`não foi possível baixar o documento (${result?.statusCode ?? "sem resposta"})`);
+    }
+
+    return new Uint8Array(await new Response(result.stream).arrayBuffer());
   }
 
   return new Uint8Array(await readFile(blobKey));

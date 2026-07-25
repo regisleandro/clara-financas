@@ -37,7 +37,15 @@ export async function storeDocument(
   if (typeof token === "string" && token.length > 0) {
     const { put } = await import("@vercel/blob");
     const result = await put(key, Buffer.from(bytes), {
-      access: "public",
+      // PRIVADO, não público. Uma fatura de cartão num URL público fica
+      // legível para sempre por qualquer um que o obtenha — e o URL circula:
+      // vai para a coluna `blob_key`, para logs, para um dump de banco, para
+      // um header de referer. "Difícil de adivinhar" não é controle de acesso;
+      // é obscuridade, e obscuridade não sobrevive a um vazamento de texto.
+      //
+      // Com `private`, ler o blob exige o token do store, que só existe no
+      // ambiente dos dois deployments.
+      access: "private",
       token,
       contentType: "application/pdf",
       addRandomSuffix: false,
