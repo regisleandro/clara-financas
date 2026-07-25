@@ -13,7 +13,6 @@ import {
   Confirmation,
   ConfirmationAction,
   ConfirmationActions,
-  ConfirmationRequest,
   ConfirmationTitle,
 } from "@/components/ai-elements/confirmation";
 
@@ -85,9 +84,7 @@ export function ReviewCard({
           <ArtifactTitle>
             {data.transactionCount} transações propostas
           </ArtifactTitle>
-          <ArtifactDescription>
-            {data.issuer ?? "Documento"} · nada entra no razão sem sua aprovação
-          </ArtifactDescription>
+          <ArtifactDescription>{data.issuer ?? "Documento"}</ArtifactDescription>
         </div>
         <ArtifactActions>
           <ArtifactAction
@@ -167,10 +164,6 @@ export function ReviewCard({
           state={answered === null ? "approval-requested" : "approval-responded"}
         >
           <ConfirmationTitle>Registrar estas transações no razão?</ConfirmationTitle>
-          <ConfirmationRequest>
-            Depois de registradas, valor, data e origem não mudam mais — correção vira linha de
-            ajuste.
-          </ConfirmationRequest>
           <ConfirmationActions>
             <ConfirmationAction disabled={disabled} onClick={onApprove}>
               Aprovar e registrar
@@ -180,11 +173,6 @@ export function ReviewCard({
             </ConfirmationAction>
           </ConfirmationActions>
         </Confirmation>
-
-        <p className="clara-small">
-          Para corrigir um item, diga o que está errado na conversa — a Clara ajusta e reconfere
-          antes de registrar.
-        </p>
       </ArtifactContent>
     </Artifact>
   );

@@ -10,9 +10,8 @@ import type { Activity } from "@/lib/activity";
  * a qual especialista delegou. É o que sustenta a promessa de que os números
  * são verificáveis — sem isso, "cálculo verificado" é só uma frase.
  *
- * Limite honesto: as ferramentas internas de um subagente rodam na sessão
- * filha e NÃO chegam a este stream. Dá para dizer "o analista trabalhou", não
- * o que ele chamou por dentro. A UI diz isso em vez de fingir.
+ * Limite: as ferramentas internas de um subagente rodam na sessão filha e não
+ * chegam a este stream, então o passo do especialista não se desdobra.
  */
 export function ExecutionTrace({ activity }: { activity: Activity }) {
   if (activity.steps.length === 0) return null;
@@ -41,14 +40,6 @@ export function ExecutionTrace({ activity }: { activity: Activity }) {
             ) : null}
           </TaskItem>
         ))}
-        {activity.steps.some((step) => step.kind === "subagent") ? (
-          <TaskItem>
-            <span className="clara-small">
-              As ferramentas internas do especialista rodam em sessão própria e não aparecem
-              aqui.
-            </span>
-          </TaskItem>
-        ) : null}
       </TaskContent>
     </Task>
   );

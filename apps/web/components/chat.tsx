@@ -13,11 +13,10 @@ import { Message, MessageContent } from "@/components/ai-elements/message";
 import {
   PromptInput,
   PromptInputBody,
-  PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
-  PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import { InputGroupAddon } from "@/components/ui/input-group";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { ChatHeader, ChatWelcome, type Starter } from "@/components/chat-welcome";
 import { ExecutionTrace } from "@/components/execution-trace";
@@ -207,7 +206,7 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
 
       <div className="sticky bottom-0 bg-background pb-8 pt-2">
         <PromptInput
-          className="rounded-[var(--clara-radius-card)]"
+          className="items-center rounded-[var(--clara-radius-card)] py-1.5 pl-4 pr-1.5"
           onSubmit={(message, event) => {
             event.preventDefault();
             const text = message.text?.trim();
@@ -216,31 +215,25 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
           }}
         >
           <PromptInputBody>
-            <PromptInputTextarea placeholder="Pergunte sobre seu dinheiro…" disabled={busy} />
+            <PromptInputTextarea
+              placeholder="Pergunte sobre seu dinheiro…"
+              disabled={busy}
+              rows={1}
+              className="min-h-11 py-2.5"
+            />
           </PromptInputBody>
-          <PromptInputFooter>
-            <PromptInputTools>
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading || busy}
-                className="clara-chip disabled:opacity-50"
-              >
-                {uploading ? "Enviando…" : "+ Fatura"}
-              </button>
-            </PromptInputTools>
+          {/* inline-end, e não o PromptInputFooter: o rodapé é um addon
+              block-end e empilharia uma segunda linha. O design tem uma só. */}
+          <InputGroupAddon align="inline-end">
             <PromptInputSubmit
               status={agent.status}
               size="sm"
-              className="clara-pill clara-pill-primary h-9 w-auto px-5 text-sm"
+              className="clara-pill clara-pill-primary h-10 w-auto px-5 text-sm"
             >
               Enviar
             </PromptInputSubmit>
-          </PromptInputFooter>
+          </InputGroupAddon>
         </PromptInput>
-        <p className="clara-small mt-3 text-center">
-          Os cálculos vêm de ferramentas verificáveis · nada é registrado sem sua aprovação.
-        </p>
       </div>
 
       {/* Fora do formulário: o seletor é acionado tanto pelo card de boas-vindas

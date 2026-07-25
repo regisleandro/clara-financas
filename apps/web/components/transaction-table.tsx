@@ -157,8 +157,7 @@ export function TransactionTable({
       </div>
 
       <p className="clara-small mt-6">
-        {filtered.length} {filtered.length === 1 ? "lançamento" : "lançamentos"} · nenhuma
-        categoria alterada sem sua aprovação.
+        {filtered.length} {filtered.length === 1 ? "lançamento" : "lançamentos"}
       </p>
     </>
   );
