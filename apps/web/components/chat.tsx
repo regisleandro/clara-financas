@@ -1,50 +1,54 @@
 "use client";
 
 import { useEveAgent } from "eve/react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation";
+import { Message, MessageContent } from "@/components/ai-elements/message";
+import {
+  PromptInput,
+  PromptInputBody,
+  PromptInputFooter,
+  PromptInputSubmit,
+  PromptInputTextarea,
+  PromptInputTools,
+} from "@/components/ai-elements/prompt-input";
+import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
+import { ExecutionTrace } from "@/components/execution-trace";
 import { ReviewCard, type ReviewCardData } from "@/components/review-card";
+import { deriveActivity } from "@/lib/activity";
 import { findLatestBatchProposal, findPendingRequest } from "@/lib/input-request";
 
 /**
- * A conversa.
+ * A conversa, sobre os componentes do AI Elements.
  *
  * Cross-origin por construção: o navegador fala DIRETO com a instância do
- * tenant, não com o control plane. O bearer vem de /api/token, que deriva o
- * tenantId da sessão autenticada — nunca do cliente.
+ * tenant. O bearer vem de /api/token, que deriva o tenantId da sessão
+ * autenticada — nunca do cliente.
  *
- * No design, a resposta da Clara é tipografia grande, não balão: ela é a voz
- * do sistema, e balão a colocaria no mesmo plano da pessoa. Só a fala do
- * usuário recebe balão, escuro e alinhado à direita.
+ * Os três elementos ricos do design são AI Elements de verdade:
+ *   Execução desta resposta → Task
+ *   Cartão de conferência   → Artifact + Confirmation
+ *   Continuar               → Suggestions
  */
 
 const STARTERS = [
-  {
-    title: "Enviar um documento",
-    note: "Fatura, extrato ou nota fiscal em PDF",
-    prompt: null,
-  },
-  {
-    title: "Analisar meus gastos",
-    note: "Compare períodos, categorias e recorrências",
-    prompt: "Por que meus gastos mudaram? Compare os períodos que existem no razão.",
-  },
-  {
-    title: "Encontrar recorrências",
-    note: "O que repete todo mês e o que já não uso",
-    prompt: "O que está repetindo todo mês? Mostre o custo anual de cada uma.",
-  },
-  {
-    title: "Cuidar de um prazo",
-    note: "Lembretes de vencimento antes da preocupação",
-    prompt: "Quais compromissos estão por vencer?",
-  },
+  "Por que meus gastos mudaram? Compare os períodos do razão.",
+  "O que está repetindo todo mês? Mostre o custo anual.",
+  "Onde eu mais gastei? Mostre por categoria.",
+  "Quais compromissos estão por vencer?",
 ] as const;
 
 export function Chat({ agentHost }: { agentHost: string }) {
   const tokenRef = useRef<{ value: string; expiresAt: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [answered, setAnswered] = useState<boolean | null>(null);
 
   const bearer = useCallback(async () => {
     const cached = tokenRef.current;
@@ -61,17 +65,23 @@ export function Chat({ agentHost }: { agentHost: string }) {
 
   const agent = useEveAgent({ host: agentHost, auth: { bearer } });
 
-  const [draft, setDraft] = useState("");
   const [uploading, setUploading] = useState(false);
   const busy = agent.status === "submitted" || agent.status === "streaming";
 
+  const activity = useMemo(() => deriveActivity(agent.events), [agent.events]);
   const pending = findPendingRequest(agent.data.messages);
   const proposal = findLatestBatchProposal(agent.data.messages);
   const isWelcome = agent.data.messages.length === 0;
 
   function answer(optionId: string) {
     if (!pending) return;
+    setAnswered(optionId === "approve");
     void agent.send({ inputResponses: [{ requestId: pending.requestId, optionId }] });
+  }
+
+  function send(message: string) {
+    setAnswered(null);
+    void agent.send({ message });
   }
 
   async function upload(file: File) {
@@ -87,80 +97,42 @@ export function Chat({ agentHost }: { agentHost: string }) {
         return;
       }
 
-      await agent.send({
-        message: `Enviei o documento ${file.name} (documentId: ${data.documentId}). Extraia as transações e me mostre a conferência.`,
-      });
+      send(
+        `Enviei o documento ${file.name} (documentId: ${data.documentId}). Extraia as transações e me mostre a conferência.`,
+      );
     } finally {
       setUploading(false);
     }
   }
 
-  const reviewData: ReviewCardData | null =
-    pending?.toolName === "commit_batch" && proposal
-      ? {
-          batchId: String(proposal.batchId),
-          transactionCount: Number(proposal.transactionCount ?? 0),
-          issuer: typeof proposal.issuer === "string" ? proposal.issuer : null,
-          checksum: proposal.checksum as ReviewCardData["checksum"],
-        }
-      : null;
+  const reviewData: ReviewCardData | null = proposal
+    ? {
+        batchId: String(proposal.batchId),
+        transactionCount: Number(proposal.transactionCount ?? 0),
+        issuer: typeof proposal.issuer === "string" ? proposal.issuer : null,
+        checksum: proposal.checksum as ReviewCardData["checksum"],
+      }
+    : null;
+
+  const showReview = reviewData !== null && (pending?.toolName === "commit_batch" || answered !== null);
 
   return (
-    <div className="flex min-h-[calc(100svh-3rem)] flex-col">
-      <div className="mx-auto w-full max-w-[720px] flex-1 px-6 pb-52 pt-16">
-        <header className="mb-12 flex items-center gap-3">
-          <span className="grid size-[31px] shrink-0 place-items-center rounded-[10px] bg-[var(--clara-ink)]">
-            <svg width="19" height="19" viewBox="0 0 12 12" aria-hidden="true">
-              <circle cx="6" cy="6" r="4.7" fill="none" stroke="#f5f5f7" strokeWidth="1.2" />
-              <circle cx="6" cy="6" r="1.7" fill="#f5f5f7" />
-            </svg>
-          </span>
-          <span>
-            <strong className="clara-display-xs block">Clara</strong>
-            <small className="clara-small block">Assistente financeiro · sessão ativa</small>
-          </span>
-          {!isWelcome ? (
-            <button
-              type="button"
-              onClick={() => agent.reset()}
-              className="ml-auto rounded-[var(--clara-radius-pill)] bg-[var(--clara-ash)] px-4 py-2 text-xs"
-              style={{ letterSpacing: "-0.022em" }}
+    <div className="mx-auto flex min-h-[calc(100svh-3rem)] w-full max-w-[720px] flex-col px-6">
+      <Conversation className="flex-1">
+        <ConversationContent className="pb-8 pt-16">
+          {isWelcome ? (
+            <ConversationEmptyState
+              title="Oi. O que fazemos com o seu dinheiro agora?"
+              description="Posso organizar documentos, explicar seus gastos ou cuidar de um compromisso. Os cálculos vêm de ferramentas verificáveis e nada é salvo sem sua aprovação."
             >
-              Nova conversa
-            </button>
+              <Suggestions>
+                {STARTERS.map((starter) => (
+                  <Suggestion key={starter} suggestion={starter} onClick={send} />
+                ))}
+              </Suggestions>
+            </ConversationEmptyState>
           ) : null}
-        </header>
 
-        {isWelcome ? (
-          <div>
-            <h1 className="clara-display-lg text-pretty">
-              Oi. O que fazemos com o seu dinheiro agora?
-            </h1>
-            <p className="clara-lead mb-12 mt-6">
-              Posso organizar documentos, explicar seus gastos ou cuidar de um compromisso. Os
-              cálculos são verificados e nada é salvo sem sua aprovação.
-            </p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {STARTERS.map((starter) => (
-                <button
-                  key={starter.title}
-                  type="button"
-                  disabled={busy || uploading}
-                  onClick={() => {
-                    if (starter.prompt === null) fileRef.current?.click();
-                    else void agent.send({ message: starter.prompt });
-                  }}
-                  className="clara-card flex flex-col gap-2 p-7 text-left transition-colors hover:bg-[#fbfbfd] disabled:opacity-60"
-                >
-                  <strong className="clara-display-xs">{starter.title}</strong>
-                  <small className="clara-small">{starter.note}</small>
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        <div className="space-y-8">
           {agent.data.messages.map((message) => {
             const text = message.parts
               .map((part) => (part.type === "text" ? part.text : ""))
@@ -168,111 +140,85 @@ export function Chat({ agentHost }: { agentHost: string }) {
               .trim();
             if (text === "") return null;
 
-            if (message.role === "user") {
-              return (
-                <div key={message.id} className="flex justify-end">
-                  <p className="max-w-[78%] rounded-[22px_22px_8px_22px] bg-[var(--clara-ink)] px-[19px] py-[13px] text-[var(--clara-white)]">
-                    {text}
-                  </p>
-                </div>
-              );
-            }
-
             return (
-              <p key={message.id} className="clara-display-sm whitespace-pre-wrap text-pretty">
-                {text}
-              </p>
+              <Message key={message.id} from={message.role}>
+                <MessageContent>{text}</MessageContent>
+              </Message>
             );
           })}
 
-          {busy ? (
-            <div className="flex gap-1.5" aria-label="Clara está pensando">
-              {[0, 0.15, 0.3].map((delay) => (
-                <i
-                  key={delay}
-                  className="block size-[7px] rounded-full bg-[var(--clara-ink)]"
-                  style={{ animation: `clara-dots 1s ${delay}s infinite` }}
-                />
-              ))}
-            </div>
-          ) : null}
+          {/* Execução desta resposta */}
+          {!isWelcome ? <ExecutionTrace activity={activity} /> : null}
 
-          {reviewData ? (
+          {showReview && reviewData !== null ? (
             <ReviewCard
               data={reviewData}
               disabled={busy}
+              answered={answered}
               onApprove={() => answer("approve")}
               onReject={() => answer("deny")}
             />
           ) : null}
 
-          {pending && !reviewData ? (
+          {pending && !showReview ? (
             <GenericPrompt pending={pending} disabled={busy} onAnswer={answer} />
+          ) : null}
+
+          {!isWelcome && !busy && pending === null ? (
+            <Suggestions>
+              {STARTERS.slice(0, 3).map((starter) => (
+                <Suggestion key={starter} suggestion={starter} onClick={send} />
+              ))}
+            </Suggestions>
           ) : null}
 
           {agent.error ? (
             <p className="clara-card p-5 text-[var(--clara-amber)]">{agent.error.message}</p>
           ) : null}
-        </div>
-      </div>
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
 
-      <div
-        className="sticky bottom-0 px-6 pb-8"
-        style={{
-          background:
-            "linear-gradient(to top, var(--clara-fog) 62%, rgb(245 245 247 / 0))",
-        }}
-      >
-        <div className="mx-auto max-w-[720px]">
-          <form
-            className="clara-card flex items-center gap-3 py-2 pl-6 pr-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const message = draft.trim();
-              if (message === "" || busy) return;
-              setDraft("");
-              void agent.send({ message });
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading || busy}
-              aria-label="Enviar fatura em PDF"
-              className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--clara-fog)] disabled:opacity-50"
-            >
-              {uploading ? "…" : "+"}
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="application/pdf"
-              className="sr-only"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = "";
-                if (file) void upload(file);
-              }}
-            />
-            <input
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              disabled={busy}
-              placeholder="Pergunte sobre seu dinheiro…"
-              className="flex-1 border-0 bg-transparent py-3.5 outline-none"
-            />
-            <button
-              type="submit"
-              disabled={busy || draft.trim() === ""}
-              className="clara-pill clara-pill-primary disabled:opacity-40"
-            >
-              Enviar
-            </button>
-          </form>
-          <p className="clara-small mt-3 text-center">
-            Os cálculos vêm de ferramentas verificáveis · nada é registrado sem sua aprovação.
-          </p>
-        </div>
+      <div className="sticky bottom-0 pb-8">
+        <PromptInput
+          onSubmit={(message, event) => {
+            event.preventDefault();
+            const text = message.text?.trim();
+            if (text === undefined || text === "" || busy) return;
+            send(text);
+          }}
+        >
+          <PromptInputBody>
+            <PromptInputTextarea placeholder="Pergunte sobre seu dinheiro…" disabled={busy} />
+          </PromptInputBody>
+          <PromptInputFooter>
+            <PromptInputTools>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading || busy}
+                className="clara-chip disabled:opacity-50"
+              >
+                {uploading ? "Enviando…" : "+ Fatura"}
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="application/pdf"
+                className="sr-only"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (file) void upload(file);
+                }}
+              />
+            </PromptInputTools>
+            <PromptInputSubmit status={agent.status} />
+          </PromptInputFooter>
+        </PromptInput>
+        <p className="clara-small mt-3 text-center">
+          Os cálculos vêm de ferramentas verificáveis · nada é registrado sem sua aprovação.
+        </p>
       </div>
     </div>
   );
@@ -300,22 +246,19 @@ function GenericPrompt({
       <p className="clara-display-xs">
         {pending.prompt ?? "A Clara precisa da sua confirmação."}
       </p>
-      <div className="mt-5 flex flex-wrap gap-2">
+      <Suggestions className="mt-5">
         {options.map((option, index) => {
           const id = option.optionId ?? option.id ?? String(index);
           return (
-            <button
+            <Suggestion
               key={id}
-              type="button"
+              suggestion={option.label ?? id}
               disabled={disabled}
               onClick={() => onAnswer(id)}
-              className="clara-pill clara-pill-outline disabled:opacity-40"
-            >
-              {option.label ?? id}
-            </button>
+            />
           );
         })}
-      </div>
+      </Suggestions>
     </section>
   );
 }
