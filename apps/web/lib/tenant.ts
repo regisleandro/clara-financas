@@ -3,6 +3,7 @@ import "server-only";
 import { getAuth } from "@clara-financas/auth";
 import { getDb } from "@clara-financas/db";
 import { provisioningJobs, tenants, type TenantStatus } from "@clara-financas/db/schema/tenant";
+import { seedConstitution } from "@clara-financas/db/seed-constitution";
 import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 
@@ -63,6 +64,10 @@ export async function ensureTenant(userId: string, email: string): Promise<Tenan
   });
 
   if (!created) throw new Error("Falha ao criar o tenant do usuário.");
+
+  // A constituição é copiada para o espaço do tenant no nascimento. É
+  // idempotente, então uma corrida entre duas requisições não duplica nada.
+  await seedConstitution(created.id);
 
   return {
     userId,

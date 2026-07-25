@@ -17,7 +17,10 @@
     "ai": "catalog:",
     "eve": "catalog:",
     "zod": "catalog:",
-    "@vercel/connect": "0.4.2"
+    "@vercel/connect": "0.4.2",
+    "@clara-financas/db": "workspace:*",
+    "@clara-financas/okf": "workspace:*",
+    "drizzle-orm": "catalog:"
   },
   "devDependencies": {
     "@clara-financas/config": "workspace:*",

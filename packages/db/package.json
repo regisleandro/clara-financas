@@ -23,7 +23,8 @@
     "dotenv": "catalog:",
     "drizzle-orm": "catalog:",
     "postgres": "^3.4.7",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@clara-financas/okf": "workspace:*"
   },
   "devDependencies": {
     "@clara-financas/config": "workspace:*",
