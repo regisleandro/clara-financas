@@ -62,3 +62,11 @@ coverage
 .cache
 tmp
 temp
+
+# Extratos e faturas. Dado financeiro real não entra em controle de versão —
+# uma fatura já esteve no histórico deste repositório por 5 commits, e tirá-la
+# de lá exigiu reescrever tudo antes do primeiro push.
+*.pdf
+*.ofx
+*.csv
+!bundles/**/*.csv

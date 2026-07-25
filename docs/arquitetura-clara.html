@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arquitetura da Clara Finanças</title>
+  <style>
+    :root {
+      --background: oklch(0.97 0.005 260);
+      --foreground: oklch(0.18 0.02 260);
+      --card: oklch(1 0 0);
+      --card-foreground: oklch(0.18 0.02 260);
+      --muted: oklch(0.92 0.01 260);
+      --muted-foreground: oklch(0.40 0.02 260);
+      --primary: oklch(0.50 0.25 280);
+      --primary-foreground: oklch(1 0 0);
+      --secondary: oklch(0.50 0.18 180);
+      --accent: oklch(0.60 0.22 50);
+      --accent-foreground: oklch(0.18 0.02 260);
+      --destructive: oklch(0.50 0.25 25);
+      --success: oklch(0.45 0.20 150);
+      --warning: oklch(0.55 0.18 85);
+      --border: oklch(0.88 0.01 260);
+      --code-bg: oklch(0.92 0.01 260);
+      --ring: oklch(0.50 0.25 280);
+      --radius: 0.625rem;
+      --font-sans: Inter, system-ui, -apple-system, sans-serif;
+      --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+      --font-display: ui-serif, Georgia, "Times New Roman", serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: oklch(0.15 0.02 260);
+        --foreground: oklch(0.90 0.01 260);
+        --card: oklch(0.22 0.02 260);
+        --card-foreground: oklch(0.90 0.01 260);
+        --muted: oklch(0.26 0.02 260);
+        --muted-foreground: oklch(0.72 0.02 260);
+        --primary: oklch(0.75 0.18 280);
+        --primary-foreground: oklch(0.15 0.02 260);
+        --accent: oklch(0.70 0.20 60);
+        --border: oklch(0.35 0.02 260);
+        --code-bg: oklch(0.26 0.02 260);
+        --destructive: oklch(0.65 0.20 25);
+        --success: oklch(0.72 0.17 150);
+        --warning: oklch(0.75 0.15 85);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 40px;
+      overflow-wrap: break-word;
+      color: var(--foreground);
+      background:
+        radial-gradient(circle at 12% 0%, color-mix(in oklab, var(--primary) 10%, transparent), transparent 34rem),
+        radial-gradient(circle at 88% 32%, color-mix(in oklab, var(--secondary) 8%, transparent), transparent 30rem),
+        var(--background);
+      font-family: var(--font-sans);
+      line-height: 1.55;
+    }
+
+    .wrap {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 176px minmax(0, 1fr);
+      gap: 0 42px;
+    }
+    .main, .grid > *, .flow-grid > *, .package-grid > * { min-width: 0; }
+
+    .toc {
+      position: sticky;
+      top: 24px;
+      align-self: start;
+      grid-row: 1 / -1;
+      max-height: calc(100dvh - 48px);
+      padding: 14px 0;
+      overflow-y: auto;
+    }
+    .toc-title {
+      padding-bottom: 10px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted-foreground);
+      font: 700 9px/1 var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    .toc a {
+      display: block;
+      margin-bottom: 2px;
+      padding: 6px 9px;
+      border-left: 2px solid transparent;
+      border-radius: 5px;
+      color: var(--muted-foreground);
+      font-size: 12px;
+      text-decoration: none;
+    }
+    .toc a:hover, .toc a.active {
+      color: var(--foreground);
+      background: var(--muted);
+      border-left-color: var(--primary);
+    }
+
+    header { padding: 30px 0 72px; }
+    .eyebrow, .section-kicker, .tag, .mono {
+      font-family: var(--font-mono);
+    }
+    .eyebrow, .section-kicker {
+      color: var(--primary);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.7px;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1, h2 {
+      font-family: var(--font-display);
+      font-weight: 600;
+      letter-spacing: -0.035em;
+      text-wrap: balance;
+    }
+    h1 {
+      max-width: 900px;
+      margin: 12px 0 18px;
+      font-size: clamp(44px, 7vw, 82px);
+      line-height: .96;
+    }
+    .lead {
+      max-width: 780px;
+      margin-bottom: 32px;
+      color: var(--muted-foreground);
+      font-size: clamp(17px, 2vw, 21px);
+      line-height: 1.55;
+    }
+    .summary-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--card);
+      overflow: hidden;
+    }
+    .summary-item {
+      padding: 18px 20px;
+      border-right: 1px solid var(--border);
+    }
+    .summary-item:last-child { border-right: 0; }
+    .summary-item strong { display: block; font-size: 25px; }
+    .summary-item span { color: var(--muted-foreground); font-size: 12px; }
+
+    section { padding: 18px 0 78px; scroll-margin-top: 24px; }
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, .75fr);
+      align-items: end;
+      gap: 28px;
+      margin-bottom: 24px;
+    }
+    h2 { margin: 7px 0 0; font-size: clamp(32px, 5vw, 52px); line-height: 1; }
+    .section-intro { margin: 0; color: var(--muted-foreground); font-size: 14px; }
+
+    .ve-card {
+      background: var(--card);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .ve-card--hero {
+      background: color-mix(in oklab, var(--primary) 5%, var(--card));
+      border-color: color-mix(in oklab, var(--primary) 60%, var(--border));
+      box-shadow: 0 4px 24px color-mix(in oklab, var(--primary) 10%, transparent);
+    }
+    .ve-card--recessed { background: var(--muted); border-color: transparent; }
+
+    .architecture {
+      padding: 22px;
+      overflow: hidden;
+    }
+    .architecture-grid {
+      display: grid;
+      grid-template-columns: minmax(150px, .75fr) 52px minmax(235px, 1fr) 52px minmax(235px, 1fr);
+      align-items: stretch;
+      gap: 12px;
+    }
+    .lane {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+    .lane-title {
+      margin-bottom: 2px;
+      color: var(--muted-foreground);
+      font: 700 10px/1 var(--font-mono);
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+    }
+    .node {
+      position: relative;
+      min-height: 116px;
+      padding: 16px;
+      border: 1.5px solid var(--border);
+      border-radius: calc(var(--radius) - 1px);
+      background: var(--card);
+    }
+    .node.primary {
+      border-color: color-mix(in oklab, var(--primary) 55%, var(--border));
+      background: color-mix(in oklab, var(--primary) 7%, var(--card));
+    }
+    .node.agent {
+      border-color: color-mix(in oklab, var(--secondary) 60%, var(--border));
+      background: color-mix(in oklab, var(--secondary) 7%, var(--card));
+    }
+    .node.data {
+      min-height: 92px;
+      border-color: color-mix(in oklab, var(--accent) 45%, var(--border));
+    }
+    .node h3 { margin-bottom: 5px; font-size: 15px; line-height: 1.25; }
+    .node p { margin: 0; color: var(--muted-foreground); font-size: 12px; }
+    .tag {
+      display: inline-block;
+      margin-bottom: 10px;
+      padding: 3px 7px;
+      border-radius: 4px;
+      background: var(--muted);
+      color: var(--muted-foreground);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .7px;
+      text-transform: uppercase;
+    }
+    .arrow-col {
+      display: grid;
+      place-items: center;
+      color: var(--primary);
+      font: 700 25px/1 var(--font-mono);
+      text-align: center;
+    }
+    .arrow-col small {
+      display: block;
+      margin-top: 9px;
+      color: var(--muted-foreground);
+      font-size: 8px;
+      font-weight: 500;
+      line-height: 1.45;
+      text-transform: uppercase;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+    }
+    .data-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 18px;
+      color: var(--muted-foreground);
+      font: 10px/1.4 var(--font-mono);
+    }
+    .legend span::before {
+      content: "";
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      margin-right: 6px;
+      border-radius: 2px;
+      background: var(--primary);
+    }
+    .legend span:nth-child(2)::before { background: var(--secondary); }
+    .legend span:nth-child(3)::before { background: var(--accent); }
+
+    .flow-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+    .flow-card { padding: 22px; }
+    .flow-number {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      margin-bottom: 28px;
+      place-items: center;
+      border-radius: 50%;
+      color: var(--primary-foreground);
+      background: var(--primary);
+      font: 700 12px/1 var(--font-mono);
+    }
+    .flow-card h3 { margin-bottom: 10px; font-size: 20px; }
+    .pipeline {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      padding: 15px 0 4px;
+      overflow-x: auto;
+    }
+    .pipeline-step {
+      min-width: 112px;
+      flex: 1 0 112px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+    .pipeline-arrow {
+      display: grid;
+      flex: 0 0 25px;
+      place-items: center;
+      color: var(--muted-foreground);
+    }
+    .note { margin: 13px 0 0; color: var(--muted-foreground); font-size: 12px; }
+
+    .package-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .package { padding: 18px; }
+    .package h3 { margin-bottom: 6px; font: 650 15px/1.3 var(--font-mono); }
+    .package p { margin-bottom: 0; color: var(--muted-foreground); font-size: 12px; }
+    .package.core { border-top: 3px solid var(--primary); }
+    .package.domain { border-top: 3px solid var(--secondary); }
+    .package.support { border-top: 3px solid var(--accent); }
+
+    .security-stack {
+      display: grid;
+      gap: 11px;
+      counter-reset: layers;
+    }
+    .security-layer {
+      display: grid;
+      grid-template-columns: 48px 180px minmax(0, 1fr);
+      gap: 16px;
+      align-items: center;
+      padding: 14px 18px;
+    }
+    .security-layer::before {
+      counter-increment: layers;
+      content: counter(layers, decimal-leading-zero);
+      color: var(--primary);
+      font: 700 13px/1 var(--font-mono);
+    }
+    .security-layer strong { font-size: 13px; }
+    .security-layer span { color: var(--muted-foreground); font-size: 12px; }
+
+    .warning {
+      margin-top: 18px;
+      padding: 18px 20px;
+      border-left: 4px solid var(--warning);
+      background: color-mix(in oklab, var(--warning) 8%, var(--card));
+    }
+    .warning strong { display: block; margin-bottom: 5px; }
+    code {
+      padding: 1px 5px;
+      border-radius: 4px;
+      color: var(--foreground);
+      background: var(--code-bg);
+      font: 11px/1.4 var(--font-mono);
+    }
+    footer {
+      padding: 10px 0 42px;
+      color: var(--muted-foreground);
+      font-size: 11px;
+    }
+
+    @media (max-width: 1000px) {
+      body { padding-top: 0; }
+      .wrap { grid-template-columns: 1fr; }
+      .toc {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        grid-row: auto;
+        display: flex;
+        gap: 4px;
+        max-height: none;
+        margin: 0 -40px;
+        padding: 10px 40px;
+        overflow-x: auto;
+        background: color-mix(in oklab, var(--background) 92%, transparent);
+        border-bottom: 1px solid var(--border);
+        backdrop-filter: blur(12px);
+      }
+      .toc-title { display: none; }
+      .toc a { flex: 0 0 auto; border-left: 0; border-bottom: 2px solid transparent; }
+      .toc a:hover, .toc a.active { border-left: 0; border-bottom-color: var(--primary); }
+      .main { padding-top: 18px; }
+      .architecture-grid { grid-template-columns: 1fr; }
+      .arrow-col { min-height: 34px; transform: rotate(90deg); }
+      .arrow-col small { display: none; }
+    }
+
+    @media (max-width: 720px) {
+      body { padding: 0 16px; }
+      .toc { margin: 0 -16px; padding-inline: 16px; }
+      header { padding-bottom: 54px; }
+      .summary-strip, .section-head, .flow-grid, .package-grid, .data-row {
+        grid-template-columns: 1fr;
+      }
+      .summary-item { border-right: 0; border-bottom: 1px solid var(--border); }
+      .summary-item:last-child { border-bottom: 0; }
+      section { padding-bottom: 58px; }
+      .security-layer { grid-template-columns: 36px minmax(0, 1fr); }
+      .security-layer span { grid-column: 2; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <nav class="toc" id="toc" aria-label="Seções da arquitetura">
+      <div class="toc-title">Mapa</div>
+      <a class="active" href="#visao">1. Visão geral</a>
+      <a href="#fluxos">2. Fluxos</a>
+      <a href="#pacotes">3. Pacotes</a>
+      <a href="#seguranca">4. Segurança</a>
+    </nav>
+
+    <main class="main">
+      <header>
+        <div class="eyebrow">Arquitetura atual · julho de 2026</div>
+        <h1>Clara é uma aplicação financeira orientada por conversa.</h1>
+        <p class="lead">
+          Um app Next.js controla identidade, tenant, uploads e telas. Um agente Eve separado
+          interpreta documentos, consulta o razão e conduz decisões. PostgreSQL mantém o estado
+          auditável; o modelo nunca é a calculadora nem a fonte final dos números.
+        </p>
+        <div class="summary-strip">
+          <div class="summary-item"><strong>2</strong><span>superfícies em runtime</span></div>
+          <div class="summary-item"><strong>9</strong><span>pacotes de domínio e suporte</span></div>
+          <div class="summary-item"><strong>2</strong><span>subagentes especializados</span></div>
+          <div class="summary-item"><strong>1</strong><span>gate humano antes do razão</span></div>
+        </div>
+      </header>
+
+      <section id="visao">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">01 · visão geral</div>
+            <h2>Do navegador ao dado confirmado.</h2>
+          </div>
+          <p class="section-intro">
+            O navegador fala com o control plane na mesma origem e com o agente em outra origem.
+            O token de 10 minutos liga as duas superfícies sem expor o cookie da sessão.
+          </p>
+        </div>
+
+        <div class="architecture ve-card ve-card--hero">
+          <div class="architecture-grid" role="img" aria-label="Diagrama da arquitetura principal">
+            <div class="lane">
+              <div class="lane-title">Pessoa</div>
+              <article class="node">
+                <span class="tag">browser</span>
+                <h3>Interface React</h3>
+                <p>Dashboard, razão, agenda, chat, upload e cartões de decisão.</p>
+              </article>
+            </div>
+
+            <div class="arrow-col" aria-hidden="true">⇄<small>HTTPS + stream</small></div>
+
+            <div class="lane">
+              <div class="lane-title">Control plane · Next.js</div>
+              <article class="node primary">
+                <span class="tag">apps/web</span>
+                <h3>App Router + Server Components</h3>
+                <p>Protege rotas, monta a visão financeira e expõe APIs de auth, token e documentos.</p>
+              </article>
+              <article class="node">
+                <span class="tag">better auth</span>
+                <h3>Identidade e tenant</h3>
+                <p>Email/senha ou Google; cria um espaço financeiro e semeia sua constituição.</p>
+              </article>
+            </div>
+
+            <div class="arrow-col" aria-hidden="true">⇄<small>Bearer JWT · CORS</small></div>
+
+            <div class="lane">
+              <div class="lane-title">Agent plane · Eve</div>
+              <article class="node agent">
+                <span class="tag">packages/agent</span>
+                <h3>Coordenadora Clara</h3>
+                <p>Orquestra tools, streaming, sessões duráveis e aprovação humana.</p>
+              </article>
+              <article class="node">
+                <span class="tag">subagents</span>
+                <h3>Extrator + Analista</h3>
+                <p>O extrator lê PDFs; o analista consulta e agrega somente dados confirmados.</p>
+              </article>
+            </div>
+          </div>
+
+          <div class="data-row">
+            <article class="node data">
+              <span class="tag">postgresql</span>
+              <h3>Estado auditável</h3>
+              <p>Auth, tenants, documentos, lotes, transações, conceitos, compromissos e notificações.</p>
+            </article>
+            <article class="node data">
+              <span class="tag">blob / filesystem</span>
+              <h3>Arquivos PDF</h3>
+              <p>Vercel Blob em produção; disco local no desenvolvimento. O banco guarda chave e hash.</p>
+            </article>
+            <article class="node data">
+              <span class="tag">openai / ai gateway</span>
+              <h3>Inferência</h3>
+              <p>Interpreta texto e decide ferramentas; cálculos financeiros permanecem determinísticos.</p>
+            </article>
+          </div>
+          <div class="legend">
+            <span>Control plane</span>
+            <span>Agent plane</span>
+            <span>Persistência e serviços</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="fluxos">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">02 · fluxos principais</div>
+            <h2>Quatro caminhos definem o produto.</h2>
+          </div>
+          <p class="section-intro">
+            A separação entre proposta e confirmação é a decisão arquitetural central: IA pode
+            preparar e explicar, mas uma pessoa confirma a escrita financeira.
+          </p>
+        </div>
+
+        <div class="flow-grid">
+          <article class="flow-card ve-card">
+            <div class="flow-number">01</div>
+            <h3>Entrada e isolamento</h3>
+            <div class="pipeline" aria-label="Fluxo de autenticação">
+              <div class="pipeline-step">Login Better Auth</div><div class="pipeline-arrow">→</div>
+              <div class="pipeline-step">Sessão no cookie</div><div class="pipeline-arrow">→</div>
+              <div class="pipeline-step">Tenant criado ou reusado</div>
+            </div>
+            <p class="note">A constituição financeira é copiada para o tenant e versionada.</p>
+          </article>
+
+          <article class="flow-card ve-card ve-card--hero">
+            <div class="flow-number">02</div>
+            <h3>Importação com aprovação humana</h3>
+            <div class="pipeline" aria-label="Fluxo de importação">
+              <div class="pipeline-step">Upload PDF</div><div class="pipeline-arrow">→</div>
+              <div class="pipeline-step">Extrair e conferir</div><div class="pipeline-arrow">→</div>
+              <div class="pipeline-step">Lote proposto</div><div class="pipeline-arrow">→</div>
+              <div class="pipeline-step">Pessoa aprova</div><div class="pipeline-arrow">→</div>
+              <div class="pipeline-step">Razão confirmado</div>
+            </div>
+            <p class="note">Checksum, idempotência e status <code>proposed</code> impedem escrita silenciosa.</p>
+          </article>
+
+          <article class="flow-card ve-card">
+            <div class="flow-number">03</div>
+            <h3>Análise explicável</h3>
+            <div class="pipeline" aria-label="Fluxo de análise">
+              <div class="pipeline-step">Pergunta</div><div class="pipeline-arrow">→</div>
+              <div class="pipeline-step">Analista consulta</div><div class="pipeline-arrow">→</div>
+              <div class="pipeline-step">Ledger calcula</div><div class="pipeline-arrow">→</div>
+              <div class="pipeline-step">View validada</div>
+            </div>
+            <p class="note">Todo valor carrega <code>transactionIds</code>, preservando a proveniência.</p>
+          </article>
+
+          <article class="flow-card ve-card">
+            <div class="flow-number">04</div>
+            <h3>Agenda proativa</h3>
+            <div class="pipeline" aria-label="Fluxo de lembretes">
+              <div class="pipeline-step">Cron diário 12 UTC</div><div class="pipeline-arrow">→</div>
+              <div class="pipeline-step">Vencimentos próximos</div><div class="pipeline-arrow">→</div>
+              <div class="pipeline-step">Notificações</div>
+            </div>
+            <p class="note">A varredura é determinística; não depende de uma decisão do modelo.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="pacotes">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">03 · monorepo</div>
+            <h2>Pacotes com fronteiras pequenas.</h2>
+          </div>
+          <p class="section-intro">
+            pnpm e Turborepo organizam a aplicação. O frontend compõe os pacotes; o agente reutiliza
+            domínio, persistência e contratos sem depender da interface.
+          </p>
+        </div>
+
+        <div class="package-grid">
+          <article class="package ve-card core"><h3>apps/web</h3><p>Next.js 16, React 19, páginas, APIs, uploads e experiência visual.</p></article>
+          <article class="package ve-card core"><h3>packages/agent</h3><p>Eve, coordenadora, subagentes, tools, canal autenticado e schedules.</p></article>
+          <article class="package ve-card core"><h3>packages/db</h3><p>Drizzle + PostgreSQL, schemas, migrações, RLS e escopo transacional por tenant.</p></article>
+          <article class="package ve-card domain"><h3>packages/ledger</h3><p>Checksum, regras, agregações, comparações e recorrências como funções puras.</p></article>
+          <article class="package ve-card domain"><h3>packages/views</h3><p>Contrato Zod dos painéis e leitura segura de eventos e pedidos HITL.</p></article>
+          <article class="package ve-card domain"><h3>packages/okf</h3><p>Conhecimento financeiro em Markdown/YAML: constituição e aprendizados versionados.</p></article>
+          <article class="package ve-card support"><h3>packages/auth</h3><p>Better Auth com adapter Drizzle, email/senha e OAuth Google.</p></article>
+          <article class="package ve-card support"><h3>packages/ui</h3><p>Primitivos visuais reutilizáveis e estilos compartilhados.</p></article>
+          <article class="package ve-card support"><h3>packages/env + config</h3><p>Validação de ambiente e configuração TypeScript comum.</p></article>
+        </div>
+      </section>
+
+      <section id="seguranca">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">04 · segurança e integridade</div>
+            <h2>Defesa em profundidade.</h2>
+          </div>
+          <p class="section-intro">
+            O tenant não vem do input do modelo nem do corpo do cliente. Ele nasce da sessão,
+            atravessa um token assinado e é reaplicado dentro da transação do banco.
+          </p>
+        </div>
+
+        <div class="security-stack">
+          <div class="security-layer ve-card"><strong>Sessão</strong><span>Cookie HTTP-only do Better Auth protege o control plane.</span></div>
+          <div class="security-layer ve-card"><strong>Token curto</strong><span>JWT HS256 com <code>tenantId</code>, <code>userId</code>, issuer e audience; validade de 10 minutos.</span></div>
+          <div class="security-layer ve-card"><strong>Instância do agente</strong><span>Canal Eve valida assinatura, CORS e, no modo silo, compara o tenant com <code>TENANT_ID</code>.</span></div>
+          <div class="security-layer ve-card"><strong>Tools</strong><span><code>requireTenantCaller</code> rejeita chamadas sem principal de usuário autenticado.</span></div>
+          <div class="security-layer ve-card"><strong>Banco</strong><span><code>forTenant()</code> define <code>app.tenant_id</code> localmente e as políticas RLS filtram na query.</span></div>
+          <div class="security-layer ve-card"><strong>Integridade do razão</strong><span>Trigger, status e gate de aprovação protegem transações confirmadas contra mutação e replay.</span></div>
+        </div>
+
+        <aside class="warning ve-card">
+          <strong>Atenção: documentação de bootstrap fora de sincronia.</strong>
+          O código atual é Next.js + agente Eve, mas <code>README.md</code> e <code>vercel.json</code>
+          ainda descrevem a estrutura antiga Vite/Hono com <code>apps/server</code>, que não existe.
+          Para implantação, a fonte confiável hoje é o código dos pacotes — essa configuração precisa ser atualizada.
+        </aside>
+      </section>
+
+      <footer>
+        Diagrama produzido a partir da estrutura e dos fluxos presentes no repositório, não apenas do README.
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      const links = [...document.querySelectorAll(".toc a")];
+      const sections = links
+        .map((link) => ({ link, section: document.querySelector(link.getAttribute("href")) }))
+        .filter((item) => item.section);
+
+      const observer = new IntersectionObserver((entries) => {
+        const visible = entries.find((entry) => entry.isIntersecting);
+        if (!visible) return;
+        links.forEach((link) => link.classList.remove("active"));
+        const current = sections.find((item) => item.section === visible.target);
+        current?.link.classList.add("active");
+      }, { rootMargin: "-10% 0px -75% 0px" });
+
+      sections.forEach(({ section }) => observer.observe(section));
+    })();
+  </script>
+</body>
+</html>

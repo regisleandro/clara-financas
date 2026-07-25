@@ -1,11 +1,22 @@
-# Local env files must never ship in deployments: Vercel project env vars are
-# the source of truth (bun env:vercel:*), and frameworks like Next.js would
-# otherwise load these localhost values at runtime.
+# Arquivos .env NUNCA sobem: as variáveis do projeto Vercel são a fonte da
+# verdade (pnpm env:preview / env:production), e o Next.js carregaria estes
+# valores de localhost em runtime se eles chegassem lá.
 .env
 .env.*
 **/.env
 **/.env.*
 !**/.env.example
-local.db
-local.db-*
-.alchemy/
+
+# PDFs de fatura gravados localmente quando BLOB_READ_WRITE_TOKEN não existe.
+# São dado financeiro real de quem usa o app em desenvolvimento; subir isso
+# num bundle de deploy é vazamento, não desperdício de espaço.
+.data/
+
+# Faturas soltas na raiz do projeto, pelo mesmo motivo.
+*.pdf
+
+# Artefatos de build e runtime do eve — o build da Vercel os regenera.
+.eve/
+.output/
+.turbo/
+**/.turbo/

@@ -5,7 +5,17 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": ["dist/**"]
+      "outputs": [
+        // Herdado do scaffold, `dist/**` não é a saída de nenhum pacote deste
+        // repositório — o Turbo avisava "no output files found" a cada build e
+        // o cache guardava vazio, ou seja, todo build era do zero.
+        ".next/**",
+        "!.next/cache/**",
+        // O eve emite `.output` no build local e `.vercel/output` quando roda
+        // dentro de um build hospedado (ele detecta a variável VERCEL).
+        ".output/**",
+        ".vercel/output/**"
+      ]
     },
     "lint": {
       "dependsOn": ["^lint"]

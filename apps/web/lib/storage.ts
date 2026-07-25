@@ -45,6 +45,18 @@ export async function storeDocument(
     return { blobKey: result.url, contentHash, size: bytes.byteLength };
   }
 
+  // O caminho local existe para o desenvolvimento não exigir uma conta de
+  // Blob. Num runtime serverless ele não existe: o sistema de arquivos é
+  // somente-leitura fora de /tmp, e /tmp morre com a invocação. Sem este
+  // guarda, o deploy sobe inteiro e quebra no primeiro upload com `EROFS`,
+  // que não diz a ninguém qual variável falta.
+  if (process.env.VERCEL !== undefined) {
+    throw new Error(
+      "BLOB_READ_WRITE_TOKEN não está definida. Em produção os PDFs vão para o " +
+        "Vercel Blob; o armazenamento local só existe em desenvolvimento.",
+    );
+  }
+
   const path = join(LOCAL_ROOT, key);
   await mkdir(join(path, ".."), { recursive: true });
   await writeFile(path, bytes);
