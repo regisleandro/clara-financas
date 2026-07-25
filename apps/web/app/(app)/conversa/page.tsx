@@ -11,6 +11,7 @@ export default async function ConversaPage() {
   // No modo silo o host vem do registry, por tenant. Nas Etapas 0–3 há uma
   // instância só, então cai no host único do env.
   const agentHost = context?.agentHost ?? env.NEXT_PUBLIC_AGENT_HOST;
+  const firstName = context?.name?.split(" ")[0] ?? null;
 
-  return <Chat agentHost={agentHost} />;
+  return <Chat agentHost={agentHost} name={firstName} />;
 }

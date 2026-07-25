@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import {
   Conversation,
   ConversationContent,
-  ConversationEmptyState,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
@@ -20,35 +19,60 @@ import {
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
+import { ChatHeader, ChatWelcome, type Starter } from "@/components/chat-welcome";
 import { ExecutionTrace } from "@/components/execution-trace";
 import { ReviewCard, type ReviewCardData } from "@/components/review-card";
 import { deriveActivity } from "@/lib/activity";
 import { findLatestBatchProposal, findPendingRequest } from "@/lib/input-request";
 
 /**
- * A conversa, sobre os componentes do AI Elements.
+ * A conversa.
  *
  * Cross-origin por construção: o navegador fala DIRETO com a instância do
  * tenant. O bearer vem de /api/token, que deriva o tenantId da sessão
  * autenticada — nunca do cliente.
  *
- * Os três elementos ricos do design são AI Elements de verdade:
+ * Os elementos ricos são AI Elements:
  *   Execução desta resposta → Task
  *   Cartão de conferência   → Artifact + Confirmation
  *   Continuar               → Suggestions
+ *   Mensagens e composer    → Conversation, Message, PromptInput
  */
 
-const STARTERS = [
-  "Por que meus gastos mudaram? Compare os períodos do razão.",
-  "O que está repetindo todo mês? Mostre o custo anual.",
-  "Onde eu mais gastei? Mostre por categoria.",
-  "Quais compromissos estão por vencer?",
-] as const;
+const STARTERS: readonly Starter[] = [
+  {
+    title: "Enviar um documento",
+    note: "Fatura, extrato ou nota fiscal em PDF",
+    prompt: null,
+  },
+  {
+    title: "Analisar meus gastos",
+    note: "Compare períodos, categorias e recorrências",
+    prompt: "Por que meus gastos mudaram? Compare os períodos que existem no razão.",
+  },
+  {
+    title: "Encontrar recorrências",
+    note: "O que repete todo mês e o que já não uso",
+    prompt: "O que está repetindo todo mês? Mostre o custo anual de cada uma.",
+  },
+  {
+    title: "Cuidar de um prazo",
+    note: "Lembretes de vencimento antes da preocupação",
+    prompt: "Quais compromissos estão por vencer?",
+  },
+];
 
-export function Chat({ agentHost }: { agentHost: string }) {
+const FOLLOWUPS = [
+  "Detalhar por categoria",
+  "Comparar com o período anterior",
+  "O que repete todo mês?",
+];
+
+export function Chat({ agentHost, name }: { agentHost: string; name: string | null }) {
   const tokenRef = useRef<{ value: string; expiresAt: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [answered, setAnswered] = useState<boolean | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const bearer = useCallback(async () => {
     const cached = tokenRef.current;
@@ -65,23 +89,21 @@ export function Chat({ agentHost }: { agentHost: string }) {
 
   const agent = useEveAgent({ host: agentHost, auth: { bearer } });
 
-  const [uploading, setUploading] = useState(false);
   const busy = agent.status === "submitted" || agent.status === "streaming";
-
   const activity = useMemo(() => deriveActivity(agent.events), [agent.events]);
   const pending = findPendingRequest(agent.data.messages);
   const proposal = findLatestBatchProposal(agent.data.messages);
   const isWelcome = agent.data.messages.length === 0;
 
+  function send(message: string) {
+    setAnswered(null);
+    void agent.send({ message });
+  }
+
   function answer(optionId: string) {
     if (!pending) return;
     setAnswered(optionId === "approve");
     void agent.send({ inputResponses: [{ requestId: pending.requestId, optionId }] });
-  }
-
-  function send(message: string) {
-    setAnswered(null);
-    void agent.send({ message });
   }
 
   async function upload(file: File) {
@@ -114,23 +136,25 @@ export function Chat({ agentHost }: { agentHost: string }) {
       }
     : null;
 
-  const showReview = reviewData !== null && (pending?.toolName === "commit_batch" || answered !== null);
+  const showReview =
+    reviewData !== null && (pending?.toolName === "commit_batch" || answered !== null);
 
   return (
     <div className="mx-auto flex min-h-[calc(100svh-3rem)] w-full max-w-[720px] flex-col px-6">
       <Conversation className="flex-1">
-        <ConversationContent className="pb-8 pt-16">
+        <ConversationContent className="space-y-8 px-0 pb-8 pt-16">
+          <ChatHeader onReset={isWelcome ? null : () => agent.reset()} />
+
           {isWelcome ? (
-            <ConversationEmptyState
-              title="Oi. O que fazemos com o seu dinheiro agora?"
-              description="Posso organizar documentos, explicar seus gastos ou cuidar de um compromisso. Os cálculos vêm de ferramentas verificáveis e nada é salvo sem sua aprovação."
-            >
-              <Suggestions>
-                {STARTERS.map((starter) => (
-                  <Suggestion key={starter} suggestion={starter} onClick={send} />
-                ))}
-              </Suggestions>
-            </ConversationEmptyState>
+            <ChatWelcome
+              name={name}
+              starters={STARTERS}
+              disabled={busy || uploading}
+              onPick={(starter) => {
+                if (starter.prompt === null) fileRef.current?.click();
+                else send(starter.prompt);
+              }}
+            />
           ) : null}
 
           {agent.data.messages.map((message) => {
@@ -147,7 +171,6 @@ export function Chat({ agentHost }: { agentHost: string }) {
             );
           })}
 
-          {/* Execução desta resposta */}
           {!isWelcome ? <ExecutionTrace activity={activity} /> : null}
 
           {showReview && reviewData !== null ? (
@@ -165,11 +188,14 @@ export function Chat({ agentHost }: { agentHost: string }) {
           ) : null}
 
           {!isWelcome && !busy && pending === null ? (
-            <Suggestions>
-              {STARTERS.slice(0, 3).map((starter) => (
-                <Suggestion key={starter} suggestion={starter} onClick={send} />
-              ))}
-            </Suggestions>
+            <div>
+              <p className="clara-eyebrow mb-3">Continuar</p>
+              <Suggestions>
+                {FOLLOWUPS.map((followup) => (
+                  <Suggestion key={followup} suggestion={followup} onClick={send} />
+                ))}
+              </Suggestions>
+            </div>
           ) : null}
 
           {agent.error ? (
@@ -179,8 +205,9 @@ export function Chat({ agentHost }: { agentHost: string }) {
         <ConversationScrollButton />
       </Conversation>
 
-      <div className="sticky bottom-0 pb-8">
+      <div className="sticky bottom-0 bg-background pb-8 pt-2">
         <PromptInput
+          className="rounded-[var(--clara-radius-card)]"
           onSubmit={(message, event) => {
             event.preventDefault();
             const text = message.text?.trim();
@@ -201,25 +228,34 @@ export function Chat({ agentHost }: { agentHost: string }) {
               >
                 {uploading ? "Enviando…" : "+ Fatura"}
               </button>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="application/pdf"
-                className="sr-only"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  event.target.value = "";
-                  if (file) void upload(file);
-                }}
-              />
             </PromptInputTools>
-            <PromptInputSubmit status={agent.status} />
+            <PromptInputSubmit
+              status={agent.status}
+              size="sm"
+              className="clara-pill clara-pill-primary h-9 w-auto px-5 text-sm"
+            >
+              Enviar
+            </PromptInputSubmit>
           </PromptInputFooter>
         </PromptInput>
         <p className="clara-small mt-3 text-center">
           Os cálculos vêm de ferramentas verificáveis · nada é registrado sem sua aprovação.
         </p>
       </div>
+
+      {/* Fora do formulário: o seletor é acionado tanto pelo card de boas-vindas
+          quanto pelo botão do composer. */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="application/pdf"
+        className="sr-only"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file) void upload(file);
+        }}
+      />
     </div>
   );
 }
