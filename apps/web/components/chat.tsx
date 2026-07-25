@@ -1,7 +1,7 @@
 "use client";
 
 import { useEveAgent } from "eve/react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -9,43 +9,36 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import {
   PromptInput,
   PromptInputBody,
   PromptInputSubmit,
   PromptInputTextarea,
 } from "@/components/ai-elements/prompt-input";
-import { InputGroupAddon } from "@/components/ui/input-group";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
-import { AnalysisArtifact } from "@/components/analysis-artifact";
+import { InputGroupAddon } from "@/components/ui/input-group";
+import { ArtifactPanel } from "@/components/artifact-panel";
 import { ChatHeader, ChatWelcome, type Starter } from "@/components/chat-welcome";
 import { ExecutionTrace } from "@/components/execution-trace";
-import { ReviewCard, type ReviewCardData } from "@/components/review-card";
 import { deriveActivity } from "@/lib/activity";
+import { analysisArtifact, batchArtifact, type BatchProposal } from "@/lib/artifact";
 import { findLatestBatchProposal, findPendingRequest } from "@/lib/input-request";
 import { findChildSessions, useSubagentResults } from "@/lib/use-subagent-stream";
 
 /**
- * A conversa.
+ * A conversa, em duas colunas.
  *
- * Cross-origin por construção: o navegador fala DIRETO com a instância do
- * tenant. O bearer vem de /api/token, que deriva o tenantId da sessão
- * autenticada — nunca do cliente.
+ * O artefato abre à DIREITA, fixo, e a conversa segue ao lado — é assim no
+ * protótipo, e a razão é de uso: o artefato é consultado enquanto se decide.
+ * Embutido no fluxo, ele rola para fora da tela justamente quando é preciso.
  *
- * Os elementos ricos são AI Elements:
- *   Execução desta resposta → Task
- *   Cartão de conferência   → Artifact + Confirmation
- *   Continuar               → Suggestions
- *   Mensagens e composer    → Conversation, Message, PromptInput
+ * Elementos do AI Elements: Conversation, Message + MessageResponse (markdown
+ * via Streamdown), PromptInput, Task (trace), Artifact (painel), Suggestions.
  */
 
 const STARTERS: readonly Starter[] = [
-  {
-    title: "Enviar um documento",
-    note: "Fatura, extrato ou nota fiscal em PDF",
-    prompt: null,
-  },
+  { title: "Enviar um documento", note: "Fatura, extrato ou nota fiscal em PDF", prompt: null },
   {
     title: "Analisar meus gastos",
     note: "Compare períodos, categorias e recorrências",
@@ -74,6 +67,7 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
   const fileRef = useRef<HTMLInputElement>(null);
   const [answered, setAnswered] = useState<boolean | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [artifactOpen, setArtifactOpen] = useState(true);
 
   const bearer = useCallback(async () => {
     const cached = tokenRef.current;
@@ -92,25 +86,26 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
 
   const busy = agent.status === "submitted" || agent.status === "streaming";
   const activity = useMemo(() => deriveActivity(agent.events), [agent.events]);
+  const pending = findPendingRequest(agent.data.messages);
+  const isWelcome = agent.data.messages.length === 0;
 
   // As ferramentas do especialista rodam na sessão FILHA e não chegam ao
   // stream do pai. Sem assinar aquela sessão, o artefato de análise não teria
-  // de onde tirar número — só a prosa do modelo.
+  // de onde tirar número — sobraria a prosa do modelo.
   const childSessions = useMemo(() => findChildSessions(agent.events), [agent.events]);
   const subagentResults = useSubagentResults(agentHost, childSessions, bearer);
-  const pending = findPendingRequest(agent.data.messages);
-  const proposal = findLatestBatchProposal(agent.data.messages);
-  const isWelcome = agent.data.messages.length === 0;
 
-  function send(message: string) {
-    setAnswered(null);
-    void agent.send({ message });
-  }
-
-  function answer(optionId: string) {
+  const answerRef = useRef<(optionId: string) => void>(() => {});
+  answerRef.current = (optionId: string) => {
     if (!pending) return;
     setAnswered(optionId === "approve");
     void agent.send({ inputResponses: [{ requestId: pending.requestId, optionId }] });
+  };
+
+  function send(message: string) {
+    setAnswered(null);
+    setArtifactOpen(true);
+    void agent.send({ message });
   }
 
   async function upload(file: File) {
@@ -134,133 +129,150 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
     }
   }
 
-  const reviewData: ReviewCardData | null = proposal
-    ? {
-        batchId: String(proposal.batchId),
-        transactionCount: Number(proposal.transactionCount ?? 0),
-        issuer: typeof proposal.issuer === "string" ? proposal.issuer : null,
-        checksum: proposal.checksum as ReviewCardData["checksum"],
-      }
-    : null;
+  const proposal = findLatestBatchProposal(agent.data.messages) as BatchProposal | null;
+  const canApprove = pending?.toolName === "commit_batch" && answered === null;
 
-  const showReview =
-    reviewData !== null && (pending?.toolName === "commit_batch" || answered !== null);
+  /**
+   * O artefato aparece sempre que EXISTE — não só quando há aprovação
+   * pendente. Condicionar ao gate era o bug: quando a Clara faz uma pergunta
+   * em vez de pedir aprovação, o dado existe e o painel sumia.
+   */
+  const artifact = useMemo(() => {
+    if (proposal !== null) {
+      return batchArtifact(proposal, {
+        onApprove: () => answerRef.current("approve"),
+        onReject: () => answerRef.current("deny"),
+        disabled: busy || !canApprove,
+      });
+    }
+    return analysisArtifact(subagentResults);
+  }, [proposal, subagentResults, busy, canApprove]);
+
+  // Artefato novo reabre o painel: a pessoa acabou de pedir algo que o produz.
+  const artifactTitle = artifact?.title ?? null;
+  useEffect(() => {
+    if (artifactTitle !== null) setArtifactOpen(true);
+  }, [artifactTitle]);
 
   return (
-    <div className="mx-auto flex min-h-[calc(100svh-3rem)] w-full max-w-[720px] flex-col px-6">
-      <Conversation className="flex-1">
-        <ConversationContent className="space-y-8 px-0 pb-8 pt-16">
-          <ChatHeader onReset={isWelcome ? null : () => agent.reset()} />
+    <div className="flex">
+      <div className="min-w-0 flex-1">
+        <div className="mx-auto flex min-h-[calc(100svh-3rem)] w-full max-w-[720px] flex-col px-6">
+          <Conversation className="flex-1">
+            <ConversationContent className="space-y-8 px-0 pb-8 pt-16">
+              <ChatHeader
+                onReset={isWelcome ? null : () => agent.reset()}
+                onToggleArtifact={
+                  artifact === null ? null : () => setArtifactOpen((open) => !open)
+                }
+                artifactOpen={artifactOpen}
+              />
 
-          {isWelcome ? (
-            <ChatWelcome
-              name={name}
-              starters={STARTERS}
-              disabled={busy || uploading}
-              onPick={(starter) => {
-                if (starter.prompt === null) fileRef.current?.click();
-                else send(starter.prompt);
+              {isWelcome ? (
+                <ChatWelcome
+                  name={name}
+                  starters={STARTERS}
+                  disabled={busy || uploading}
+                  onPick={(starter) => {
+                    if (starter.prompt === null) fileRef.current?.click();
+                    else send(starter.prompt);
+                  }}
+                />
+              ) : null}
+
+              {agent.data.messages.map((message) => {
+                const text = message.parts
+                  .map((part) => (part.type === "text" ? part.text : ""))
+                  .join("")
+                  .trim();
+                if (text === "") return null;
+
+                return (
+                  <Message key={message.id} from={message.role}>
+                    <MessageContent>
+                      {/* MessageResponse é o renderizador de markdown; texto
+                          cru em MessageContent deixava `**negrito**` à mostra. */}
+                      <MessageResponse>{text}</MessageResponse>
+                    </MessageContent>
+                  </Message>
+                );
+              })}
+
+              {!isWelcome ? <ExecutionTrace activity={activity} busy={busy} /> : null}
+
+              {pending && pending.toolName !== "commit_batch" ? (
+                <GenericPrompt
+                  pending={pending}
+                  disabled={busy}
+                  onAnswer={(id) => answerRef.current(id)}
+                />
+              ) : null}
+
+              {!isWelcome && !busy && pending === null ? (
+                <div>
+                  <p className="clara-eyebrow mb-3">Continuar</p>
+                  <Suggestions>
+                    {FOLLOWUPS.map((followup) => (
+                      <Suggestion key={followup} suggestion={followup} onClick={send} />
+                    ))}
+                  </Suggestions>
+                </div>
+              ) : null}
+
+              {agent.error ? (
+                <p className="clara-card p-5 text-[var(--clara-amber)]">{agent.error.message}</p>
+              ) : null}
+            </ConversationContent>
+            <ConversationScrollButton />
+          </Conversation>
+
+          <div className="sticky bottom-0 bg-background pb-8 pt-2">
+            <PromptInput
+              className="items-center rounded-[var(--clara-radius-card)] py-1.5 pl-2 pr-1.5"
+              onSubmit={(message, event) => {
+                event.preventDefault();
+                const text = message.text?.trim();
+                if (text === undefined || text === "" || busy) return;
+                send(text);
               }}
-            />
-          ) : null}
-
-          {agent.data.messages.map((message) => {
-            const text = message.parts
-              .map((part) => (part.type === "text" ? part.text : ""))
-              .join("")
-              .trim();
-            if (text === "") return null;
-
-            return (
-              <Message key={message.id} from={message.role}>
-                <MessageContent>{text}</MessageContent>
-              </Message>
-            );
-          })}
-
-          {!isWelcome ? <ExecutionTrace activity={activity} busy={busy} /> : null}
-
-          {showReview && reviewData !== null ? (
-            <ReviewCard
-              data={reviewData}
-              disabled={busy}
-              answered={answered}
-              onApprove={() => answer("approve")}
-              onReject={() => answer("deny")}
-            />
-          ) : null}
-
-          {!showReview && !busy ? <AnalysisArtifact results={subagentResults} /> : null}
-
-          {pending && !showReview ? (
-            <GenericPrompt pending={pending} disabled={busy} onAnswer={answer} />
-          ) : null}
-
-          {!isWelcome && !busy && pending === null ? (
-            <div>
-              <p className="clara-eyebrow mb-3">Continuar</p>
-              <Suggestions>
-                {FOLLOWUPS.map((followup) => (
-                  <Suggestion key={followup} suggestion={followup} onClick={send} />
-                ))}
-              </Suggestions>
-            </div>
-          ) : null}
-
-          {agent.error ? (
-            <p className="clara-card p-5 text-[var(--clara-amber)]">{agent.error.message}</p>
-          ) : null}
-        </ConversationContent>
-        <ConversationScrollButton />
-      </Conversation>
-
-      <div className="sticky bottom-0 bg-background pb-8 pt-2">
-        <PromptInput
-          className="items-center rounded-[var(--clara-radius-card)] py-1.5 pl-4 pr-1.5"
-          onSubmit={(message, event) => {
-            event.preventDefault();
-            const text = message.text?.trim();
-            if (text === undefined || text === "" || busy) return;
-            send(text);
-          }}
-        >
-          {/* O anexo precisa existir fora da tela de boas-vindas: depois da
-              primeira mensagem, os cards somem e este é o único caminho. */}
-          <InputGroupAddon align="inline-start">
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading || busy}
-              aria-label="Anexar fatura em PDF"
-              className="grid size-8 place-items-center rounded-full bg-[var(--clara-fog)] text-base leading-none transition-colors hover:bg-[var(--clara-ash)] disabled:opacity-50"
             >
-              {uploading ? "…" : "+"}
-            </button>
-          </InputGroupAddon>
-          <PromptInputBody>
-            <PromptInputTextarea
-              placeholder="Pergunte sobre seu dinheiro…"
-              disabled={busy}
-              rows={1}
-              className="min-h-11 py-2.5"
-            />
-          </PromptInputBody>
-          {/* inline-end, e não o PromptInputFooter: o rodapé é um addon
-              block-end e empilharia uma segunda linha. O design tem uma só. */}
-          <InputGroupAddon align="inline-end">
-            <PromptInputSubmit
-              status={agent.status}
-              size="sm"
-              className="clara-pill clara-pill-primary h-10 w-auto px-5 text-sm"
-            >
-              Enviar
-            </PromptInputSubmit>
-          </InputGroupAddon>
-        </PromptInput>
+              <InputGroupAddon align="inline-start">
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading || busy}
+                  aria-label="Anexar fatura em PDF"
+                  className="grid size-8 place-items-center rounded-full bg-[var(--clara-fog)] text-base leading-none transition-colors hover:bg-[var(--clara-ash)] disabled:opacity-50"
+                >
+                  {uploading ? "…" : "+"}
+                </button>
+              </InputGroupAddon>
+              <PromptInputBody>
+                <PromptInputTextarea
+                  placeholder="Pergunte sobre seu dinheiro…"
+                  disabled={busy}
+                  rows={1}
+                  className="min-h-11 py-2.5"
+                />
+              </PromptInputBody>
+              <InputGroupAddon align="inline-end">
+                <PromptInputSubmit
+                  status={agent.status}
+                  size="sm"
+                  className="clara-pill clara-pill-primary h-10 w-auto px-5 text-sm"
+                >
+                  Enviar
+                </PromptInputSubmit>
+              </InputGroupAddon>
+            </PromptInput>
+          </div>
+        </div>
       </div>
 
-      {/* Fora do formulário: o seletor é acionado tanto pelo card de boas-vindas
-          quanto pelo botão do composer. */}
+      {artifact !== null && artifactOpen ? (
+        <ArtifactPanel data={artifact} onClose={() => setArtifactOpen(false)} />
+      ) : null}
+
       <input
         ref={fileRef}
         type="file"

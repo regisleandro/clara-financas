@@ -56,8 +56,16 @@ export function ChatWelcome({
   );
 }
 
-/** Cabeçalho da conversa: identidade da Clara e saída para nova sessão. */
-export function ChatHeader({ onReset }: { onReset: (() => void) | null }) {
+/** Cabeçalho da conversa: identidade da Clara, artefato e nova sessão. */
+export function ChatHeader({
+  onReset,
+  onToggleArtifact,
+  artifactOpen,
+}: {
+  onReset: (() => void) | null;
+  onToggleArtifact?: (() => void) | null;
+  artifactOpen?: boolean;
+}) {
   return (
     <header className="mb-12 flex items-center gap-3">
       <span className="grid size-[31px] shrink-0 place-items-center rounded-[10px] bg-[var(--clara-ink)]">
@@ -70,16 +78,27 @@ export function ChatHeader({ onReset }: { onReset: (() => void) | null }) {
         <strong className="clara-display-xs block">Clara</strong>
         <small className="clara-small block">Assistente financeiro · sessão ativa</small>
       </span>
-      {onReset !== null ? (
-        <button
-          type="button"
-          onClick={onReset}
-          className="ml-auto rounded-[var(--clara-radius-pill)] bg-[var(--clara-ash)] px-4 py-2 text-xs"
-          style={{ letterSpacing: "-0.022em" }}
-        >
-          Nova conversa
-        </button>
-      ) : null}
+      <span className="ml-auto flex items-center gap-2.5">
+        {onToggleArtifact ? (
+          <button
+            type="button"
+            onClick={onToggleArtifact}
+            className="clara-pill clara-pill-outline h-8 px-4 text-xs"
+          >
+            {artifactOpen ? "Fechar artefato" : "Ver artefato"}
+          </button>
+        ) : null}
+        {onReset !== null ? (
+          <button
+            type="button"
+            onClick={onReset}
+            className="rounded-[var(--clara-radius-pill)] bg-[var(--clara-ash)] px-4 py-2 text-xs"
+            style={{ letterSpacing: "-0.022em" }}
+          >
+            Nova conversa
+          </button>
+        ) : null}
+      </span>
     </header>
   );
 }

@@ -19,11 +19,23 @@
  *    chamou por dentro. A UI não deve fingir que sabe.
  */
 
+export type ActivityIcon =
+  | "brain"
+  | "pen"
+  | "document"
+  | "calculator"
+  | "search"
+  | "ledger"
+  | "calendar"
+  | "tags"
+  | "save";
+
 export type ActivityStep = {
   id: string;
   kind: "tool" | "subagent" | "thinking" | "writing";
   label: string;
   detail?: string;
+  icon: ActivityIcon;
   status: "running" | "done" | "failed";
 };
 
@@ -56,6 +68,26 @@ const SUBAGENT_LABEL: Record<string, string> = {
 const SUBAGENT_DETAIL: Record<string, string> = {
   extractor: "contexto isolado · sem acesso ao razão",
   analyst: "só leitura · todo número vem de ferramenta",
+};
+
+/** Ícone por ferramenta: o desenho diz o que está acontecendo antes do texto. */
+const TOOL_ICON: Record<string, ActivityIcon> = {
+  read_concept: "search",
+  propose_batch: "calculator",
+  edit_proposed_batch: "calculator",
+  commit_batch: "ledger",
+  save_concept: "save",
+  save_commitment: "calendar",
+  list_commitments: "calendar",
+  recategorize_transactions: "tags",
+  export_bundle: "save",
+  read_pdf_pages: "document",
+  ask_question: "brain",
+};
+
+const SUBAGENT_ICON: Record<string, ActivityIcon> = {
+  extractor: "document",
+  analyst: "calculator",
 };
 
 type UnknownRecord = Record<string, unknown>;
@@ -101,6 +133,7 @@ export function deriveActivity(events: readonly unknown[]): Activity {
             id: callId,
             kind: "tool",
             label: TOOL_LABEL[toolName] ?? toolName,
+            icon: TOOL_ICON[toolName] ?? "search",
             status: "running",
           });
         }
@@ -117,6 +150,7 @@ export function deriveActivity(events: readonly unknown[]): Activity {
           kind: "subagent",
           label: SUBAGENT_LABEL[name] ?? `Delegando ao ${name}`,
           detail: SUBAGENT_DETAIL[name],
+          icon: SUBAGENT_ICON[name] ?? "brain",
           status: "running",
         });
         break;
@@ -162,9 +196,15 @@ export function deriveActivity(events: readonly unknown[]): Activity {
   let current: ActivityStep | null = null;
   if (running !== undefined) current = running;
   else if (turnActive && writing) {
-    current = { id: "writing", kind: "writing", label: "Escrevendo a resposta", status: "running" };
+    current = {
+      id: "writing",
+      kind: "writing",
+      label: "Escrevendo a resposta",
+      icon: "pen",
+      status: "running",
+    };
   } else if (turnActive) {
-    current = { id: "thinking", kind: "thinking", label: "Pensando", status: "running" };
+    current = { id: "thinking", kind: "thinking", label: "Pensando", icon: "brain", status: "running" };
   }
 
   return { steps: ordered, current };

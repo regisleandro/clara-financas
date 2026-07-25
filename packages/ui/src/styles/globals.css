@@ -361,3 +361,51 @@
     color: var(--clara-ink);
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * AI Elements no sistema Clara.
+ *
+ * Os componentes vêm com a paleta shadcn padrão. Em vez de reescrevê-los —
+ * o que perderia as atualizações do registry —, sobrescrevemos por token: eles
+ * seguem sendo AI Elements, com a nossa linguagem.
+ * ------------------------------------------------------------------------- */
+@layer components {
+  /* Fala do usuário: balão escuro à direita, como no protótipo. O padrão usa
+     `bg-secondary`, que aqui é névoa e sumia contra o fundo. */
+  .group\/message.is-user [data-slot="message-content"],
+  .group.is-user > div:first-child {
+    background: var(--clara-ink);
+    color: var(--clara-white);
+    border-radius: 22px 22px 8px 22px;
+    padding: 13px 19px;
+    font-size: 17px;
+    letter-spacing: -0.019em;
+  }
+
+  /* Fala da Clara: tipografia grande, sem balão. Ela é a voz do sistema; um
+     balão a colocaria no mesmo plano de quem pergunta. */
+  .group.is-assistant > div:first-child {
+    font-family: var(--clara-display);
+    font-weight: 600;
+    font-size: 1.75rem;
+    line-height: 1.14;
+    letter-spacing: -0.009em;
+    text-wrap: pretty;
+    max-width: none;
+  }
+
+  /* Dentro da resposta, listas e parágrafos secundários voltam ao corpo — só a
+     primeira frase carrega o peso de display. */
+  .group.is-assistant ul,
+  .group.is-assistant ol,
+  .group.is-assistant table,
+  .group.is-assistant pre,
+  .group.is-assistant blockquote,
+  .group.is-assistant p + p {
+    font-family: var(--clara-text);
+    font-weight: 400;
+    font-size: 17px;
+    line-height: 1.47;
+    letter-spacing: -0.019em;
+  }
+}

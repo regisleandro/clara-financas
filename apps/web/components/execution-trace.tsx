@@ -1,8 +1,36 @@
 "use client";
 
+import {
+  BrainIcon,
+  CalculatorIcon,
+  CalendarClockIcon,
+  CheckIcon,
+  FileTextIcon,
+  PenLineIcon,
+  SaveIcon,
+  ScrollTextIcon,
+  SearchIcon,
+  TagsIcon,
+  XIcon,
+  type LucideIcon,
+} from "lucide-react";
+
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Task, TaskContent, TaskItem, TaskTrigger } from "@/components/ai-elements/task";
-import type { Activity } from "@/lib/activity";
+import type { Activity, ActivityIcon } from "@/lib/activity";
+
+/** Cada atividade tem seu desenho: o ícone conta antes do texto ser lido. */
+const ICONS: Record<ActivityIcon, LucideIcon> = {
+  brain: BrainIcon,
+  pen: PenLineIcon,
+  document: FileTextIcon,
+  calculator: CalculatorIcon,
+  search: SearchIcon,
+  ledger: ScrollTextIcon,
+  calendar: CalendarClockIcon,
+  tags: TagsIcon,
+  save: SaveIcon,
+};
 
 /**
  * "Execução desta resposta" — o trace do design, sobre o `Task` do AI Elements.
@@ -35,8 +63,8 @@ export function ExecutionTrace({ activity, busy }: { activity: Activity; busy: b
   return (
     <Task defaultOpen={false} className="w-full">
       <TaskTrigger title="">
-        <div className="flex w-full cursor-pointer items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground">
-          <StatusDot running={running} failed={failed} />
+        <div className="flex w-full cursor-pointer items-center gap-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
+          <CurrentIcon activity={activity} running={running} failed={failed} />
           {running ? (
             <Shimmer className="text-sm">{title}</Shimmer>
           ) : (
@@ -51,38 +79,52 @@ export function ExecutionTrace({ activity, busy }: { activity: Activity; busy: b
       </TaskTrigger>
 
       <TaskContent className="mt-3 space-y-2 border-l pl-4">
-        {activity.steps.map((step) => (
-          <TaskItem key={step.id}>
-            <span className={step.status === "failed" ? "text-destructive" : undefined}>
-              {step.status === "done" ? "✓" : step.status === "failed" ? "✕" : "•"} {step.label}
-            </span>
-            {step.detail !== undefined ? (
-              <span className="clara-small block pl-4">{step.detail}</span>
-            ) : null}
-          </TaskItem>
-        ))}
+        {activity.steps.map((step) => {
+          const Icon = ICONS[step.icon];
+          return (
+            <TaskItem key={step.id} className="flex items-start gap-2.5">
+              <span className="mt-0.5 shrink-0">
+                {step.status === "done" ? (
+                  <CheckIcon className="size-4 text-[var(--clara-green)]" />
+                ) : step.status === "failed" ? (
+                  <XIcon className="size-4 text-destructive" />
+                ) : (
+                  <Icon className="size-4 animate-pulse text-[var(--clara-blue)]" />
+                )}
+              </span>
+              <span>
+                <span className={step.status === "failed" ? "text-destructive" : undefined}>
+                  {step.label}
+                </span>
+                {step.detail !== undefined ? (
+                  <span className="clara-small block">{step.detail}</span>
+                ) : null}
+              </span>
+            </TaskItem>
+          );
+        })}
       </TaskContent>
     </Task>
   );
 }
 
-/** Ponto de estado: pulsa enquanto roda, cor fixa quando termina. */
-function StatusDot({ running, failed }: { running: boolean; failed: boolean }) {
-  const color = failed
-    ? "var(--destructive)"
-    : running
-      ? "var(--clara-blue)"
-      : "var(--clara-green)";
+/** Ícone do estado atual: o desenho muda conforme o que a Clara está fazendo. */
+function CurrentIcon({
+  activity,
+  running,
+  failed,
+}: {
+  activity: Activity;
+  running: boolean;
+  failed: boolean;
+}) {
+  if (failed) return <XIcon className="size-4 shrink-0 text-destructive" aria-hidden="true" />;
+  if (!running) {
+    return <CheckIcon className="size-4 shrink-0 text-[var(--clara-green)]" aria-hidden="true" />;
+  }
 
+  const Icon = ICONS[activity.current?.icon ?? "brain"];
   return (
-    <span aria-hidden="true" className="relative grid size-4 shrink-0 place-items-center">
-      {running ? (
-        <span
-          className="absolute inset-0 rounded-full opacity-40"
-          style={{ background: color, animation: "clara-dots 1.2s ease-in-out infinite" }}
-        />
-      ) : null}
-      <span className="size-2 rounded-full" style={{ background: color }} />
-    </span>
+    <Icon className="size-4 shrink-0 animate-pulse text-[var(--clara-blue)]" aria-hidden="true" />
   );
 }
