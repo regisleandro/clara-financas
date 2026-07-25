@@ -219,6 +219,16 @@ casar com a origem de um preview do control plane. Para exercitar previews,
 aponte o `NEXT_PUBLIC_AGENT_HOST` do preview para um agente de preview cujo
 `APP_ORIGIN` seja aquela URL — ou teste o fluxo completo só em produção.
 
+**Arquivo lido do disco em runtime não entra sozinho na função.** O
+rastreamento do Next só segue `import`; `bundles/constitution` é lido com
+`readdir`, então não era copiado para o deployment. O sintoma foi um 500 em
+`/inicio` logo após o login no Google — `ENOENT: scandir
+'/var/task/bundles/constitution'`, porque `getTenantContext` semeia a
+constituição em toda requisição autenticada. A correção é
+`outputFileTracingIncludes` em `apps/web/next.config.ts`, com
+`outputFileTracingRoot` fixado na raiz do monorepo. Vale para qualquer arquivo
+novo que o app leia do disco: só existe em produção se estiver declarado ali.
+
 ## Comandos
 
 | Comando | Função |

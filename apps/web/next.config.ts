@@ -1,3 +1,6 @@
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import type { NextConfig } from "next";
 
 /**
@@ -18,6 +21,24 @@ const nextConfig: NextConfig = {
     "@clara-financas/db",
     "@clara-financas/env",
   ],
+  // A constituição é lida do DISCO em runtime (`loadBundle` faz readdir em
+  // `bundles/constitution`), e o rastreamento de arquivos do Next só enxerga o
+  // que aparece num `import`. Resultado num deploy real: todo login caía em
+  // 500 com `ENOENT: scandir '/var/task/bundles/constitution'` — a pasta
+  // estava no repositório, mas nunca entrava no bundle da função.
+  //
+  // A chave é `"/"` porque o Next casa o glob com `contains: true`: toda rota
+  // contém "/". Isso é proposital — `getTenantContext` semeia a constituição, e
+  // ele roda no layout protegido, em /preparando e nas rotas de API. Restringir
+  // a `/inicio` só adiaria o mesmo ENOENT para a próxima superfície.
+  //
+  // `outputFileTracingRoot` fixa a raiz do monorepo: sem ela o Next infere, e é
+  // essa raiz que vira `/var/task` — ou seja, o que mantém o `../../../bundles`
+  // calculado em `seed-constitution.ts` apontando para o lugar certo lá.
+  outputFileTracingRoot: resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
+  outputFileTracingIncludes: {
+    "/": ["../../bundles/constitution/**/*"],
+  },
 };
 
 export default nextConfig;
