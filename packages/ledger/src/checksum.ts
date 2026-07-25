@@ -1,4 +1,10 @@
-import type { ChecksumReport, Confidence, ProposedBatch, Transaction } from "./types";
+import type {
+  ChecksumCause,
+  ChecksumReport,
+  Confidence,
+  ProposedBatch,
+  Transaction,
+} from "./types";
 
 /**
  * A conferência: soma das transações extraídas contra o total declarado.
@@ -10,8 +16,25 @@ import type { ChecksumReport, Confidence, ProposedBatch, Transaction } from "./t
  * Sem tolerância por padrão, e de propósito: dinheiro bate ao centavo. Uma
  * tolerância "só para arredondar" é como erro de extração passa despercebido.
  */
+/**
+ * Quais lançamentos compõem o total declarado.
+ *
+ * Descoberto contra uma fatura real: o **pagamento da fatura anterior** aparece
+ * na lista de lançamentos, mas NÃO entra no total desta fatura — ele quita o
+ * ciclo passado. Estorno entra (é crédito contra uma compra do período);
+ * encargo entra; pagamento não.
+ *
+ * Somar tudo indiscriminadamente produzia uma divergência do tamanho exato do
+ * pagamento — R$ 3.251,62 numa fatura de R$ 4.387,92 — que parecia erro de
+ * extração e era erro de modelo.
+ */
+export function countsTowardDeclaredTotal(transaction: Transaction): boolean {
+  return transaction.kind !== "payment";
+}
+
 export function verifyChecksum(batch: ProposedBatch, toleranceCents = 0): ChecksumReport {
-  const extractedTotal = sumAmounts(batch.transactions);
+  const counted = batch.transactions.filter(countsTowardDeclaredTotal);
+  const extractedTotal = sumAmounts(counted);
 
   if (batch.declaredTotal === null) {
     return {
@@ -37,13 +60,41 @@ export function verifyChecksum(batch: ProposedBatch, toleranceCents = 0): Checks
     };
   }
 
+  const exactMatch = counted.some((transaction) => transaction.amount === difference);
+  const likelyCause = classifyCause(difference, counted.length, exactMatch);
+
   return {
     result: "mismatch",
+    likelyCause,
     extractedTotal,
     declaredTotal: batch.declaredTotal,
     difference,
-    suspectItems: rankSuspects(batch.transactions, difference),
+    // Arredondamento não tem culpado: listar suspeitos ali seria apontar para
+    // o lugar errado com aparência de precisão.
+    // Só os lançamentos que compõem o total podem explicar a divergência.
+    suspectItems: likelyCause === "rounding" ? [] : rankSuspects(counted, difference),
   };
+}
+
+/**
+ * Poucos centavos espalhados por muitos lançamentos é assinatura de
+ * arredondamento acumulado, não de item lido errado — um item errado erra por
+ * ordens de grandeza maiores. O limiar cresce com a quantidade de itens porque
+ * cada um pode contribuir com meio centavo.
+ */
+const ROUNDING_FLOOR_CENTS = 2;
+
+function classifyCause(
+  difference: number,
+  itemCount: number,
+  hasExactMatch: boolean,
+): ChecksumCause {
+  if (hasExactMatch) return "item";
+
+  const tolerance = Math.max(ROUNDING_FLOOR_CENTS, Math.ceil(itemCount / 2));
+  if (Math.abs(difference) <= tolerance) return "rounding";
+
+  return "unknown";
 }
 
 /** Soma em inteiros. Nenhum ponto flutuante toca em dinheiro. */
@@ -79,18 +130,32 @@ function rankSuspects(
     };
   });
 
-  return candidates
-    .sort((a, b) => {
-      if (a.exact !== b.exact) return a.exact ? -1 : 1;
-      const byConfidence =
-        CONFIDENCE_RANK[a.transaction.extractionConfidence] -
-        CONFIDENCE_RANK[b.transaction.extractionConfidence];
-      if (byConfidence !== 0) return byConfidence;
-      return Math.abs(b.transaction.amount) - Math.abs(a.transaction.amount);
-    })
-    .filter(
-      (candidate) => candidate.exact || candidate.transaction.extractionConfidence !== "alta",
-    )
+  const sorted = candidates.sort((a, b) => {
+    if (a.exact !== b.exact) return a.exact ? -1 : 1;
+    const byConfidence =
+      CONFIDENCE_RANK[a.transaction.extractionConfidence] -
+      CONFIDENCE_RANK[b.transaction.extractionConfidence];
+    if (byConfidence !== 0) return byConfidence;
+    return Math.abs(b.transaction.amount) - Math.abs(a.transaction.amount);
+  });
+
+  const flagged = sorted.filter(
+    (candidate) => candidate.exact || candidate.transaction.extractionConfidence !== "alta",
+  );
+
+  // Quando o extrator se declarou seguro de tudo e ainda assim não fecha, o
+  // erro está em algum lugar — devolver lista vazia diante de uma divergência
+  // grande deixaria a pessoa sem por onde começar. Nesse caso mostramos os
+  // maiores valores, que são onde um erro pesa mais.
+  const chosen =
+    flagged.length > 0
+      ? flagged
+      : sorted.map((candidate) => ({
+          ...candidate,
+          reason: "nada se destacou; este é um dos maiores valores do lote",
+        }));
+
+  return chosen
     .slice(0, 10)
     .map((candidate) => ({
       transactionId: candidate.transaction.id,

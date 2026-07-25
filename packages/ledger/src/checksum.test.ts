@@ -43,22 +43,62 @@ describe("verifyChecksum", () => {
     assert.deepEqual(report.suspectItems, []);
   });
 
-  it("desconta pagamento e estorno, que entram com valor negativo", () => {
-    // Compras 100,00 + 50,00; pagamento -120,00; estorno -10,00 => 20,00
+  it("desconta estorno, que é crédito contra uma compra do período", () => {
+    // Compras 100,00 + 50,00; estorno -10,00 => 140,00
     const report = verifyChecksum(
       batch(
         [
           tx({ amount: 10000 }),
           tx({ amount: 5000 }),
-          tx({ amount: -12000, kind: "payment", originalDescription: "PAGTO FATURA" }),
           tx({ amount: -1000, kind: "refund", originalDescription: "ESTORNO" }),
         ],
-        2000,
+        14000,
       ),
     );
 
     assert.equal(report.result, "match");
-    assert.equal(report.extractedTotal, 2000);
+    assert.equal(report.extractedTotal, 14000);
+  });
+
+  it("IGNORA o pagamento da fatura anterior, que não compõe este total", () => {
+    // Comportamento verificado contra uma fatura real do Nubank: o pagamento
+    // aparece nos lançamentos, mas quita o ciclo passado. Somá-lo produzia
+    // divergência do tamanho exato do pagamento.
+    const semPagamento = verifyChecksum(
+      batch([tx({ amount: 10000 }), tx({ amount: 5000 })], 15000),
+    );
+    const comPagamento = verifyChecksum(
+      batch(
+        [
+          tx({ amount: 10000 }),
+          tx({ amount: 5000 }),
+          tx({ amount: -32516, kind: "payment", originalDescription: "PAGAMENTO RECEBIDO" }),
+        ],
+        15000,
+      ),
+    );
+
+    assert.equal(semPagamento.result, "match");
+    assert.equal(comPagamento.result, "match", "o pagamento não pode alterar a conferência");
+    assert.equal(comPagamento.extractedTotal, semPagamento.extractedTotal);
+  });
+
+  it("um pagamento não entra na lista de suspeitos de uma divergência", () => {
+    const report = verifyChecksum(
+      batch(
+        [
+          tx({ amount: 10000, extractionConfidence: "baixa" }),
+          tx({ amount: -32516, kind: "payment", extractionConfidence: "baixa" }),
+        ],
+        12500,
+      ),
+    );
+
+    assert.equal(report.result, "mismatch");
+    assert.ok(
+      report.suspectItems.every((item) => item.amount !== -32516),
+      "o pagamento não compõe o total, então não explica a divergência",
+    );
   });
 
   it("soma encargos como despesa", () => {
@@ -170,5 +210,37 @@ describe("formatCents", () => {
   it("formata em BRL", () => {
     assert.match(formatCents(123456), /1\.234,56/);
     assert.match(formatCents(-500), /5,00/);
+  });
+});
+
+describe("causa provável da divergência", () => {
+  it("classifica poucos centavos em muitos itens como arredondamento", () => {
+    // O caso real: 48 lançamentos, 1 centavo de diferença vindo do IOF.
+    const many = Array.from({ length: 48 }, () => tx({ amount: 1000 }));
+    const report = verifyChecksum(batch(many, 48000 + 1));
+
+    assert.equal(report.result, "mismatch");
+    assert.equal(report.likelyCause, "rounding");
+    assert.deepEqual(
+      report.suspectItems,
+      [],
+      "arredondamento não tem culpado; apontar itens seria falsa precisão",
+    );
+  });
+
+  it("classifica coincidência exata de valor como item, não arredondamento", () => {
+    const report = verifyChecksum(
+      batch([tx({ id: "culpado", amount: 3 }), tx({ amount: 1000 })], 1000),
+    );
+
+    assert.equal(report.likelyCause, "item");
+    assert.equal(report.suspectItems[0]?.transactionId, "culpado");
+  });
+
+  it("divergência grande não é arredondamento", () => {
+    const report = verifyChecksum(batch([tx({ amount: 10000 })], 50000));
+
+    assert.equal(report.likelyCause, "unknown");
+    assert.ok(report.suspectItems.length > 0, "aqui vale listar onde olhar");
   });
 });

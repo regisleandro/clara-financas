@@ -69,8 +69,22 @@ export type ProposedBatch = z.infer<typeof ProposedBatchSchema>;
 export const CHECKSUM_RESULTS = ["match", "mismatch", "no_declared_total"] as const;
 export type ChecksumResult = (typeof CHECKSUM_RESULTS)[number];
 
+/**
+ * Causa provável de uma divergência.
+ *
+ * Existe porque "menor confiança primeiro" não explica tudo: numa fatura real
+ * de 48 lançamentos a diferença foi de 1 centavo, vinda do IOF — o emissor
+ * calcula sobre o total e arredonda uma vez, nós somamos parcelas já
+ * arredondadas. Listar itens suspeitos ali seria apontar para o lugar errado
+ * com aparência de precisão.
+ */
+export const CHECKSUM_CAUSES = ["rounding", "item", "unknown"] as const;
+export type ChecksumCause = (typeof CHECKSUM_CAUSES)[number];
+
 export type ChecksumReport = {
   result: ChecksumResult;
+  /** Só presente quando `result` é `mismatch`. */
+  likelyCause?: ChecksumCause;
   /** Soma das transações extraídas, em centavos. */
   extractedTotal: number;
   declaredTotal: number | null;
