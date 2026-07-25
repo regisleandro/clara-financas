@@ -16,6 +16,14 @@ export {
   type Recurrence,
 } from "./analysis";
 export {
+  parseRules,
+  matchRules,
+  type LearnedRule,
+  type RuleCandidate,
+  type RuleTarget,
+  type RuleMatch,
+} from "./rules";
+export {
   CONFIDENCE,
   ENTRY_KINDS,
   CHECKSUM_RESULTS,
