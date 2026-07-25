@@ -62,10 +62,12 @@ export function verifyChecksum(batch: ProposedBatch, toleranceCents = 0): Checks
 
   const exactMatch = counted.some((transaction) => transaction.amount === difference);
   const likelyCause = classifyCause(difference, counted.length, exactMatch);
+  const localizedIn = localize(batch, counted);
 
   return {
     result: "mismatch",
     likelyCause,
+    ...(localizedIn === null ? {} : { localizedIn }),
     extractedTotal,
     declaredTotal: batch.declaredTotal,
     difference,
@@ -74,6 +76,45 @@ export function verifyChecksum(batch: ProposedBatch, toleranceCents = 0): Checks
     // Só os lançamentos que compõem o total podem explicar a divergência.
     suspectItems: likelyCause === "rounding" ? [] : rankSuspects(counted, difference),
   };
+}
+
+/**
+ * Onde a diferença mora.
+ *
+ * Faturas declaram subtotais no resumo ("IOF de compras internacionais
+ * R$ 35,17"). Comparar cada subtotal com a soma das linhas do mesmo tipo
+ * transforma "a conta não bate" em "a conta não bate no IOF" — que é a
+ * diferença entre um alarme e um diagnóstico.
+ *
+ * Verificado numa fatura real: 7 linhas de IOF somando R$ 35,16 contra
+ * R$ 35,17 declarados. Sem isto, o sistema sabia que faltava 1 centavo e não
+ * sabia dizer onde.
+ */
+function localize(
+  batch: ProposedBatch,
+  counted: Transaction[],
+): ChecksumReport["localizedIn"] | null {
+  const declared = batch.declaredSubtotals;
+  if (declared === null || declared === undefined) return null;
+
+  const sumOf = (predicate: (t: Transaction) => boolean) =>
+    counted.filter(predicate).reduce((total, t) => total + t.amount, 0);
+
+  if (declared.fees !== null && declared.fees !== undefined) {
+    const extracted = sumOf((t) => t.kind === "fee");
+    if (extracted !== declared.fees) {
+      return { area: "fees", declared: declared.fees, extracted };
+    }
+  }
+
+  if (declared.purchases !== null && declared.purchases !== undefined) {
+    const extracted = sumOf((t) => t.kind === "purchase");
+    if (extracted !== declared.purchases) {
+      return { area: "purchases", declared: declared.purchases, extracted };
+    }
+  }
+
+  return null;
 }
 
 /**

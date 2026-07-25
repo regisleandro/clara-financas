@@ -54,6 +54,16 @@ vencimento e **total declarado**. O total é especialmente importante — é ele
 que permite conferir a extração matematicamente. Se o documento não declara
 total, diga isso explicitamente em vez de somar por conta própria.
 
+# O resumo da fatura vale ouro
+
+Faturas trazem um bloco de resumo com subtotais — "Total de compras",
+"IOF de compras internacionais", "Outros lançamentos", "Total a pagar".
+
+**Extraia esses subtotais além do total.** Eles são o que permite dizer ONDE
+uma divergência está, não só que ela existe. Numa fatura real, as linhas de IOF
+somavam R$ 35,16 e o resumo declarava R$ 35,17: com o subtotal, o sistema
+aponta o IOF; sem ele, só sabe que falta um centavo em algum lugar.
+
 # Localização
 
 Sempre informe a página de onde cada transação veio. É o que permite responder

@@ -62,6 +62,18 @@ export const ProposedBatchSchema = z.object({
    * humana.
    */
   declaredTotal: z.number().int().nullable().default(null),
+  /**
+   * Subtotais que o documento declara no próprio resumo — ex.: "IOF de compras
+   * internacionais R$ 35,17". São a chave para LOCALIZAR uma divergência: sem
+   * eles só dá para dizer que a soma não bate; com eles, dá para dizer onde.
+   */
+  declaredSubtotals: z
+    .object({
+      fees: z.number().int().nullable().default(null),
+      purchases: z.number().int().nullable().default(null),
+    })
+    .nullable()
+    .default(null),
   transactions: z.array(TransactionSchema),
 });
 export type ProposedBatch = z.infer<typeof ProposedBatchSchema>;
@@ -85,6 +97,11 @@ export type ChecksumReport = {
   result: ChecksumResult;
   /** Só presente quando `result` é `mismatch`. */
   likelyCause?: ChecksumCause;
+  /**
+   * Onde a diferença está, quando o documento declara subtotais e um deles não
+   * fecha. É a diferença entre "a conta não bate" e "a conta não bate no IOF".
+   */
+  localizedIn?: { area: "fees" | "purchases"; declared: number; extracted: number };
   /** Soma das transações extraídas, em centavos. */
   extractedTotal: number;
   declaredTotal: number | null;

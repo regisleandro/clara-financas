@@ -28,6 +28,7 @@ export type BatchProposal = {
   checksum: {
     result: "match" | "mismatch" | "no_declared_total";
     likelyCause?: "rounding" | "item" | "unknown";
+    localizedIn?: { area: "fees" | "purchases"; declared: number; extracted: number };
     extractedTotal: number;
     declaredTotal: number | null;
     difference: number | null;
@@ -68,6 +69,18 @@ export function batchArtifact(
       label: "Diferença",
       note: checksum.likelyCause ? CAUSE_NOTE[checksum.likelyCause] : undefined,
       value: brl(checksum.difference),
+      emphasis: true,
+    });
+  }
+
+  // Onde a diferença está, quando o documento declara subtotais. É o que
+  // separa "a conta não bate" de "a conta não bate no IOF".
+  if (checksum.localizedIn !== undefined) {
+    const { area, declared, extracted } = checksum.localizedIn;
+    rows.push({
+      label: area === "fees" ? "Encargos e IOF" : "Compras",
+      note: `a fatura declara ${brl(declared)}; as linhas somam ${brl(extracted)}`,
+      value: brl(extracted - declared),
       emphasis: true,
     });
   }

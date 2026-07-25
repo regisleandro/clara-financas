@@ -244,3 +244,41 @@ describe("causa provável da divergência", () => {
     assert.ok(report.suspectItems.length > 0, "aqui vale listar onde olhar");
   });
 });
+
+describe("localização da divergência", () => {
+  it("aponta o IOF quando o subtotal declarado não fecha", () => {
+    // O caso real: 7 linhas de IOF somam 3516, a fatura declara 3517.
+    const report = verifyChecksum(
+      ProposedBatchSchema.parse({
+        documentId: "doc_1",
+        declaredTotal: 103517,
+        declaredSubtotals: { fees: 3517, purchases: 100000 },
+        transactions: [
+          tx({ amount: 100000 }),
+          tx({ amount: 1990, kind: "fee" }),
+          tx({ amount: 1526, kind: "fee" }),
+        ],
+      }),
+    );
+
+    assert.equal(report.result, "mismatch");
+    assert.deepEqual(report.localizedIn, { area: "fees", declared: 3517, extracted: 3516 });
+  });
+
+  it("não inventa localização quando o documento não declara subtotais", () => {
+    const report = verifyChecksum(batch([tx({ amount: 10000 })], 10001));
+    assert.equal(report.localizedIn, undefined);
+  });
+
+  it("não aponta área que fecha", () => {
+    const report = verifyChecksum(
+      ProposedBatchSchema.parse({
+        documentId: "doc_1",
+        declaredTotal: 10500,
+        declaredSubtotals: { fees: 500, purchases: 10000 },
+        transactions: [tx({ amount: 9999 }), tx({ amount: 500, kind: "fee" })],
+      }),
+    );
+    assert.equal(report.localizedIn?.area, "purchases", "o IOF fecha; a diferença está nas compras");
+  });
+});

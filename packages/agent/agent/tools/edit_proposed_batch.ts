@@ -106,6 +106,9 @@ export default defineTool({
           periodEnd: batch.periodEnd,
           dueDate: batch.dueDate,
           declaredTotal: batch.declaredTotal,
+          // Persistidos no lote: sem eles, reconferir após uma correção
+          // perderia a localização e voltaria a dizer só "não bate".
+          declaredSubtotals: batch.declaredSubtotals ?? null,
           transactions: rows.map((row) => ({
             id: row.id,
             date: row.date,

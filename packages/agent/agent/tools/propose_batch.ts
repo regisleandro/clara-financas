@@ -37,6 +37,16 @@ export default defineTool({
       .nullable()
       .optional()
       .describe("Total declarado no documento, EM CENTAVOS. null se o documento não declara."),
+    declaredSubtotals: z
+      .object({
+        fees: z.number().int().nullable().optional(),
+        purchases: z.number().int().nullable().optional(),
+      })
+      .nullable()
+      .optional()
+      .describe(
+        'Subtotais do RESUMO da fatura, em centavos: "IOF de compras internacionais" em `fees`, "Total de compras" em `purchases`. É o que permite dizer ONDE está uma divergência.',
+      ),
     transactions: z.array(
       z.object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -76,6 +86,62 @@ export default defineTool({
 
     if (!document) return { error: "documento não encontrado" as const };
 
+    // Idempotência por documento: reprocessar a mesma fatura NÃO pode criar um
+    // segundo rascunho. Sem isto, cada tentativa deixava um lote órfão — foram
+    // 5 lotes e 374 transações fantasmas do mesmo PDF em teste real, e a
+    // análise passou a somar coisa que a pessoa nunca aprovou.
+    await forTenant(
+      tenantId,
+      async (tx) => {
+        const stale = await tx
+          .select({ id: batches.id })
+          .from(batches)
+          .where(
+            and(
+              eq(batches.tenantId, tenantId),
+              eq(batches.documentId, document.id),
+              eq(batches.status, "proposed"),
+            ),
+          );
+
+        for (const row of stale) {
+          // Só rascunho sai; o trigger do banco protege o que foi confirmado.
+          await tx.delete(transactions).where(eq(transactions.batchId, row.id));
+          await tx.delete(batches).where(eq(batches.id, row.id));
+        }
+      },
+      db,
+    );
+
+    // Documento já registrado no razão: propor de novo duplicaria o gasto.
+    const confirmed = await forTenant(
+      tenantId,
+      async (tx) => {
+        const [row] = await tx
+          .select({ id: batches.id })
+          .from(batches)
+          .where(
+            and(
+              eq(batches.tenantId, tenantId),
+              eq(batches.documentId, document.id),
+              eq(batches.status, "confirmed"),
+            ),
+          )
+          .limit(1);
+        return row;
+      },
+      db,
+    );
+
+    if (confirmed) {
+      return {
+        error: "documento_ja_registrado" as const,
+        batchId: confirmed.id,
+        message:
+          "Esta fatura já foi registrada no razão. Não proponha de novo — se algo está errado, registre um ajuste.",
+      };
+    }
+
     const batchId = id("bat");
     const prepared = input.transactions.map((transaction) => ({
       ...transaction,
@@ -97,6 +163,13 @@ export default defineTool({
       periodEnd: input.periodEnd ?? null,
       dueDate: input.dueDate ?? null,
       declaredTotal: input.declaredTotal ?? null,
+      declaredSubtotals:
+        input.declaredSubtotals == null
+          ? null
+          : {
+              fees: input.declaredSubtotals.fees ?? null,
+              purchases: input.declaredSubtotals.purchases ?? null,
+            },
       transactions: prepared,
     });
 
@@ -114,6 +187,7 @@ export default defineTool({
           periodEnd: batch.periodEnd,
           dueDate: batch.dueDate,
           declaredTotal: batch.declaredTotal,
+          declaredSubtotals: batch.declaredSubtotals,
           extractedTotal: checksum.extractedTotal,
           checksumResult: checksum.result,
           checksumReport: checksum,

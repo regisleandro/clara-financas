@@ -67,6 +67,15 @@ export const batches = pgTable(
 
     /** Centavos. `bigint` porque centavos crescem rápido em inteiro. */
     declaredTotal: bigint("declared_total", { mode: "number" }),
+    /**
+     * Subtotais do resumo da fatura ("IOF de compras internacionais"), em
+     * centavos. Persistidos porque a reconferência após uma correção precisa
+     * deles para continuar dizendo ONDE está a divergência.
+     */
+    declaredSubtotals: jsonb("declared_subtotals").$type<{
+      fees: number | null;
+      purchases: number | null;
+    } | null>(),
     extractedTotal: bigint("extracted_total", { mode: "number" }),
     checksumResult: text("checksum_result", { enum: CHECKSUM_RESULTS }),
     checksumReport: jsonb("checksum_report"),
