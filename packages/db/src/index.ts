@@ -11,9 +11,17 @@ import * as schema from "./schema";
  * pooler do provedor à frente. O banco de cada TENANT usará outra função,
  * `forTenant()`, resolvendo a credencial pelo registry (Etapa 4).
  */
-export function createDb(connectionString?: string) {
+/**
+ * Cria a conexão e devolve também o client, para quem precisa encerrá-la.
+ * Testes e scripts precisam disso: sem `client.end()` o processo não sai.
+ */
+export function createDbClient(connectionString?: string) {
   const client = postgres(connectionString ?? env.DATABASE_URL, { max: 1 });
-  return drizzle({ client, schema });
+  return { db: drizzle({ client, schema }), client };
+}
+
+export function createDb(connectionString?: string) {
+  return createDbClient(connectionString).db;
 }
 
 export type Database = ReturnType<typeof createDb>;

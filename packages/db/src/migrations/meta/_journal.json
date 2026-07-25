@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1784985205746,
+      "tag": "0000_yellow_stone_men",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784985212040,
+      "tag": "0001_rls_tenant_isolation",
+      "breakpoints": true
+    }
+  ]
+}

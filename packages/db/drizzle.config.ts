@@ -8,6 +8,9 @@ export default defineConfig({
   out: "./src/migrations",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL || "",
+    // Migração roda como DONO do schema. A aplicação usa DATABASE_URL, que
+    // aponta para um papel sem superusuário e sem BYPASSRLS — é o que faz a
+    // RLS valer de verdade em runtime.
+    url: process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL || "",
   },
 });

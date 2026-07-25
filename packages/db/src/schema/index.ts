@@ -1,2 +1,4 @@
 export * from "./auth";
 export * from "./tenant";
+export * from "./knowledge";
+export * from "./agent-session";
