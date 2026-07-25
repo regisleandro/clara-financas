@@ -20,6 +20,7 @@ import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { InputGroupAddon } from "@/components/ui/input-group";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { ChatHeader, ChatWelcome, type Starter } from "@/components/chat-welcome";
+import { DecisionCard } from "@/components/decision-card";
 import { ExecutionTrace } from "@/components/execution-trace";
 import { ViewPanel } from "@/components/view-panel";
 import { deriveActivity } from "@/lib/activity";
@@ -246,7 +247,17 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
 
               {!isWelcome ? <ExecutionTrace activity={activity} busy={busy} /> : null}
 
-              {pending && pending.toolName !== "commit_batch" ? (
+              {/* A decisão sobre o lote vem PRIMEIRO e dentro da conversa: é o
+                  momento em que a pessoa decide, e escondê-lo num painel
+                  lateral foi o que travou o fluxo em uso real. */}
+              {pending?.toolName === "commit_batch" && answered === null ? (
+                <DecisionCard
+                  pending={pending}
+                  proposal={proposal}
+                  disabled={busy}
+                  onAnswer={(id) => answerRef.current(id)}
+                />
+              ) : pending && pending.toolName !== "commit_batch" ? (
                 <GenericPrompt
                   pending={pending}
                   disabled={busy}

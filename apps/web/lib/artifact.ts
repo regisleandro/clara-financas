@@ -105,16 +105,16 @@ export function batchArtifact(
     listTitle: "Conferência",
     rows,
     primaryAction: {
-      label: "Registrar fatura",
+      // O rótulo muda com o significado. O mesmo botão pedia o registro antes
+      // do gate e aprovava depois, com a mesma aparência — quem clicava não
+      // tinha como saber que precisava clicar de novo, e o fluxo travava ali.
+      label: actions.pendingGate ? "Confirmar registro" : "Registrar fatura",
       onClick: actions.onApprove,
       disabled: actions.disabled,
     },
     secondaryAction: { label: "Rejeitar lote", onClick: actions.onReject },
-    // Sem gate aberto, o clique pede que a Clara o abra — e a confirmação vem
-    // logo em seguida. Dizer isso evita a impressão de que o registro já
-    // aconteceu com um clique só, que seria mentir sobre uma escrita no razão.
     footnote: actions.pendingGate
-      ? undefined
+      ? "A Clara está aguardando sua decisão."
       : "Ao registrar, a Clara pedirá sua confirmação antes de gravar no razão.",
   };
 }
