@@ -24,3 +24,9 @@ errado que parece certo.
 
 O razão é imutável por edição: correção gera linha de ajuste referenciando a
 original. É o que torna todo número reproduzível.
+
+## Lançamentos que não são gasto
+
+Nem toda linha da fatura é despesa. **Pagamento da fatura anterior e linhas de
+saldo não recebem categoria** — ficam nulas de propósito. Categorizá-las as
+faria aparecer em composições de gasto, onde não têm lugar.

@@ -160,8 +160,53 @@ describe("imutabilidade do razão", () => {
             tx.update(transactions).set({ amount: 1 }).where(eq(transactions.id, transactionId)),
           db,
         ),
-      rejectsWith(/não pode ser alterada/),
-      "o trigger deveria recusar a edição de transação confirmada",
+      rejectsWith(/não podem ser alterados/),
+      "o trigger deveria recusar a edição de valor em transação confirmada",
+    );
+  });
+
+  it("categoria PODE mudar depois de confirmada — leitura não é fato", async () => {
+    // A distinção que sustenta a hipótese H4: valor, data, descrição e origem
+    // são fato e não mudam; categoria e comerciante são interpretação, e
+    // interpretação muda quando a pessoa ensina algo ao sistema.
+    const { transactionId } = await createBatch(TENANT, "confirmed");
+
+    await forTenant(
+      TENANT,
+      async (tx) =>
+        tx
+          .update(transactions)
+          .set({ category: "groceries", merchant: "Mercado Santa Luzia" })
+          .where(eq(transactions.id, transactionId)),
+      db,
+    );
+
+    const [row] = await forTenant(
+      TENANT,
+      async (tx) => tx.select().from(transactions).where(eq(transactions.id, transactionId)),
+      db,
+    );
+
+    assert.equal(row?.category, "groceries");
+    assert.equal(row?.status, "confirmed", "reclassificar não muda o estado do registro");
+  });
+
+  it("mudar data ou descrição continua barrado, mesmo junto de categoria", async () => {
+    const { transactionId } = await createBatch(TENANT, "confirmed");
+
+    await assert.rejects(
+      () =>
+        forTenant(
+          TENANT,
+          async (tx) =>
+            tx
+              .update(transactions)
+              // Categoria é permitida; a data, não. A tentativa inteira cai.
+              .set({ category: "dining", date: "2000-01-01" })
+              .where(eq(transactions.id, transactionId)),
+          db,
+        ),
+      rejectsWith(/não podem ser alterados/),
     );
   });
 
