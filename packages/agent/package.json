@@ -15,23 +15,24 @@
     "test": "node --import tsx --env-file=.env --test tests/*.test.ts"
   },
   "dependencies": {
-    "ai": "catalog:",
-    "eve": "catalog:",
-    "zod": "catalog:",
-    "@vercel/connect": "0.4.2",
-    "@clara-financas/db": "workspace:*",
-    "@clara-financas/okf": "workspace:*",
-    "drizzle-orm": "catalog:",
     "@ai-sdk/openai": "^4.0.20",
+    "@clara-financas/db": "workspace:*",
     "@clara-financas/ledger": "workspace:*",
+    "@clara-financas/okf": "workspace:*",
+    "@vercel/connect": "0.4.2",
+    "ai": "catalog:",
+    "dotenv": "catalog:",
+    "drizzle-orm": "catalog:",
+    "eve": "catalog:",
     "unpdf": "^1.8.0",
-    "dotenv": "catalog:"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@clara-financas/config": "workspace:*",
     "@types/node": "catalog:",
-    "typescript": "catalog:",
     "jose": "^6.1.0",
-    "tsx": "^4.22.5"
+    "microsandbox": "^0.6.6",
+    "tsx": "^4.22.5",
+    "typescript": "catalog:"
   }
 }

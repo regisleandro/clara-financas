@@ -1,0 +1,63 @@
+import { aggregateByCategory, formatCents, totalSpend } from "@clara-financas/ledger";
+import { defineTool } from "eve/tools";
+import { z } from "zod";
+
+import { requireTenantCaller } from "../../../lib/tenant";
+import { optionalText } from "../../../lib/schema";
+import { ledgerCoverage, loadLedger } from "../lib/query";
+
+/**
+ * Composição do gasto por categoria.
+ *
+ * Devolve `transactionIds` em cada linha — é isso que faz a proveniência ser
+ * estrutural, e não uma citação que o modelo pode esquecer de fazer.
+ */
+export default defineTool({
+  description:
+    "Soma os gastos por categoria num período. Use para 'quanto gastei', 'com o quê', 'qual categoria pesa mais'.",
+  inputSchema: z.object({
+    from: optionalText().describe("Data inicial, YYYY-MM-DD. Omita para o razão inteiro."),
+    to: optionalText().describe("Data final, YYYY-MM-DD, inclusive."),
+  }),
+  async execute(input, ctx) {
+    const { tenantId } = requireTenantCaller(ctx);
+    const ledger = await loadLedger(tenantId, { from: input.from, to: input.to });
+
+    if (ledger.length === 0) {
+      // Vazio sem contexto é ambíguo: razão vazio, ou recorte errado? Dizer o
+      // que existe evita mandar a pessoa reenviar o que já está registrado.
+      const coverage = await ledgerCoverage(tenantId);
+      return {
+        empty: true as const,
+        message:
+          coverage.count === 0
+            ? "O razão ainda não tem nenhuma transação confirmada."
+            : `Não há transações nesse recorte, mas o razão cobre de ${coverage.firstDate} a ${coverage.lastDate} (${coverage.count} transações). Refaça a pergunta nesse intervalo.`,
+        ledgerCoverage: coverage,
+      };
+    }
+
+    const total = totalSpend(ledger);
+    const categories = aggregateByCategory(ledger);
+    const uncategorized = categories.find((bucket) => bucket.category === null);
+
+    return {
+      period: { from: input.from ?? null, to: input.to ?? null },
+      total: {
+        cents: total.value,
+        formatted: formatCents(total.value),
+        transactionIds: total.transactionIds,
+      },
+      categories: categories.map((bucket) => ({
+        category: bucket.category,
+        cents: bucket.value,
+        formatted: formatCents(bucket.value),
+        sharePercent: Math.round(bucket.share * 1000) / 10,
+        count: bucket.count,
+        transactionIds: bucket.transactionIds,
+      })),
+      // Explicitado para o modelo poder avisar que a leitura está incompleta.
+      uncategorizedCount: uncategorized?.count ?? 0,
+    };
+  },
+});

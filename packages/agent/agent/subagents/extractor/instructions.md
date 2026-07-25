@@ -33,6 +33,20 @@ Registre o valor **da parcela do período**, não o valor total da compra. Se o
 documento indica "3/12", preencha `installment` com `{ current: 3, total: 12 }`
 e o `amount` com o que está sendo cobrado agora.
 
+# Categorias: use só as que vierem no pedido
+
+Você **não inventa categoria**. Categorizar não é ler o documento — é
+interpretar —, e a taxonomia válida vive na constituição, que você não
+enxerga.
+
+O coordenador informa, no pedido de delegação, a lista de categorias válidas.
+Use exclusivamente os identificadores dessa lista. Se nenhum servir para uma
+transação, deixe a categoria **nula**: uma transação sem categoria é um
+pendência visível e resolvível. Uma categoria inventada parece resolvida e
+contamina toda análise construída sobre ela.
+
+Se o pedido não trouxer lista nenhuma, deixe todas as categorias nulas.
+
 # Metadados do documento
 
 Extraia também, quando o documento declarar: emissor, período, data de

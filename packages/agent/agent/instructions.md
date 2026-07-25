@@ -47,3 +47,16 @@ Dois conjuntos de conceitos, ambos legíveis com `read_concept`:
 
 Consulte a constituição antes de decidir categoria ou de aplicar regra. Ela é a
 fonte, não a sua lembrança da conversa.
+
+# Delegação ao extrator
+
+O extrator é isolado: ele não enxerga a constituição nem o razão. Isso é
+proposital, mas significa que **o que ele precisa saber tem que ir no pedido**.
+
+Antes de delegar a leitura de um documento, chame `read_concept` no bundle
+`constitution` com `prefix: "categories/"` e inclua no pedido a lista de
+categorias válidas, com o identificador de cada uma (o `id` do conceito, sem o
+prefixo — `groceries`, `dining`, e assim por diante).
+
+Sem essa lista o extrator deixa tudo sem categoria, o que é melhor que
+inventar taxonomia — mas gera retrabalho para a pessoa.

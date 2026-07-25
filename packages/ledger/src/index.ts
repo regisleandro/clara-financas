@@ -1,4 +1,20 @@
-export { verifyChecksum, sumAmounts, formatCents } from "./checksum";
+export {
+  verifyChecksum,
+  sumAmounts,
+  formatCents,
+  countsTowardDeclaredTotal,
+} from "./checksum";
+export {
+  aggregateByCategory,
+  comparePeriods,
+  detectRecurrences,
+  totalSpend,
+  spendable,
+  type Provenance,
+  type CategoryTotal,
+  type CategoryComparison,
+  type Recurrence,
+} from "./analysis";
 export {
   CONFIDENCE,
   ENTRY_KINDS,
@@ -13,4 +29,5 @@ export {
   type EntryKind,
   type ChecksumReport,
   type ChecksumResult,
+  type ChecksumCause,
 } from "./types";
