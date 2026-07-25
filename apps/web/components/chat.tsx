@@ -90,6 +90,10 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
   const pending = findPendingRequest(agent.data.messages);
   const isWelcome = agent.data.messages.length === 0;
 
+  // Reatribuídos a cada render: o `useMemo` do artefato guardaria a versão
+  // antiga de `agent` se chamasse as funções direto, e o clique dispararia
+  // contra uma sessão que já não é a corrente.
+  const sendRef = useRef<(message: string) => void>(() => {});
   const answerRef = useRef<(optionId: string) => void>(() => {});
   answerRef.current = (optionId: string) => {
     if (!pending) return;
@@ -102,6 +106,7 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
     setArtifactOpen(true);
     void agent.send({ message });
   }
+  sendRef.current = send;
 
   async function upload(file: File) {
     setUploading(true);
@@ -141,13 +146,32 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
    * A conferência de um lote é a exceção que continua sendo derivada aqui: ela
    * precisa carregar os botões do gate, e esses botões são estado do cliente
    * (`answerRef`), não algo que a Clara possa mandar no payload.
+   *
+   * O botão NUNCA fica morto. Antes ele dependia de existir uma aprovação
+   * pendente de `commit_batch` — e quando a Clara terminava a conferência sem
+   * chamar a ferramenta, oferecendo o próximo passo em texto, a pessoa ficava
+   * olhando um lote conferido com um botão cinza e nenhum caminho à frente.
+   *
+   * As instruções já mandavam chamar a ferramenta, e ainda assim aconteceu.
+   * Instrução não é garantia: quando o modelo não abre o gate, o clique pede
+   * que ele abra. A decisão auditada continua sendo a do gate — isto aqui só
+   * garante que sempre exista um jeito de chegar até ele.
    */
   const artifact = useMemo(() => {
     if (proposal === null) return null;
     return batchArtifact(proposal, {
-      onApprove: () => answerRef.current("approve"),
-      onReject: () => answerRef.current("deny"),
-      disabled: busy || !canApprove,
+      onApprove: () =>
+        canApprove
+          ? answerRef.current("approve")
+          : sendRef.current(`Registre o lote ${proposal.batchId} no razão.`),
+      onReject: () =>
+        canApprove
+          ? answerRef.current("deny")
+          : sendRef.current(
+              `Descarte o lote ${proposal.batchId}. Não quero registrar essa fatura.`,
+            ),
+      disabled: busy,
+      pendingGate: canApprove,
     });
   }, [proposal, busy, canApprove]);
 

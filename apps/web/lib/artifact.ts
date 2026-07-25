@@ -43,7 +43,13 @@ const CAUSE_NOTE: Record<string, string> = {
 /** Artefato da conferência de um lote. */
 export function batchArtifact(
   proposal: BatchProposal,
-  actions: { onApprove: () => void; onReject: () => void; disabled: boolean },
+  actions: {
+    onApprove: () => void;
+    onReject: () => void;
+    disabled: boolean;
+    /** Há aprovação pendente? Muda o que o clique significa, e o rodapé. */
+    pendingGate: boolean;
+  },
 ): ArtifactData {
   const { checksum } = proposal;
 
@@ -104,5 +110,11 @@ export function batchArtifact(
       disabled: actions.disabled,
     },
     secondaryAction: { label: "Rejeitar lote", onClick: actions.onReject },
+    // Sem gate aberto, o clique pede que a Clara o abra — e a confirmação vem
+    // logo em seguida. Dizer isso evita a impressão de que o registro já
+    // aconteceu com um clique só, que seria mentir sobre uma escrita no razão.
+    footnote: actions.pendingGate
+      ? undefined
+      : "Ao registrar, a Clara pedirá sua confirmação antes de gravar no razão.",
   };
 }

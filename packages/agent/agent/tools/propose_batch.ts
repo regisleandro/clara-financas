@@ -27,7 +27,13 @@ export default defineTool({
     "Registra como rascunho as transações extraídas de um documento e confere a soma contra o total declarado. Use logo após o extrator devolver o lote. Nada entra no razão aqui — só depois da aprovação da pessoa.",
   inputSchema: z.object({
     documentId: z.string().min(1),
-    issuer: z.string().nullable().optional(),
+    issuer: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Quem emitiu o documento, como aparece nele — 'Nubank', 'Itaú'. Preencha sempre que o documento identificar: é o título do cartão de conferência.",
+      ),
     periodStart: z.string().nullable().optional(),
     periodEnd: z.string().nullable().optional(),
     dueDate: z.string().nullable().optional(),
@@ -193,6 +199,17 @@ export default defineTool({
           checksumReport: checksum,
         });
 
+        // O emissor mora no documento, não no lote — é propriedade do papel,
+        // não da tentativa de leitura. Sem gravar aqui, ele se perdia entre a
+        // extração e a tela, e a conferência aparecia intitulada "Documento"
+        // mesmo com a Clara sabendo que era uma fatura do Nubank.
+        if (batch.issuer !== null && document.issuer === null) {
+          await tx
+            .update(documents)
+            .set({ issuer: batch.issuer })
+            .where(and(eq(documents.id, document.id), eq(documents.tenantId, tenantId)));
+        }
+
         if (batch.transactions.length > 0) {
           await tx.insert(transactions).values(
             batch.transactions.map((transaction) => ({
@@ -221,8 +238,12 @@ export default defineTool({
     return {
       batchId,
       status: "proposed" as const,
+      // O emissor volta no retorno porque é dele que a tela tira o título do
+      // cartão. Calculado aqui e não devolvido é o mesmo que não calculado.
+      issuer: batch.issuer,
       transactionCount: batch.transactions.length,
       checksum,
+      next: "Se a conferência estiver boa, chame `commit_batch` para abrir a decisão. Não pergunte em texto se pode registrar.",
     };
   },
 });
