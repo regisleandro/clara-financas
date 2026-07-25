@@ -28,8 +28,10 @@ export async function storeDocument(
   bytes: Uint8Array,
 ): Promise<StoredDocument> {
   const contentHash = createHash("sha256").update(bytes).digest("hex");
-  // O hash no nome torna o reenvio do mesmo arquivo idempotente por natureza,
-  // e o índice único (tenant, hash) fecha o caso no banco.
+  // O hash no nome faz o reenvio do mesmo arquivo cair na MESMA chave, e o
+  // índice único (tenant, hash) fecha o caso no banco. Mas "mesma chave" não
+  // basta para o Vercel Blob: ele recusa a segunda gravação a menos que se
+  // peça `allowOverwrite` — ver abaixo.
   const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-80);
   const key = `${tenantId}/${contentHash.slice(0, 16)}-${safeName}`;
 
@@ -49,6 +51,15 @@ export async function storeDocument(
       token,
       contentType: "application/pdf",
       addRandomSuffix: false,
+      // A chave é derivada do CONTEÚDO, então reescrever é gravar os mesmos
+      // bytes por cima dos mesmos bytes. Sem isto o `put` recusa a segunda
+      // gravação com "This blob already exists" e o reenvio vira 500 — que é
+      // exatamente o oposto da idempotência que a chave promete.
+      //
+      // O dedutor de verdade é o índice único (tenant, hash) no banco, que
+      // devolve o documento existente logo depois. Este `put` repetido é só o
+      // preço de descobrir isso um passo tarde demais.
+      allowOverwrite: true,
     });
     return { blobKey: result.url, contentHash, size: bytes.byteLength };
   }
