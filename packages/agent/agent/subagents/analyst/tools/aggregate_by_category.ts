@@ -15,10 +15,10 @@ import { ledgerCoverage, loadLedger } from "../lib/query";
  */
 export default defineTool({
   description:
-    "Soma os gastos por categoria num período. Use para 'quanto gastei', 'com o quê', 'qual categoria pesa mais'.",
+    "Sums spending by category over a period. Use for 'quanto gastei', 'com o quê', 'qual categoria pesa mais'.",
   inputSchema: z.object({
-    from: optionalText().describe("Data inicial, YYYY-MM-DD. Omita para o razão inteiro."),
-    to: optionalText().describe("Data final, YYYY-MM-DD, inclusive."),
+    from: optionalText().describe("Start date, YYYY-MM-DD. Omit for the whole ledger."),
+    to: optionalText().describe("End date, YYYY-MM-DD, inclusive."),
   }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);
@@ -32,7 +32,7 @@ export default defineTool({
         empty: true as const,
         message:
           coverage.count === 0
-            ? "O razão ainda não tem nenhuma transação confirmada."
+            ? "The ledger has no confirmed transactions yet."
             : `Não há transações nesse recorte, mas o razão cobre de ${coverage.firstDate} a ${coverage.lastDate} (${coverage.count} transações). Refaça a pergunta nesse intervalo.`,
         ledgerCoverage: coverage,
       };

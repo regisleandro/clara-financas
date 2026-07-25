@@ -67,7 +67,7 @@ export function ChatHeader({
   artifactOpen?: boolean;
 }) {
   return (
-    <header className="mb-12 flex items-center gap-3">
+    <header className="flex items-center gap-3">
       <span className="grid size-[31px] shrink-0 place-items-center rounded-[10px] bg-[var(--clara-ink)]">
         <svg width="19" height="19" viewBox="0 0 12 12" aria-hidden="true">
           <circle cx="6" cy="6" r="4.7" fill="none" stroke="#f5f5f7" strokeWidth="1.2" />

@@ -19,28 +19,28 @@ import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
  */
 export default defineTool({
   description:
-    "Registra um vencimento ou lembrete para avisar a pessoa antes da data. Exige aprovação. Use quando uma fatura revelar um vencimento, ou quando a pessoa pedir para ser lembrada de algo.",
+    "Records a due date or reminder so the person is warned before it arrives. Requires approval. Use when an invoice reveals a due date, or when the person asks to be reminded of something.",
   inputSchema: z.object({
     kind: z.enum(["invoice_due", "subscription_charge", "custom"]),
-    title: z.string().min(1).describe("Como o compromisso aparece na agenda."),
-    counterparty: optionalText().describe("Emissor ou comerciante, ex.: 'Nubank'."),
+    title: z.string().min(1).describe("How the commitment appears in the schedule. Write it in Brazilian Portuguese."),
+    counterparty: optionalText().describe("Issuer or merchant, e.g. 'Nubank'."),
     dueDate: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .describe("Próximo vencimento, YYYY-MM-DD."),
+      .describe("Next due date, YYYY-MM-DD."),
     recurrenceDayOfMonth: z
       .number()
       .int()
       .min(1)
       .max(31)
       .optional()
-      .describe("Dia do mês em que recorre. Omita para compromisso único."),
+      .describe("Day of month it recurs on. Omit for a one-off commitment."),
     expectedAmount: z
       .number()
       .int()
       .optional()
-      .describe("Valor esperado EM CENTAVOS, quando conhecido."),
-    remindDaysBefore: z.number().int().min(0).max(30).optional().describe("Padrão: 3."),
+      .describe("Expected amount IN CENTS, when known."),
+    remindDaysBefore: z.number().int().min(0).max(30).optional().describe("Defaults to 3."),
   }),
 
   approval: (ctx) => {

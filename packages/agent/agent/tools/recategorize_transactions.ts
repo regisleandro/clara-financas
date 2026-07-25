@@ -24,7 +24,7 @@ import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
  */
 export default defineTool({
   description:
-    "Muda a categoria de transações já registradas no razão. Exige aprovação. Use quando as categorias estiverem erradas ou fora da taxonomia da constituição.",
+    "Changes the category of transactions already recorded in the ledger. Requires approval. Use when categories are wrong or outside the constitution's taxonomy.",
   inputSchema: z.object({
     changes: z
       .array(
@@ -33,13 +33,13 @@ export default defineTool({
           category: z
             .string()
             .min(1)
-            .describe("Identificador da categoria na constituição, ex.: 'groceries'."),
+            .describe("Category identifier from the constitution, e.g. 'groceries'."),
         }),
       )
       .min(1)
       .max(500),
-    reason: optionalText().describe("Por que a reclassificação está sendo feita."),
-    byConceptId: optionalText().describe("Conceito que motivou, se veio de uma regra aprendida."),
+    reason: optionalText().describe("Why the reclassification is being made. Write it in Brazilian Portuguese."),
+    byConceptId: optionalText().describe("The concept that motivated this, when it came from a learned rule."),
   }),
 
   approval: (ctx) => {
@@ -78,7 +78,7 @@ export default defineTool({
             invalid,
             validCategories: [...valid].sort(),
             message:
-              "Essas categorias não existem na constituição. Use uma das válidas ou deixe a transação sem categoria.",
+              "Those categories do not exist in the constitution. Use one of the valid ones, or leave the transaction uncategorised.",
           };
         }
 

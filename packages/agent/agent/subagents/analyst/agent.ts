@@ -14,6 +14,6 @@ import { coordinatorModel } from "../../lib/models";
  */
 export default defineAgent({
   description:
-    "Responde perguntas sobre gastos a partir do razão: composição por categoria, comparação entre períodos, recorrências e assinaturas. Delegue quando a pessoa perguntar quanto gastou, por que mudou, ou onde pode economizar.",
+    "Answers spending questions from the ledger: composition by category, period comparison, recurrences, and subscriptions. Delegate when the person asks how much they spent, why it changed, or where they could save.",
   model: coordinatorModel(),
 });

@@ -25,9 +25,9 @@ import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
  */
 export default defineTool({
   description:
-    "Registra no razão as transações de um lote já conferido pela pessoa. Exige aprovação explícita. Use somente depois de apresentar o cartão de conferência e a pessoa aprovar.",
+    "Records into the ledger the transactions of a batch the person has verified. Requires explicit approval. Use only after presenting the verification card and the person approving.",
   inputSchema: z.object({
-    batchId: z.string().min(1).describe("ID do lote proposto, devolvido por propose_batch."),
+    batchId: z.string().min(1).describe("Id of the proposed batch, as returned by propose_batch."),
   }),
 
   approval: (ctx) => {

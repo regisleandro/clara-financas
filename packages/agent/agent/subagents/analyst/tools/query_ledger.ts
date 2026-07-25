@@ -17,20 +17,20 @@ const LIMIT = 100;
 
 export default defineTool({
   description:
-    "Lista transações do razão, por período, texto ou ids. Use para detalhar de onde veio um número, ou para responder perguntas sobre lançamentos específicos.",
+    "Lists ledger transactions by period, text, or ids. Use to show where a number came from, or to answer questions about specific entries.",
   inputSchema: z.object({
     transactionIds: z
       .array(z.string())
       .optional()
-      .describe("IDs devolvidos por outra análise. Use para detalhar um número."),
-    from: optionalText().describe("Data inicial, YYYY-MM-DD."),
-    to: optionalText().describe("Data final, YYYY-MM-DD, inclusive."),
-    search: optionalText().describe("Texto na descrição ou no comerciante."),
-    category: optionalText().describe("Filtra por categoria."),
+      .describe("Ids returned by another analysis. Use to drill into a number."),
+    from: optionalText().describe("Start date, YYYY-MM-DD."),
+    to: optionalText().describe("End date, YYYY-MM-DD, inclusive."),
+    search: optionalText().describe("Text to match in the description or the merchant."),
+    category: optionalText().describe("Filter by category identifier."),
     uncategorizedOnly: z
       .boolean()
       .optional()
-      .describe("Só transações ainda sem categoria."),
+      .describe("Only transactions that still have no category."),
   }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);

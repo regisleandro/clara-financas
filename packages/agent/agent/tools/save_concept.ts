@@ -48,7 +48,7 @@ const LEARNED_TYPES = [
 
 export default defineTool({
   description:
-    "Grava um aprendizado sobre esta pessoa (regra de categorização, comerciante, compromisso, padrão de emissor). Exige aprovação explícita. Use depois de propor a regra em conversa e a pessoa concordar.",
+    "Records a learning about this person (categorisation rule, merchant, commitment, issuer pattern). Requires explicit approval. Use after proposing the rule in conversation and the person agreeing.",
   inputSchema: z.object({
     conceptId: z
       .string()
@@ -59,15 +59,15 @@ export default defineTool({
       )
       .describe('Caminho dentro do bundle, sem .md. Ex.: "rules/nuvem-digital".'),
     type: z.enum(LEARNED_TYPES),
-    title: z.string().min(1).describe("Título curto e legível."),
-    description: optionalText().describe("Uma linha explicando a regra."),
+    title: z.string().min(1).describe("Short, readable title, in Brazilian Portuguese."),
+    description: optionalText().describe("One line explaining the rule, in Brazilian Portuguese."),
     body: z
       .string()
       .min(1)
       .describe(
-        "Corpo em markdown. Para referenciar outro conceito use link markdown absoluto, ex.: [Assinaturas](/categories/subscriptions.md).",
+        "Markdown body, written in Brazilian Portuguese. To reference another concept use an absolute markdown link, e.g. [Assinaturas](/categories/subscriptions.md).",
       ),
-    reason: optionalText().describe("Por que este aprendizado existe."),
+    reason: optionalText().describe("Why this learning exists. Write it in Brazilian Portuguese."),
   }),
 
   approval: (ctx) => {

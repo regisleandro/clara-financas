@@ -21,7 +21,7 @@ import { requireTenantCaller } from "../lib/tenant";
  */
 export default defineTool({
   description:
-    "Corrige transações de um lote ainda não aprovado (data, valor, categoria, comerciante) e reconfere a soma. Use quando a pessoa apontar um erro no cartão de conferência.",
+    "Fixes transactions in a batch that is not yet approved (date, amount, category, merchant) and re-runs the checksum. Use when the person points out an error on the verification card.",
   inputSchema: z.object({
     batchId: z.string().min(1),
     edits: z
@@ -29,7 +29,7 @@ export default defineTool({
         z.object({
           transactionId: z.string().min(1),
           date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-          amount: z.number().int().optional().describe("EM CENTAVOS, sinalizado."),
+          amount: z.number().int().optional().describe("IN CENTS, signed."),
           category: z.string().nullable().optional(),
           merchant: z.string().nullable().optional(),
           originalDescription: z.string().min(1).optional(),
@@ -39,7 +39,7 @@ export default defineTool({
     removeTransactionIds: z
       .array(z.string().min(1))
       .optional()
-      .describe("Itens lidos por engano, que não existem no documento."),
+      .describe("Items read by mistake that do not exist in the document."),
   }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);

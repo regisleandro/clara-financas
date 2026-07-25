@@ -21,15 +21,15 @@ import { extractPdfText, PdfPasswordRequiredError } from "../../../lib/pdf";
  */
 export default defineTool({
   description:
-    "Lê o texto de um PDF financeiro já enviado, página a página. Use antes de extrair transações. Se o PDF for protegido, informe a senha.",
+    "Reads the text of an already-uploaded financial PDF, page by page. Use before extracting transactions. If the PDF is protected, supply the password.",
   inputSchema: z.object({
-    documentId: z.string().min(1).describe("ID do documento enviado pela pessoa."),
+    documentId: z.string().min(1).describe("Id of the document the person uploaded."),
     password: z
       .string()
       .optional()
-      .describe("Senha do PDF, quando protegido. Peça à pessoa antes de tentar adivinhar."),
-    fromPage: z.number().int().positive().optional().describe("Primeira página (1-based)."),
-    toPage: z.number().int().positive().optional().describe("Última página, inclusive."),
+      .describe("PDF password, when protected. Ask the person rather than guessing."),
+    fromPage: z.number().int().positive().optional().describe("First page (1-based)."),
+    toPage: z.number().int().positive().optional().describe("Last page, inclusive."),
   }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);
@@ -72,7 +72,7 @@ export default defineTool({
         return {
           error: "senha_necessaria" as const,
           message:
-            "Este PDF é protegido por senha. Peça a senha à pessoa antes de tentar de novo — não tente adivinhar.",
+            "This PDF is password-protected. Ask the person for the password before retrying — do not guess.",
         };
       }
       throw error;

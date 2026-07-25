@@ -21,22 +21,22 @@ import { requireTenantCaller } from "../lib/tenant";
  */
 export default defineTool({
   description:
-    "Lê conceitos do conhecimento do usuário. Use para consultar categorias, convenções e regras da constituição, ou o que já foi aprendido sobre a pessoa, antes de decidir categoria ou aplicar regra.",
+    "Reads concepts from the user's knowledge. Use to consult categories, conventions, and rules from the constitution, or what has been learned about the person, before deciding a category or applying a rule.",
   inputSchema: z.object({
     bundle: z
       .enum(BUNDLES)
       .describe(
-        "constitution para o contrato do domínio (categorias, convenções, regras); learnings para o que foi aprendido sobre esta pessoa.",
+        "constitution for the domain contract (categories, conventions, rules); learnings for what has been learned about this person.",
       ),
     // optionalText trata "" como ausente: modelos preenchem campos opcionais
     // com string vazia, e isso viraria filtro `= ''` — que não casa com nada.
     conceptId: optionalText().describe(
-      'ID exato do conceito, ex.: "categories/groceries". Omita para listar o bundle inteiro.',
+      'Exact concept id, e.g. "categories/groceries". Omit to list the whole bundle.',
     ),
     type: optionalText().describe(
-      'Filtra por tipo, ex.: "Category", "AlertRule", "Convention".',
+      'Filter by type, e.g. "Category", "AlertRule", "Convention".',
     ),
-    prefix: optionalText().describe('Filtra por prefixo de caminho, ex.: "categories/".'),
+    prefix: optionalText().describe('Filter by path prefix, e.g. "categories/".'),
   }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);

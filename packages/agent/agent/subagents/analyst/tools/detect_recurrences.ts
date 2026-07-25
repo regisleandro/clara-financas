@@ -14,7 +14,7 @@ import { loadLedger } from "../lib/query";
  */
 export default defineTool({
   description:
-    "Encontra cobranças que se repetem mensalmente no mesmo comerciante, com o custo anualizado e a variação de preço desde a primeira cobrança. Use para 'assinaturas', 'cobranças repetidas', 'onde posso economizar'.",
+    "Finds charges that repeat monthly at the same merchant, with annualised cost and price drift since the first charge. Use for 'assinaturas', 'cobranças repetidas', 'onde posso economizar'.",
   inputSchema: z.object({
     minOccurrences: z
       .number()
@@ -22,7 +22,7 @@ export default defineTool({
       .min(2)
       .max(24)
       .optional()
-      .describe("Mínimo de cobranças para considerar recorrência. Padrão 3."),
+      .describe("Minimum number of charges to count as a recurrence. Defaults to 3."),
   }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);
@@ -36,7 +36,7 @@ export default defineTool({
       return {
         empty: true as const,
         message:
-          "Nenhuma cobrança recorrente identificada. Isso pode significar que ainda há poucos meses de histórico — o padrão precisa de ao menos três cobranças para aparecer.",
+          "No recurring charge identified. This may simply mean there are few months of history — a pattern needs at least three charges to surface.",
       };
     }
 

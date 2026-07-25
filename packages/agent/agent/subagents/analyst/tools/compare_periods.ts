@@ -15,7 +15,7 @@ import { loadLedger } from "../lib/query";
  */
 export default defineTool({
   description:
-    "Compara os gastos de dois períodos por categoria e mostra quem explica a variação. Use para 'por que subiu', 'comparado ao mês passado'.",
+    "Compares spending across two periods by category and shows what accounts for the change. Use for 'por que subiu', 'comparado ao mês passado'.",
   inputSchema: z.object({
     currentFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     currentTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

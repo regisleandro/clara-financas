@@ -17,7 +17,7 @@ import { daysUntil, todayInSaoPaulo } from "../lib/dates";
  */
 export default defineTool({
   description:
-    "Lista os vencimentos e lembretes ativos, com quantos dias faltam. Use para responder o que está por vencer.",
+    "Lists active due dates and reminders, with how many days remain. Use to answer what is coming due.",
   inputSchema: z.object({
     withinDays: z
       .number()
@@ -25,7 +25,7 @@ export default defineTool({
       .min(0)
       .max(365)
       .optional()
-      .describe("Só os que vencem dentro deste prazo. Omita para todos."),
+      .describe("Only those due within this many days. Omit for all of them."),
   }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);

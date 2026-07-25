@@ -24,7 +24,7 @@ const id = (prefix: string) => `${prefix}_${randomUUID().replace(/-/g, "").slice
 
 export default defineTool({
   description:
-    "Registra como rascunho as transações extraídas de um documento e confere a soma contra o total declarado. Use logo após o extrator devolver o lote. Nada entra no razão aqui — só depois da aprovação da pessoa.",
+    "Records the transactions extracted from a document as a draft and checks the sum against the declared total. Use right after the extractor returns the batch. Nothing enters the ledger here — only after the person approves.",
   inputSchema: z.object({
     documentId: z.string().min(1),
     issuer: z
@@ -32,7 +32,7 @@ export default defineTool({
       .nullable()
       .optional()
       .describe(
-        "Quem emitiu o documento, como aparece nele — 'Nubank', 'Itaú'. Preencha sempre que o documento identificar: é o título do cartão de conferência.",
+        "Who issued the document, as printed on it — 'Nubank', 'Itaú'. Always fill this when the document identifies the issuer: it becomes the title of the verification card.",
       ),
     periodStart: z.string().nullable().optional(),
     periodEnd: z.string().nullable().optional(),
@@ -42,7 +42,7 @@ export default defineTool({
       .int()
       .nullable()
       .optional()
-      .describe("Total declarado no documento, EM CENTAVOS. null se o documento não declara."),
+      .describe("Total declared in the document, IN CENTS. null when the document declares none."),
     declaredSubtotals: z
       .object({
         fees: z.number().int().nullable().optional(),
@@ -51,7 +51,7 @@ export default defineTool({
       .nullable()
       .optional()
       .describe(
-        'Subtotais do RESUMO da fatura, em centavos: "IOF de compras internacionais" em `fees`, "Total de compras" em `purchases`. É o que permite dizer ONDE está uma divergência.',
+        'Subtotals from the invoice SUMMARY block, in cents: "IOF de compras internacionais" into `fees`, "Total de compras" into `purchases`. These are what make it possible to say WHERE a discrepancy is.',
       ),
     transactions: z.array(
       z.object({
@@ -61,7 +61,7 @@ export default defineTool({
         amount: z
           .number()
           .int()
-          .describe("EM CENTAVOS, sinalizado: despesa > 0, crédito (pagamento/estorno) < 0."),
+          .describe("IN CENTS, signed: expense > 0, credit (payment/refund) < 0."),
         kind: z.enum(["purchase", "payment", "refund", "fee", "adjustment"]).optional(),
         installment: z
           .object({ current: z.number().int().positive(), total: z.number().int().positive() })
@@ -144,7 +144,7 @@ export default defineTool({
         error: "documento_ja_registrado" as const,
         batchId: confirmed.id,
         message:
-          "Esta fatura já foi registrada no razão. Não proponha de novo — se algo está errado, registre um ajuste.",
+          "This invoice is already recorded in the ledger. Do not propose it again — if something is wrong, record an adjustment.",
       };
     }
 
@@ -243,7 +243,7 @@ export default defineTool({
       issuer: batch.issuer,
       transactionCount: batch.transactions.length,
       checksum,
-      next: "Se a conferência estiver boa, chame `commit_batch` para abrir a decisão. Não pergunte em texto se pode registrar.",
+      next: "If the verification looks good, call `commit_batch` to open the decision. Do not ask in prose whether you may record it.",
     };
   },
 });

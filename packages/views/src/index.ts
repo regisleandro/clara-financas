@@ -31,7 +31,7 @@ export const ProvenanceSchema = z.object({
 });
 
 const RowSchema = z.object({
-  label: z.string().min(1).describe("Rótulo em português, já traduzido."),
+  label: z.string().min(1).describe("Row label, in Brazilian Portuguese. Use the `label` a tool returned, never the raw identifier."),
   amount: cents.optional(),
   /** Texto livre à direita — participação, variação, contagem. */
   detail: z.string().optional(),
@@ -52,11 +52,11 @@ const MetricSchema = z.object({
 });
 
 const base = {
-  title: z.string().min(1).describe("Título curto, em português."),
+  title: z.string().min(1).describe("Short panel title, in Brazilian Portuguese."),
   summary: z
     .string()
     .optional()
-    .describe("Uma frase explicando o que o painel mostra. Não repita a resposta do chat."),
+    .describe("One sentence, in Brazilian Portuguese, saying what the panel shows. Do not repeat the chat reply."),
 };
 
 /**
@@ -115,7 +115,7 @@ export const ViewSchema = z.discriminatedUnion("kind", [
     extractedTotal: cents,
     difference: cents,
     result: z.enum(["match", "mismatch", "no_declared_total"]),
-    cause: z.string().optional().describe("Causa provável, em português."),
+    cause: z.string().optional().describe("Likely cause, in Brazilian Portuguese."),
     rows: z.array(RowSchema).max(20).default([]),
   }),
 ]);

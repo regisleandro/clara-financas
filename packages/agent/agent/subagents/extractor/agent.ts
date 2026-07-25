@@ -15,6 +15,6 @@ import { extractorModel } from "../../lib/models";
  */
 export default defineAgent({
   description:
-    "Transforma o texto de um documento financeiro (fatura de cartão, extrato, nota fiscal) em transações estruturadas propostas, com grau de confiança e localização por página. Delegue quando houver um documento a interpretar.",
+    "Turns the text of a financial document (card invoice, bank statement, receipt) into proposed structured transactions, with a confidence grade and per-page location. Delegate when there is a document to interpret.",
   model: extractorModel(),
 });

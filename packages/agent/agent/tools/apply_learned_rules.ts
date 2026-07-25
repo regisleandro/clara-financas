@@ -26,13 +26,13 @@ import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
  */
 export default defineTool({
   description:
-    "Aplica as regras de categorização já aprovadas às transações que ainda estão sem categoria. Exige aprovação. Use depois de aprender uma regra nova, ou quando a pessoa pedir para organizar o que ficou sem categoria.",
+    "Applies already-approved categorisation rules to transactions that still have no category. Requires approval. Use after learning a new rule, or when the person asks to tidy up what was left uncategorised.",
   inputSchema: z.object({
     dryRun: z
       .boolean()
       .optional()
       .describe(
-        "true devolve o que SERIA aplicado, sem gravar. Use para mostrar o alcance antes de pedir a decisão.",
+        "true returns what WOULD be applied, without writing. Use to show the reach before asking for the decision.",
       ),
   }),
 
@@ -68,7 +68,7 @@ export default defineTool({
           return {
             empty: true as const,
             message:
-              "Ainda não há regra aprendida. Uma regra nasce quando a pessoa corrige uma categoria e aprova guardar a correção.",
+              "No rule has been learned yet. A rule is born when the person corrects a category and approves keeping the correction.",
           };
         }
 
@@ -78,7 +78,7 @@ export default defineTool({
           return {
             empty: true as const,
             message:
-              "As regras existentes não apontam para uma categoria válida. Uma regra precisa referenciar a categoria com link, ex.: [Assinaturas](/categories/subscriptions.md).",
+              "The existing rules do not point at a valid category. A rule must reference the category by link, e.g. [Assinaturas](/categories/subscriptions.md).",
           };
         }
 

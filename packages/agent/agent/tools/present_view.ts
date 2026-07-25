@@ -22,7 +22,7 @@ import { requireTenantCaller } from "../lib/tenant";
  */
 export default defineTool({
   description:
-    "Mostra a resposta como painel rico ao lado da conversa. Chame SEMPRE que a resposta tiver números, comparação, lista ou conferência — o texto do chat vira o resumo curto, e o detalhe vai para o painel. Não use para respostas puramente conversacionais.",
+    "Renders the answer as a rich panel beside the conversation. Call this WHENEVER the answer involves numbers, a comparison, a list, or a verification — the chat text becomes the short summary and the detail goes to the panel. All text inside the payload must be Brazilian Portuguese, because it is rendered to the person verbatim. Do not use for purely conversational replies.",
   inputSchema: ViewSchema,
 
   async execute(input, ctx) {
@@ -43,8 +43,8 @@ export default defineTool({
       provenanceCount: ids.length,
       note:
         ids.length === 0
-          ? "Painel exibido sem proveniência: a pessoa não conseguirá abrir as transações de origem. Inclua transactionIds nas linhas quando o número vier do razão."
-          : "Painel exibido. Responda no chat em 2 a 3 frases, sem repetir os números do painel.",
+          ? "Panel shown without provenance: the person will not be able to open the source transactions. Include transactionIds on the rows whenever the number comes from the ledger."
+          : "Panel shown. Reply in the chat in 2-3 sentences, in Brazilian Portuguese, without repeating the panel's numbers.",
     };
   },
 });

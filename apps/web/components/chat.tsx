@@ -184,19 +184,26 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
   return (
     <div className="flex">
       <div className="min-w-0 flex-1">
-        <div className="mx-auto flex min-h-[calc(100svh-3rem)] w-full max-w-[720px] flex-col px-6">
-          <Conversation className="flex-1">
-            <ConversationContent className="space-y-8 px-0 pb-8 pt-16">
-              <ChatHeader
-                onReset={isWelcome ? null : () => agent.reset()}
-                onToggleArtifact={
-                  artifact === null && presented === null
-                    ? null
-                    : () => setArtifactOpen((open) => !open)
-                }
-                artifactOpen={artifactOpen}
-              />
+        {/* Altura FIXA, não mínima: é o que dá à conversa uma caixa com fim,
+            para ela rolar por dentro em vez de empurrar a página. Sem isso o
+            cabeçalho não teria como ficar parado — ele rolava junto. */}
+        <div className="mx-auto flex h-[calc(100svh-3rem)] w-full max-w-[720px] flex-col px-6">
+          <div className="shrink-0 bg-background pb-4 pt-8">
+            <ChatHeader
+              onReset={isWelcome ? null : () => agent.reset()}
+              onToggleArtifact={
+                artifact === null && presented === null
+                  ? null
+                  : () => setArtifactOpen((open) => !open)
+              }
+              artifactOpen={artifactOpen}
+            />
+          </div>
 
+          {/* `min-h-0` é o que permite encolher abaixo do conteúdo: sem ele um
+              filho flex cresce e a rolagem interna nunca acontece. */}
+          <Conversation className="min-h-0 flex-1">
+            <ConversationContent className="space-y-8 px-0 pb-8 pt-4">
               {isWelcome ? (
                 <ChatWelcome
                   name={name}

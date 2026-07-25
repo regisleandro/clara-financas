@@ -21,7 +21,7 @@ import { brief, loadLedger } from "../lib/query";
  */
 export default defineTool({
   description:
-    "Verifica quais transações sem categoria seriam categorizadas pelas regras já aprendidas. Não grava nada — devolve o que se aplicaria.",
+    "Checks which uncategorised transactions the already-learned rules would categorise. Writes nothing — returns what would apply.",
   inputSchema: z.object({
     from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -81,7 +81,7 @@ export default defineTool({
       matchedCount: matches.length,
       matches,
       // Dito explicitamente para o modelo não anunciar como feito.
-      note: "Nada foi gravado. Apresente à pessoa antes de registrar.",
+      note: "Nothing was written. Present this to the person before recording anything.",
     };
   },
 });
