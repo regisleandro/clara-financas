@@ -15,6 +15,20 @@ export function instanceTenantId(): string | undefined {
 export type TenantCaller = { tenantId: string; userId: string };
 
 /**
+ * O mínimo que o guard precisa enxergar.
+ *
+ * Declarado estruturalmente porque ele roda em dois lugares com contextos
+ * diferentes: nas tools (`SessionContext`) e nos resolvedores de instruções
+ * dinâmicas (`DynamicResolveContext`, que não tem sandbox nem skills). Ambos
+ * carregam a sessão autenticada, que é a única coisa lida aqui — exigir o
+ * contexto completo obrigaria a duplicar o guard, e guard duplicado é guard
+ * que uma hora diverge.
+ */
+export type AuthenticatedContext = {
+  session: { auth: SessionContext["session"]["auth"] };
+};
+
+/**
  * Guard obrigatório na entrada de TODA tool.
  *
  * O tenantId nunca vem do input da tool — vem da sessão autenticada. Um
@@ -23,7 +37,7 @@ export type TenantCaller = { tenantId: string; userId: string };
  * O `typeof === "string"` não é zelo excessivo: `attributes` é
  * `Record<string, unknown>` e os próprios exemplos da doc do eve passam arrays.
  */
-export function requireTenantCaller(ctx: SessionContext): TenantCaller {
+export function requireTenantCaller(ctx: AuthenticatedContext): TenantCaller {
   const caller = ctx.session.auth.current;
   const tenantId = caller?.attributes?.tenantId;
 

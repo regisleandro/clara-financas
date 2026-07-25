@@ -25,6 +25,9 @@ export default defineTool({
       .describe("Ids returned by another analysis. Use to drill into a number."),
     from: optionalText().describe("Start date, YYYY-MM-DD."),
     to: optionalText().describe("End date, YYYY-MM-DD, inclusive."),
+    batchId: optionalText().describe(
+      "Restrict to ONE invoice, by the batchId shown in the ledger state. Prefer this over guessing dates whenever the question is about a specific invoice or 'nesta fatura'.",
+    ),
     search: optionalText().describe("Text to match in the description or the merchant."),
     category: optionalText().describe("Filter by category identifier."),
     uncategorizedOnly: z
@@ -37,7 +40,11 @@ export default defineTool({
 
     // O filtro por data vai ao banco; o resto é em memória, porque o volume de
     // um razão pessoal cabe folgadamente e evita montar SQL dinâmico aqui.
-    let rows = await loadLedger(tenantId, { from: input.from, to: input.to });
+    let rows = await loadLedger(tenantId, {
+      from: input.from,
+      to: input.to,
+      batchId: input.batchId,
+    });
 
     if (input.transactionIds !== undefined && input.transactionIds.length > 0) {
       const wanted = new Set(input.transactionIds);

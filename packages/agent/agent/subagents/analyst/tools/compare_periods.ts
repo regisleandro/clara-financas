@@ -3,6 +3,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { categoryLabel, loadCategoryLabels } from "../../../lib/categories";
+import { optionalText } from "../../../lib/schema";
 import { requireTenantCaller } from "../../../lib/tenant";
 import { loadLedger } from "../lib/query";
 
@@ -17,17 +18,49 @@ export default defineTool({
   description:
     "Compares spending across two periods by category and shows what accounts for the change. Use for 'por que subiu', 'comparado ao mês passado'.",
   inputSchema: z.object({
-    currentFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    currentTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    previousFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    previousTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    // Duas formas de recortar, e a de FATURA é a preferida quando a pergunta
+    // é sobre faturas. Ciclos consecutivos se tocam na virada do mês (uma
+    // termina em 31/05, a outra começa em 31/05), então recortar por data
+    // contava a mesma compra dos dois lados e produzia uma variação que não
+    // existia.
+    currentBatchId: optionalText().describe(
+      "Invoice to use as the CURRENT period, by batchId. Preferred over dates when comparing invoices.",
+    ),
+    previousBatchId: optionalText().describe(
+      "Invoice to use as the PREVIOUS period, by batchId.",
+    ),
+    currentFrom: optionalText().describe("Start of the current period, YYYY-MM-DD."),
+    currentTo: optionalText().describe("End of the current period, YYYY-MM-DD, inclusive."),
+    previousFrom: optionalText().describe("Start of the previous period, YYYY-MM-DD."),
+    previousTo: optionalText().describe("End of the previous period, YYYY-MM-DD, inclusive."),
   }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);
 
+    const currentIsSet = input.currentBatchId !== undefined || input.currentFrom !== undefined;
+    const previousIsSet = input.previousBatchId !== undefined || input.previousFrom !== undefined;
+
+    if (!currentIsSet || !previousIsSet) {
+      // Falhar com instrução é melhor que comparar contra um recorte vazio e
+      // devolver uma variação de 100% que o modelo apresentaria como fato.
+      return {
+        error: "recorte_incompleto" as const,
+        message:
+          "Comparison needs BOTH sides. Pass currentBatchId + previousBatchId (preferred), or currentFrom/currentTo + previousFrom/previousTo. The invoices available are in the ledger state.",
+      };
+    }
+
     const [current, previous] = await Promise.all([
-      loadLedger(tenantId, { from: input.currentFrom, to: input.currentTo }),
-      loadLedger(tenantId, { from: input.previousFrom, to: input.previousTo }),
+      loadLedger(tenantId, {
+        from: input.currentFrom,
+        to: input.currentTo,
+        batchId: input.currentBatchId,
+      }),
+      loadLedger(tenantId, {
+        from: input.previousFrom,
+        to: input.previousTo,
+        batchId: input.previousBatchId,
+      }),
     ]);
 
     if (current.length === 0 && previous.length === 0) {
@@ -38,6 +71,13 @@ export default defineTool({
     const labels = await loadCategoryLabels(tenantId);
 
     return {
+      // Qual recorte foi de fato usado — sem isso a resposta diz "subiu 12%"
+      // sem dizer em relação a quê, e a pessoa não tem como conferir.
+      compared: {
+        current: input.currentBatchId ?? `${input.currentFrom ?? "?"} a ${input.currentTo ?? "?"}`,
+        previous:
+          input.previousBatchId ?? `${input.previousFrom ?? "?"} a ${input.previousTo ?? "?"}`,
+      },
       currentTotal: {
         cents: totalSpend(current).value,
         formatted: formatCents(totalSpend(current).value),

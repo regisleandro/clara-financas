@@ -39,32 +39,34 @@ import { findPresentedView } from "@clara-financas/views/stream";
  * via Streamdown), PromptInput, Task (trace), Artifact (painel), Suggestions.
  */
 
-const STARTERS: readonly Starter[] = [
+/**
+ * Atalhos e follow-ups chegam PRONTOS do servidor, derivados do razão.
+ *
+ * Eram constantes aqui, iguais em todo estado — e duas delas eram becos sem
+ * saída para quem tem uma fatura só: comparar com um período anterior que não
+ * existe, procurar recorrência sem intervalo a medir. Um atalho que não pode
+ * funcionar ensina que a ferramenta não responde.
+ *
+ * O fallback cobre só o caso de o razão estar vazio ou a carga falhar; com ele
+ * a tela nunca fica sem a única ação que sempre funciona.
+ */
+const FALLBACK_STARTERS: readonly Starter[] = [
   { title: "Enviar um documento", note: "Fatura, extrato ou nota fiscal em PDF", prompt: null },
-  {
-    title: "Analisar meus gastos",
-    note: "Compare períodos, categorias e recorrências",
-    prompt: "Por que meus gastos mudaram? Compare os períodos que existem no razão.",
-  },
-  {
-    title: "Encontrar recorrências",
-    note: "O que repete todo mês e o que já não uso",
-    prompt: "O que está repetindo todo mês? Mostre o custo anual de cada uma.",
-  },
-  {
-    title: "Cuidar de um prazo",
-    note: "Lembretes de vencimento antes da preocupação",
-    prompt: "Quais compromissos estão por vencer?",
-  },
 ];
 
-const FOLLOWUPS = [
-  "Detalhar por categoria",
-  "Comparar com o período anterior",
-  "O que repete todo mês?",
-];
+const FALLBACK_FOLLOWUPS = ["Detalhar por categoria"];
 
-export function Chat({ agentHost, name }: { agentHost: string; name: string | null }) {
+export function Chat({
+  agentHost,
+  name,
+  starters,
+  followups,
+}: {
+  agentHost: string;
+  name: string | null;
+  starters: readonly Starter[];
+  followups: readonly string[];
+}) {
   const tokenRef = useRef<{ value: string; expiresAt: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [answered, setAnswered] = useState<boolean | null>(null);
@@ -218,7 +220,7 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
               {isWelcome ? (
                 <ChatWelcome
                   name={name}
-                  starters={STARTERS}
+                  starters={starters.length > 0 ? starters : FALLBACK_STARTERS}
                   disabled={busy || uploading}
                   onPick={(starter) => {
                     if (starter.prompt === null) fileRef.current?.click();
@@ -269,7 +271,7 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
                 <div>
                   <p className="clara-eyebrow mb-3">Continuar</p>
                   <Suggestions>
-                    {FOLLOWUPS.map((followup) => (
+                    {(followups.length > 0 ? followups : FALLBACK_FOLLOWUPS).map((followup) => (
                       <Suggestion key={followup} suggestion={followup} onClick={send} />
                     ))}
                   </Suggestions>

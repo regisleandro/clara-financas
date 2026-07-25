@@ -19,10 +19,17 @@ export default defineTool({
   inputSchema: z.object({
     from: optionalText().describe("Start date, YYYY-MM-DD. Omit for the whole ledger."),
     to: optionalText().describe("End date, YYYY-MM-DD, inclusive."),
+    batchId: optionalText().describe(
+      "Restrict to ONE invoice, by the batchId shown in the ledger state. Prefer this over guessing dates whenever the question is about a specific invoice or 'nesta fatura'.",
+    ),
   }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);
-    const ledger = await loadLedger(tenantId, { from: input.from, to: input.to });
+    const ledger = await loadLedger(tenantId, {
+      from: input.from,
+      to: input.to,
+      batchId: input.batchId,
+    });
 
     if (ledger.length === 0) {
       // Vazio sem contexto é ambíguo: razão vazio, ou recorte errado? Dizer o
@@ -44,7 +51,7 @@ export default defineTool({
     const labels = await loadCategoryLabels(tenantId);
 
     return {
-      period: { from: input.from ?? null, to: input.to ?? null },
+      period: { from: input.from ?? null, to: input.to ?? null, batchId: input.batchId ?? null },
       total: {
         cents: total.value,
         formatted: formatCents(total.value),

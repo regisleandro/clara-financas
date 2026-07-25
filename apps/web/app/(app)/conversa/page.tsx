@@ -1,6 +1,7 @@
 import { env } from "@clara-financas/env/web";
 
 import { Chat } from "@/components/chat";
+import { loadFollowups, loadStarters } from "@/lib/starters";
 import { getTenantContext } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
@@ -13,5 +14,14 @@ export default async function ConversaPage() {
   const agentHost = context?.agentHost ?? env.NEXT_PUBLIC_AGENT_HOST;
   const firstName = context?.name?.split(" ")[0] ?? null;
 
-  return <Chat agentHost={agentHost} name={firstName} />;
+  // Os atalhos são derivados no SERVIDOR, junto da página. Passá-los prontos
+  // evita um segundo round-trip só para descobrir o que oferecer, e mantém a
+  // consulta ao razão do lado que já tem o escopo do tenant.
+  const [starters, followups] = context
+    ? await Promise.all([loadStarters(context.tenantId), loadFollowups(context.tenantId)])
+    : [[], []];
+
+  return (
+    <Chat agentHost={agentHost} name={firstName} starters={starters} followups={followups} />
+  );
 }
