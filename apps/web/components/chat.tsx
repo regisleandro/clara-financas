@@ -24,7 +24,7 @@ import { ExecutionTrace } from "@/components/execution-trace";
 import { ViewPanel } from "@/components/view-panel";
 import { deriveActivity } from "@/lib/activity";
 import { batchArtifact, type BatchProposal } from "@/lib/artifact";
-import { findLatestBatchProposal, findPendingRequest } from "@/lib/input-request";
+import { findOpenBatchProposal, findPendingRequest } from "@clara-financas/views/hitl";
 import { findPresentedView } from "@clara-financas/views/stream";
 
 /**
@@ -129,7 +129,11 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
     }
   }
 
-  const proposal = findLatestBatchProposal(agent.data.messages) as BatchProposal | null;
+  // `findOpenBatchProposal` some assim que o lote é registrado. Antes o cartão
+  // sobrevivia ao commit, continuando a oferecer "Registrar fatura" sobre algo
+  // que já entrou no razão — pior que um botão inútil, porque sugere que nada
+  // aconteceu e convida a registrar de novo.
+  const proposal = findOpenBatchProposal(agent.data.messages) as BatchProposal | null;
   const canApprove = pending?.toolName === "commit_batch" && answered === null;
 
   /**
@@ -170,10 +174,13 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
           : sendRef.current(
               `Descarte o lote ${proposal.batchId}. Não quero registrar essa fatura.`,
             ),
-      disabled: busy,
+      // `answered !== null` cobre a janela entre o clique e o resultado: a
+      // decisão já foi enviada, e um segundo clique ali pediria o registro de
+      // novo. O painel some sozinho quando o commit volta confirmado.
+      disabled: busy || answered !== null,
       pendingGate: canApprove,
     });
-  }, [proposal, busy, canApprove]);
+  }, [proposal, busy, canApprove, answered]);
 
   // Painel novo reabre a coluna: a pessoa acabou de pedir algo que o produz.
   const openKey = artifact?.title ?? presented?.title ?? null;
@@ -183,12 +190,14 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
 
   return (
     <div className="flex">
-      <div className="min-w-0 flex-1">
-        {/* Altura FIXA, não mínima: é o que dá à conversa uma caixa com fim,
-            para ela rolar por dentro em vez de empurrar a página. Sem isso o
-            cabeçalho não teria como ficar parado — ele rolava junto. */}
-        <div className="mx-auto flex h-[calc(100svh-3rem)] w-full max-w-[720px] flex-col px-6">
-          <div className="shrink-0 bg-background pb-4 pt-8">
+      {/* Altura FIXA, não mínima: é o que dá à conversa uma caixa com fim,
+          para ela rolar por dentro em vez de empurrar a página. E quem rola é
+          esta coluna INTEIRA, não o miolo de 720px — senão a barra de rolagem
+          nasce no meio da tela, encostada no texto. A largura de leitura é
+          imposta por dentro, em cada faixa. */}
+      <div className="flex h-[calc(100svh-3rem)] min-w-0 flex-1 flex-col">
+        <div className="shrink-0 bg-background">
+          <div className="mx-auto w-full max-w-[720px] px-6 pb-4 pt-8">
             <ChatHeader
               onReset={isWelcome ? null : () => agent.reset()}
               onToggleArtifact={
@@ -199,11 +208,12 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
               artifactOpen={artifactOpen}
             />
           </div>
+        </div>
 
-          {/* `min-h-0` é o que permite encolher abaixo do conteúdo: sem ele um
-              filho flex cresce e a rolagem interna nunca acontece. */}
-          <Conversation className="min-h-0 flex-1">
-            <ConversationContent className="space-y-8 px-0 pb-8 pt-4">
+        {/* `min-h-0` é o que permite encolher abaixo do conteúdo: sem ele um
+            filho flex cresce e a rolagem interna nunca acontece. */}
+        <Conversation className="min-h-0 flex-1">
+          <ConversationContent className="mx-auto w-full max-w-[720px] space-y-8 px-6 pb-8 pt-4">
               {isWelcome ? (
                 <ChatWelcome
                   name={name}
@@ -258,11 +268,12 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
               {agent.error ? (
                 <p className="clara-card p-5 text-[var(--clara-amber)]">{agent.error.message}</p>
               ) : null}
-            </ConversationContent>
-            <ConversationScrollButton />
-          </Conversation>
+          </ConversationContent>
+          <ConversationScrollButton />
+        </Conversation>
 
-          <div className="sticky bottom-0 bg-background pb-8 pt-2">
+        <div className="shrink-0 bg-background">
+          <div className="mx-auto w-full max-w-[720px] px-6 pb-8 pt-2">
             <PromptInput
               className="items-center rounded-[var(--clara-radius-card)] py-1.5 pl-2 pr-1.5"
               onSubmit={(message, event) => {

@@ -33,12 +33,7 @@ export function ChatWelcome({
       <h1 className="clara-display-lg text-pretty">
         Oi{name === null ? "" : `, ${name}`}. O que fazemos com o seu dinheiro agora?
       </h1>
-      <p className="clara-lead mb-12 mt-6">
-        Posso organizar documentos, explicar seus gastos ou cuidar de um compromisso. Os cálculos
-        vêm de ferramentas verificáveis e nada é salvo sem sua aprovação.
-      </p>
-
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="mt-12 grid gap-4 sm:grid-cols-2">
         {starters.map((starter) => (
           <button
             key={starter.title}
