@@ -26,7 +26,8 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "sonner": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@clara-financas/ledger": "workspace:*"
   },
   "devDependencies": {
     "@clara-financas/config": "workspace:*",
