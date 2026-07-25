@@ -1,0 +1,3 @@
+{
+  "extends": "@clara-financas/config/tsconfig.base.json"
+}

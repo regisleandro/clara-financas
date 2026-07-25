@@ -1,0 +1,9 @@
+{
+  "extends": "@clara-financas/config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ESNext", "DOM"]
+  },
+  "include": ["agent/**/*.ts"],
+  "exclude": ["node_modules", ".eve"]
+}

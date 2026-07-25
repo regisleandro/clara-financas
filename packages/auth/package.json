@@ -1,0 +1,24 @@
+{
+  "name": "@clara-financas/auth",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "@clara-financas/db": "workspace:*",
+    "@clara-financas/env": "workspace:*",
+    "better-auth": "catalog:",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@clara-financas/config": "workspace:*",
+    "typescript": "catalog:"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "@clara-financas/agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "eve dev",
+    "build": "eve build",
+    "start": "eve start",
+    "info": "eve info",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ai": "catalog:",
+    "eve": "catalog:",
+    "zod": "catalog:",
+    "@vercel/connect": "0.4.2"
+  },
+  "devDependencies": {
+    "@clara-financas/config": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}
