@@ -3,7 +3,6 @@ import { batches, transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import { and, eq } from "drizzle-orm";
 import { defineTool } from "eve/tools";
-import { always } from "eve/tools/approval";
 import { z } from "zod";
 
 import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
@@ -36,12 +35,17 @@ export default defineTool({
     const initiator = tenantIdOf(ctx.session.auth.initiator);
 
     // Sessão que não está fixada a um único tenant não aprova nada. Cobre o
-    // caso de um chamador diferente retomar uma sessão estacionada.
+    // caso de um chamador diferente retomar uma sessão estacionada — que é
+    // possível, porque `auth.current` acompanha o turno e `auth.initiator`
+    // permanece em quem criou a sessão.
     if (current === undefined || current !== initiator) {
       return { type: "denied", reason: "A sessão não está fixada a um único usuário." };
     }
 
-    return always()(ctx);
+    // Equivalente a `always()`, na forma documentada de política: pausa o
+    // turno e espera uma pessoa. Usar a string evita depender do formato
+    // interno que o helper retorna.
+    return "user-approval";
   },
 
   async execute(input, ctx) {

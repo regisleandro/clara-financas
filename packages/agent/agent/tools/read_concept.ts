@@ -5,6 +5,7 @@ import { and, eq, like } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
+import { optionalText } from "../lib/schema";
 import { requireTenantCaller } from "../lib/tenant";
 
 /**
@@ -27,20 +28,15 @@ export default defineTool({
       .describe(
         "constitution para o contrato do domínio (categorias, convenções, regras); learnings para o que foi aprendido sobre esta pessoa.",
       ),
-    conceptId: z
-      .string()
-      .optional()
-      .describe(
-        'ID exato do conceito, ex.: "categories/groceries". Omita para listar o bundle inteiro.',
-      ),
-    type: z
-      .string()
-      .optional()
-      .describe('Filtra por tipo, ex.: "Category", "AlertRule", "Convention".'),
-    prefix: z
-      .string()
-      .optional()
-      .describe('Filtra por prefixo de caminho, ex.: "categories/".'),
+    // optionalText trata "" como ausente: modelos preenchem campos opcionais
+    // com string vazia, e isso viraria filtro `= ''` — que não casa com nada.
+    conceptId: optionalText().describe(
+      'ID exato do conceito, ex.: "categories/groceries". Omita para listar o bundle inteiro.',
+    ),
+    type: optionalText().describe(
+      'Filtra por tipo, ex.: "Category", "AlertRule", "Convention".',
+    ),
+    prefix: optionalText().describe('Filtra por prefixo de caminho, ex.: "categories/".'),
   }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);

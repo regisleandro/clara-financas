@@ -14,6 +14,7 @@
     "@clara-financas/db": "workspace:*",
     "@clara-financas/env": "workspace:*",
     "@clara-financas/ui": "workspace:*",
+    "@vercel/blob": "catalog:",
     "better-auth": "catalog:",
     "drizzle-orm": "catalog:",
     "eve": "catalog:",

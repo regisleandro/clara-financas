@@ -44,6 +44,9 @@ lerna-debug.log*
 .eve
 .output
 
+# Documentos enviados em desenvolvimento (PDFs de fatura reais)
+.data
+
 # Better-T-Stack
 .alchemy
 .vercel
