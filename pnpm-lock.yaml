@@ -172,9 +172,15 @@ importers:
 
   packages/agent:
     dependencies:
+      '@ai-sdk/openai':
+        specifier: ^4.0.20
+        version: 4.0.20(zod@4.4.3)
       '@clara-financas/db':
         specifier: workspace:*
         version: link:../db
+      '@clara-financas/ledger':
+        specifier: workspace:*
+        version: link:../ledger
       '@clara-financas/okf':
         specifier: workspace:*
         version: link:../okf
@@ -184,12 +190,18 @@ importers:
       ai:
         specifier: 'catalog:'
         version: 7.0.37(zod@4.4.3)
+      dotenv:
+        specifier: 'catalog:'
+        version: 17.4.2
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@libsql/client@0.17.4)(bun-types@1.3.14)(kysely@0.29.4)(postgres@3.4.9)
       eve:
         specifier: 'catalog:'
         version: 0.27.6(@libsql/client@0.17.4)(@vercel/blob@2.4.0)(ai@7.0.37(zod@4.4.3))(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@libsql/client@0.17.4)(bun-types@1.3.14)(kysely@0.29.4)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(vite@8.1.5(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      unpdf:
+        specifier: ^1.8.0
+        version: 1.8.0
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -390,6 +402,12 @@ packages:
 
   '@ai-sdk/gateway@4.0.28':
     resolution: {integrity: sha512-ee9TsNO3mkgHDWmTmJ8Fvltr6PFh52zhrV2+FaKJY3F3iu7kWZi5tCRJCR1HVhhlpj6lHniUb28nLQdPHkA/1Q==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/openai@4.0.20':
+    resolution: {integrity: sha512-/Hu+btLIO2zuYqCp//vBBAGdM/BeN4gds+NWrlv7Y9WrcTXwnEEwh6P3QZIWh2Tt1I1lswuDIpAJ4t/c/rws3Q==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -4752,6 +4770,15 @@ packages:
     resolution: {integrity: sha512-gptHNQghINnc/vTGIk0SOFGFNXw7JVrlRUtConJRlvaw6DuX0wO5Jeko9sWrMBhh+PsYAZ7oXAiOnf/UKogyiw==}
     engines: {node: '>= 10.0.0'}
 
+  unpdf@1.8.0:
+    resolution: {integrity: sha512-jQlkckbe5nKxRHQdbvo9IKHlU6Cjq00UlxxB8lrCIxvS2o5IbAL1wM+4a1Yc3+BIohg9p5AsoaftwO+G4Aq/qQ==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      '@napi-rs/canvas': ^0.1.69 || ^1.0.0
+    peerDependenciesMeta:
+      '@napi-rs/canvas':
+        optional: true
+
   unpipe@1.0.0:
     resolution: {integrity: sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ==}
     engines: {node: '>= 0.8'}
@@ -5011,6 +5038,12 @@ snapshots:
       '@ai-sdk/provider': 4.0.3
       '@ai-sdk/provider-utils': 5.0.12(zod@4.4.3)
       '@vercel/oidc': 3.2.0
+      zod: 4.4.3
+
+  '@ai-sdk/openai@4.0.20(zod@4.4.3)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.3
+      '@ai-sdk/provider-utils': 5.0.12(zod@4.4.3)
       zod: 4.4.3
 
   '@ai-sdk/provider-utils@5.0.12(zod@4.4.3)':
@@ -8951,6 +8984,8 @@ snapshots:
   unicorn-magic@0.3.0: {}
 
   universalify@2.0.1: {}
+
+  unpdf@1.8.0: {}
 
   unpipe@1.0.0: {}
 

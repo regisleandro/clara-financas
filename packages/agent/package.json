@@ -20,7 +20,11 @@
     "@vercel/connect": "0.4.2",
     "@clara-financas/db": "workspace:*",
     "@clara-financas/okf": "workspace:*",
-    "drizzle-orm": "catalog:"
+    "drizzle-orm": "catalog:",
+    "@ai-sdk/openai": "^4.0.20",
+    "@clara-financas/ledger": "workspace:*",
+    "unpdf": "^1.8.0",
+    "dotenv": "catalog:"
   },
   "devDependencies": {
     "@clara-financas/config": "workspace:*",

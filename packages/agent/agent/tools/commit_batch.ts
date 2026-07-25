@@ -1,0 +1,103 @@
+import { getDb } from "@clara-financas/db";
+import { batches, transactions } from "@clara-financas/db/schema/ledger";
+import { forTenant } from "@clara-financas/db/tenant-scope";
+import { and, eq } from "drizzle-orm";
+import { defineTool } from "eve/tools";
+import { always } from "eve/tools/approval";
+import { z } from "zod";
+
+import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
+
+/**
+ * O GATE.
+ *
+ * Esta é a única porta entre o rascunho e o razão, e ela para o turno até uma
+ * pessoa decidir. `approval: always()` estaciona a execução em
+ * `session.waiting` de forma durável — pode ficar aberta por dias, sem
+ * consumir compute, e retoma exatamente onde parou.
+ *
+ * Duas coisas que a documentação do eve deixa explícitas e que este executor
+ * respeita:
+ *
+ *  1. **Aprovação é gate, não autorização.** Quem aprovou apenas tinha acesso
+ *     à sessão. Então revalidamos tenant e estado aqui dentro, depois do sim.
+ *  2. **A política pode mudar enquanto o turno está estacionado.** Por isso a
+ *     verificação acontece no momento da execução, não no da proposta.
+ */
+export default defineTool({
+  description:
+    "Registra no razão as transações de um lote já conferido pela pessoa. Exige aprovação explícita. Use somente depois de apresentar o cartão de conferência e a pessoa aprovar.",
+  inputSchema: z.object({
+    batchId: z.string().min(1).describe("ID do lote proposto, devolvido por propose_batch."),
+  }),
+
+  approval: (ctx) => {
+    const current = tenantIdOf(ctx.session.auth.current);
+    const initiator = tenantIdOf(ctx.session.auth.initiator);
+
+    // Sessão que não está fixada a um único tenant não aprova nada. Cobre o
+    // caso de um chamador diferente retomar uma sessão estacionada.
+    if (current === undefined || current !== initiator) {
+      return { type: "denied", reason: "A sessão não está fixada a um único usuário." };
+    }
+
+    return always()(ctx);
+  },
+
+  async execute(input, ctx) {
+    const { tenantId, userId } = requireTenantCaller(ctx);
+    const db = getDb();
+
+    return forTenant(
+      tenantId,
+      async (tx) => {
+        const [batch] = await tx
+          .select()
+          .from(batches)
+          .where(and(eq(batches.id, input.batchId), eq(batches.tenantId, tenantId)))
+          .limit(1);
+
+        if (!batch) return { error: "lote não encontrado" as const };
+
+        // Idempotência: um replay do passo durável não pode confirmar duas
+        // vezes. O trigger do banco também barraria, mas falhar aqui dá uma
+        // resposta útil em vez de um erro de constraint.
+        if (batch.status === "confirmed") {
+          return { batchId: batch.id, status: "confirmed" as const, alreadyConfirmed: true };
+        }
+        if (batch.status === "rejected") {
+          return { error: "este lote foi rejeitado e não pode ser registrado" as const };
+        }
+
+        const updated = await tx
+          .update(transactions)
+          .set({ status: "confirmed" })
+          .where(
+            and(
+              eq(transactions.batchId, batch.id),
+              eq(transactions.tenantId, tenantId),
+              eq(transactions.status, "proposed"),
+            ),
+          )
+          .returning({ id: transactions.id });
+
+        await tx
+          .update(batches)
+          .set({
+            status: "confirmed",
+            approvedBy: `human:${userId}`,
+            approvedAt: new Date(),
+          })
+          .where(eq(batches.id, batch.id));
+
+        return {
+          batchId: batch.id,
+          status: "confirmed" as const,
+          confirmedTransactions: updated.length,
+          checksumResult: batch.checksumResult,
+        };
+      },
+      db,
+    );
+  },
+});
