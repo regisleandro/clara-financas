@@ -8,15 +8,43 @@ import { ReviewCard, type ReviewCardData } from "@/components/review-card";
 import { findLatestBatchProposal, findPendingRequest } from "@/lib/input-request";
 
 /**
- * Conversa com a instância do agente.
+ * A conversa.
  *
  * Cross-origin por construção: o navegador fala DIRETO com a instância do
  * tenant, não com o control plane. O bearer vem de /api/token, que deriva o
- * tenantId da sessão autenticada — nunca do cliente. Do outro lado, a
- * instância confere o claim contra o próprio TENANT_ID.
+ * tenantId da sessão autenticada — nunca do cliente.
+ *
+ * No design, a resposta da Clara é tipografia grande, não balão: ela é a voz
+ * do sistema, e balão a colocaria no mesmo plano da pessoa. Só a fala do
+ * usuário recebe balão, escuro e alinhado à direita.
  */
+
+const STARTERS = [
+  {
+    title: "Enviar um documento",
+    note: "Fatura, extrato ou nota fiscal em PDF",
+    prompt: null,
+  },
+  {
+    title: "Analisar meus gastos",
+    note: "Compare períodos, categorias e recorrências",
+    prompt: "Por que meus gastos mudaram? Compare os períodos que existem no razão.",
+  },
+  {
+    title: "Encontrar recorrências",
+    note: "O que repete todo mês e o que já não uso",
+    prompt: "O que está repetindo todo mês? Mostre o custo anual de cada uma.",
+  },
+  {
+    title: "Cuidar de um prazo",
+    note: "Lembretes de vencimento antes da preocupação",
+    prompt: "Quais compromissos estão por vencer?",
+  },
+] as const;
+
 export function Chat({ agentHost }: { agentHost: string }) {
   const tokenRef = useRef<{ value: string; expiresAt: number } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const bearer = useCallback(async () => {
     const cached = tokenRef.current;
@@ -39,6 +67,7 @@ export function Chat({ agentHost }: { agentHost: string }) {
 
   const pending = findPendingRequest(agent.data.messages);
   const proposal = findLatestBatchProposal(agent.data.messages);
+  const isWelcome = agent.data.messages.length === 0;
 
   function answer(optionId: string) {
     if (!pending) return;
@@ -77,96 +106,179 @@ export function Chat({ agentHost }: { agentHost: string }) {
       : null;
 
   return (
-    <div className="flex min-h-[60vh] flex-col">
-      <div className="flex-1 space-y-6">
-        {agent.data.messages.length === 0 ? (
-          <p className="text-muted-foreground">
-            Envie uma fatura em PDF ou pergunte alguma coisa sobre seus gastos.
-          </p>
-        ) : null}
+    <div className="flex min-h-[calc(100svh-3rem)] flex-col">
+      <div className="mx-auto w-full max-w-[720px] flex-1 px-6 pb-52 pt-16">
+        <header className="mb-12 flex items-center gap-3">
+          <span className="grid size-[31px] shrink-0 place-items-center rounded-[10px] bg-[var(--clara-ink)]">
+            <svg width="19" height="19" viewBox="0 0 12 12" aria-hidden="true">
+              <circle cx="6" cy="6" r="4.7" fill="none" stroke="#f5f5f7" strokeWidth="1.2" />
+              <circle cx="6" cy="6" r="1.7" fill="#f5f5f7" />
+            </svg>
+          </span>
+          <span>
+            <strong className="clara-display-xs block">Clara</strong>
+            <small className="clara-small block">Assistente financeiro · sessão ativa</small>
+          </span>
+          {!isWelcome ? (
+            <button
+              type="button"
+              onClick={() => agent.reset()}
+              className="ml-auto rounded-[var(--clara-radius-pill)] bg-[var(--clara-ash)] px-4 py-2 text-xs"
+              style={{ letterSpacing: "-0.022em" }}
+            >
+              Nova conversa
+            </button>
+          ) : null}
+        </header>
 
-        {agent.data.messages.map((message) => (
-          <article key={message.id} className="space-y-1">
-            <p className="text-xs font-medium tracking-[0.14em] text-muted-foreground">
-              {message.role === "user" ? "VOCÊ" : "CLARA"}
+        {isWelcome ? (
+          <div>
+            <h1 className="clara-display-lg text-pretty">
+              Oi. O que fazemos com o seu dinheiro agora?
+            </h1>
+            <p className="clara-lead mb-12 mt-6">
+              Posso organizar documentos, explicar seus gastos ou cuidar de um compromisso. Os
+              cálculos são verificados e nada é salvo sem sua aprovação.
             </p>
-            {message.parts.map((part, index) =>
-              part.type === "text" ? (
-                <p key={index} className="leading-relaxed whitespace-pre-wrap">
-                  {part.text}
-                </p>
-              ) : null,
-            )}
-          </article>
-        ))}
-
-        {reviewData ? (
-          <ReviewCard
-            data={reviewData}
-            disabled={busy}
-            onApprove={() => answer("approve")}
-            onReject={() => answer("deny")}
-          />
+            <div className="grid gap-4 sm:grid-cols-2">
+              {STARTERS.map((starter) => (
+                <button
+                  key={starter.title}
+                  type="button"
+                  disabled={busy || uploading}
+                  onClick={() => {
+                    if (starter.prompt === null) fileRef.current?.click();
+                    else void agent.send({ message: starter.prompt });
+                  }}
+                  className="clara-card flex flex-col gap-2 p-7 text-left transition-colors hover:bg-[#fbfbfd] disabled:opacity-60"
+                >
+                  <strong className="clara-display-xs">{starter.title}</strong>
+                  <small className="clara-small">{starter.note}</small>
+                </button>
+              ))}
+            </div>
+          </div>
         ) : null}
 
-        {pending && !reviewData ? (
-          <GenericPrompt pending={pending} disabled={busy} onAnswer={answer} />
-        ) : null}
+        <div className="space-y-8">
+          {agent.data.messages.map((message) => {
+            const text = message.parts
+              .map((part) => (part.type === "text" ? part.text : ""))
+              .join("")
+              .trim();
+            if (text === "") return null;
 
-        {agent.error ? (
-          <p className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {agent.error.message}
-          </p>
-        ) : null}
+            if (message.role === "user") {
+              return (
+                <div key={message.id} className="flex justify-end">
+                  <p className="max-w-[78%] rounded-[22px_22px_8px_22px] bg-[var(--clara-ink)] px-[19px] py-[13px] text-[var(--clara-white)]">
+                    {text}
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <p key={message.id} className="clara-display-sm whitespace-pre-wrap text-pretty">
+                {text}
+              </p>
+            );
+          })}
+
+          {busy ? (
+            <div className="flex gap-1.5" aria-label="Clara está pensando">
+              {[0, 0.15, 0.3].map((delay) => (
+                <i
+                  key={delay}
+                  className="block size-[7px] rounded-full bg-[var(--clara-ink)]"
+                  style={{ animation: `clara-dots 1s ${delay}s infinite` }}
+                />
+              ))}
+            </div>
+          ) : null}
+
+          {reviewData ? (
+            <ReviewCard
+              data={reviewData}
+              disabled={busy}
+              onApprove={() => answer("approve")}
+              onReject={() => answer("deny")}
+            />
+          ) : null}
+
+          {pending && !reviewData ? (
+            <GenericPrompt pending={pending} disabled={busy} onAnswer={answer} />
+          ) : null}
+
+          {agent.error ? (
+            <p className="clara-card p-5 text-[var(--clara-amber)]">{agent.error.message}</p>
+          ) : null}
+        </div>
       </div>
 
-      <form
-        className="sticky bottom-0 flex gap-2 border-t bg-background py-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const message = draft.trim();
-          if (message.length === 0 || busy) return;
-          setDraft("");
-          void agent.send({ message });
+      <div
+        className="sticky bottom-0 px-6 pb-8"
+        style={{
+          background:
+            "linear-gradient(to top, var(--clara-fog) 62%, rgb(245 245 247 / 0))",
         }}
       >
-        <label className="inline-flex h-12 cursor-pointer items-center justify-center rounded-full border border-border px-5 text-sm font-medium transition-colors hover:bg-secondary">
-          {uploading ? "Enviando…" : "Fatura"}
-          <input
-            type="file"
-            accept="application/pdf"
-            className="sr-only"
-            disabled={uploading || busy}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              if (file) void upload(file);
+        <div className="mx-auto max-w-[720px]">
+          <form
+            className="clara-card flex items-center gap-3 py-2 pl-6 pr-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const message = draft.trim();
+              if (message === "" || busy) return;
+              setDraft("");
+              void agent.send({ message });
             }}
-          />
-        </label>
-        <input
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          disabled={busy}
-          placeholder="Pergunte alguma coisa…"
-          className="h-12 flex-1 rounded-full border border-border bg-background px-5 text-[15px] outline-none focus-visible:border-ring disabled:opacity-60"
-        />
-        <button
-          type="submit"
-          disabled={busy || draft.trim().length === 0}
-          className="inline-flex h-12 items-center justify-center rounded-full bg-primary px-6 text-[15px] font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
-        >
-          {busy ? "Enviando…" : "Enviar"}
-        </button>
-      </form>
+          >
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading || busy}
+              aria-label="Enviar fatura em PDF"
+              className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--clara-fog)] disabled:opacity-50"
+            >
+              {uploading ? "…" : "+"}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/pdf"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) void upload(file);
+              }}
+            />
+            <input
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              disabled={busy}
+              placeholder="Pergunte sobre seu dinheiro…"
+              className="flex-1 border-0 bg-transparent py-3.5 outline-none"
+            />
+            <button
+              type="submit"
+              disabled={busy || draft.trim() === ""}
+              className="clara-pill clara-pill-primary disabled:opacity-40"
+            >
+              Enviar
+            </button>
+          </form>
+          <p className="clara-small mt-3 text-center">
+            Os cálculos vêm de ferramentas verificáveis · nada é registrado sem sua aprovação.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
 
-/**
- * Aprovação genérica e `ask_question` — inclusive o pedido de senha do PDF,
- * que o protótipo desenha com "Só desta vez" / "Continuar".
- */
+/** Aprovação genérica e `ask_question` — inclusive o pedido de senha do PDF. */
 function GenericPrompt({
   pending,
   disabled,
@@ -184,8 +296,10 @@ function GenericPrompt({
       ];
 
   return (
-    <section className="rounded-2xl border bg-card p-6">
-      <p className="leading-relaxed">{pending.prompt ?? "A Clara precisa da sua confirmação."}</p>
+    <section className="clara-card p-7">
+      <p className="clara-display-xs">
+        {pending.prompt ?? "A Clara precisa da sua confirmação."}
+      </p>
       <div className="mt-5 flex flex-wrap gap-2">
         {options.map((option, index) => {
           const id = option.optionId ?? option.id ?? String(index);
@@ -195,7 +309,7 @@ function GenericPrompt({
               type="button"
               disabled={disabled}
               onClick={() => onAnswer(id)}
-              className="inline-flex h-11 items-center justify-center rounded-full border px-5 text-sm font-medium transition-colors hover:bg-secondary disabled:opacity-40"
+              className="clara-pill clara-pill-outline disabled:opacity-40"
             >
               {option.label ?? id}
             </button>

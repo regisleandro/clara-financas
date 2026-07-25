@@ -65,3 +65,18 @@ export async function loadAgenda(tenantId: string) {
     db,
   );
 }
+
+/** Há avisos não lidos? Alimenta o ponto azul na barra de navegação. */
+export async function hasUnreadAlerts(tenantId: string): Promise<boolean> {
+  const rows = await forTenant(
+    tenantId,
+    async (tx) =>
+      tx
+        .select({ id: notifications.id })
+        .from(notifications)
+        .where(and(eq(notifications.tenantId, tenantId), isNull(notifications.readAt)))
+        .limit(1),
+    getDb(),
+  );
+  return rows.length > 0;
+}

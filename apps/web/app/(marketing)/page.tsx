@@ -8,10 +8,8 @@ import Link from "next/link";
  * Página estática — nenhuma chamada ao agente, nenhum toque em banco de tenant.
  */
 
-const CTA_PRIMARY =
-  "inline-flex h-12 items-center justify-center rounded-full bg-primary px-7 text-[15px] font-medium text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
-const CTA_SECONDARY =
-  "inline-flex h-12 items-center justify-center rounded-full px-7 text-[15px] font-medium text-primary transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+const CTA_PRIMARY = "clara-pill clara-pill-primary";
+const CTA_SECONDARY = "clara-pill clara-pill-outline";
 
 const STEPS = [
   {
@@ -56,7 +54,7 @@ const PROOFS = [
 
 export default function LandingPage() {
   return (
-    <main className="mx-auto w-full max-w-5xl px-6">
+    <main className="clara-shell">
       <header className="flex items-center justify-between py-6">
         <span className="text-lg font-semibold tracking-tight">Clara</span>
         <Link href="/entrar" className="text-sm text-muted-foreground hover:text-foreground">
@@ -65,13 +63,13 @@ export default function LandingPage() {
       </header>
 
       <section className="py-20 sm:py-28">
-        <p className="text-xs font-medium tracking-[0.14em] text-muted-foreground">
+        <p className="clara-eyebrow">
           ASSISTENTE FINANCEIRO
         </p>
-        <h1 className="mt-4 max-w-3xl text-balance text-5xl font-semibold leading-[1.05] tracking-tight sm:text-6xl">
+        <h1 className="clara-hero mt-4 max-w-3xl text-balance">
           Seu dinheiro, explicado com clareza.
         </h1>
-        <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
+        <p className="clara-lead mt-6 max-w-xl">
           Envie suas faturas. A Clara organiza, categoriza e explica — e nada é registrado sem a sua
           aprovação.
         </p>
@@ -86,14 +84,14 @@ export default function LandingPage() {
       </section>
 
       <section className="border-t py-20">
-        <h2 className="text-sm font-medium tracking-[0.14em] text-muted-foreground">
+        <h2 className="clara-eyebrow">
           COMO FUNCIONA
         </h2>
         <div className="mt-10 grid gap-10 sm:grid-cols-3">
           {STEPS.map((step) => (
             <div key={step.n}>
               <span className="text-sm font-medium text-muted-foreground">{step.n}</span>
-              <h3 className="mt-3 text-xl font-semibold tracking-tight">{step.title}</h3>
+              <h3 className="clara-display-xs mt-3">{step.title}</h3>
               <p className="mt-2 leading-relaxed text-muted-foreground">{step.body}</p>
             </div>
           ))}
@@ -102,31 +100,31 @@ export default function LandingPage() {
 
       {PROOFS.map((proof) => (
         <section key={proof.eyebrow} className="border-t py-20">
-          <p className="text-xs font-medium tracking-[0.14em] text-muted-foreground">
+          <p className="clara-eyebrow">
             {proof.eyebrow}
           </p>
-          <h2 className="mt-4 max-w-3xl text-balance text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
+          <h2 className="clara-display-md mt-4 max-w-3xl text-balance">
             {proof.title}
           </h2>
-          <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted-foreground">
+          <p className="clara-lead mt-4 max-w-2xl">
             {proof.body}
           </p>
         </section>
       ))}
 
       <section className="border-t py-20">
-        <p className="text-xs font-medium tracking-[0.14em] text-muted-foreground">PRIVACIDADE</p>
-        <h2 className="mt-4 max-w-3xl text-balance text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
+        <p className="clara-eyebrow">PRIVACIDADE</p>
+        <h2 className="clara-display-md mt-4 max-w-3xl text-balance">
           Seu espaço é uma instância e um banco só seus.
         </h2>
-        <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted-foreground">
+        <p className="clara-lead mt-4 max-w-2xl">
           Seus dados financeiros não dividem servidor nem banco com os de mais ninguém. É separação
           de verdade, não uma coluna a mais numa tabela compartilhada.
         </p>
       </section>
 
       <section className="border-t py-24">
-        <h2 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+        <h2 className="clara-display-lg text-balance">
           Comece enviando uma fatura.
         </h2>
         <div className="mt-8">

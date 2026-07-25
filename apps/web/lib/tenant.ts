@@ -9,6 +9,8 @@ import { headers } from "next/headers";
 
 export type TenantContext = {
   userId: string;
+  /** Nome de exibição, para a saudação da Visão geral. */
+  name: string | null;
   tenantId: string;
   status: TenantStatus;
   agentHost: string | null;
@@ -30,7 +32,11 @@ function slugify(email: string) {
  * 'ready'. Etapa 4 (silo): passa a enfileirar um provisioning_job e nascer
  * 'provisioning', sem que a UI precise mudar.
  */
-export async function ensureTenant(userId: string, email: string): Promise<TenantContext> {
+export async function ensureTenant(
+  userId: string,
+  email: string,
+  name: string | null = null,
+): Promise<TenantContext> {
   const existing = await getDb().query.tenants.findFirst({
     where: eq(tenants.ownerUserId, userId),
   });
@@ -38,6 +44,7 @@ export async function ensureTenant(userId: string, email: string): Promise<Tenan
   if (existing) {
     return {
       userId,
+      name,
       tenantId: existing.id,
       status: existing.status,
       agentHost: existing.agentHost,
@@ -71,6 +78,7 @@ export async function ensureTenant(userId: string, email: string): Promise<Tenan
 
   return {
     userId,
+    name,
     tenantId: created.id,
     status: created.status,
     agentHost: created.agentHost,
@@ -81,7 +89,7 @@ export async function ensureTenant(userId: string, email: string): Promise<Tenan
 export async function getTenantContext(): Promise<TenantContext | null> {
   const session = await getAuth().api.getSession({ headers: await headers() });
   if (!session) return null;
-  return ensureTenant(session.user.id, session.user.email);
+  return ensureTenant(session.user.id, session.user.email, session.user.name ?? null);
 }
 
 /** Último job de provisionamento, para a tela /preparando. */

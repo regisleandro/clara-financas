@@ -12,16 +12,5 @@ export default async function ConversaPage() {
   // instância só, então cai no host único do env.
   const agentHost = context?.agentHost ?? env.NEXT_PUBLIC_AGENT_HOST;
 
-  return (
-    <>
-      <section>
-        <p className="text-xs font-medium tracking-[0.14em] text-muted-foreground">CONVERSA</p>
-        <h1 className="mt-4 text-3xl font-semibold tracking-tight">Fale com a Clara.</h1>
-      </section>
-
-      <div className="mt-8">
-        <Chat agentHost={agentHost} />
-      </div>
-    </>
-  );
+  return <Chat agentHost={agentHost} />;
 }

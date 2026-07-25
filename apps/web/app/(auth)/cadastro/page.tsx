@@ -5,8 +5,8 @@ import { GoogleSignIn } from "@/components/google-sign-in";
 export default function SignUpPage() {
   return (
     <>
-      <h1 className="text-3xl font-semibold tracking-tight">Comece pela primeira fatura.</h1>
-      <p className="mt-3 leading-relaxed text-muted-foreground">
+      <h1 className="clara-display-lg">Comece pela primeira fatura.</h1>
+      <p className="clara-lead mt-4">
         Criamos um espaço só seu. Nada é registrado sem a sua aprovação.
       </p>
 

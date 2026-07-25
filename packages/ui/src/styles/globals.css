@@ -7,11 +7,23 @@
 @custom-variant dark (&:is(.dark *));
 
 /**
- * Paleta Clara — extraída do protótipo Clara-Agente-Financeiro.html.
- * Mantida como tokens crus para que a landing e o app falem a mesma língua
- * visual do protótipo aprovado.
+ * Sistema Clara — redesign com linguagem Apple (Clara.dc.html).
+ *
+ * Duas famílias, como no macOS: Display para títulos, Text para leitura. O
+ * fallback é Inter Tight / Inter, que compartilham a métrica apertada — a
+ * troca de fonte não deve reescrever o layout.
+ *
+ * O tracking negativo em corpo e positivo em títulos grandes é da própria
+ * linguagem: texto pequeno pede aperto, display pede folga.
  */
 :root {
+  --clara-display:
+    "SF Pro Display", -apple-system, BlinkMacSystemFont, var(--font-clara-display, "Inter Tight"),
+    system-ui, sans-serif;
+  --clara-text:
+    "SF Pro Text", -apple-system, BlinkMacSystemFont, var(--font-clara-text, "Inter"), system-ui,
+    sans-serif;
+
   --clara-ink: #1d1d1f;
   --clara-fog: #f5f5f7;
   --clara-white: #fff;
@@ -24,10 +36,22 @@
   --clara-amber: #8b5d00;
   --clara-green-bg: #eaf7ef;
   --clara-amber-bg: #fff3d6;
+
+  /* Raios: cards generosos, pílulas totalmente arredondadas. */
+  --clara-radius-card: 28px;
+  --clara-radius-pill: 980px;
+  --clara-radius-chip: 999px;
+  --clara-radius-tile: 12px;
+
+  /* Barra fixa translúcida do topo. */
+  --clara-nav-height: 48px;
+  --clara-nav-bg: rgb(29 29 31 / 0.8);
 }
 
 :root {
-  --background: var(--clara-white);
+  /* O app inteiro assenta sobre a névoa; branco é superfície de card, não
+     fundo de página. É o que dá a profundidade da linguagem Apple. */
+  --background: var(--clara-fog);
   --foreground: var(--clara-ink);
   --card: var(--clara-white);
   --card-foreground: var(--clara-ink);
@@ -143,10 +167,197 @@
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply font-sans bg-background text-foreground;
-  }
   html {
-    @apply font-sans;
+    font-family: var(--clara-text);
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--clara-text);
+    /* 17px é o corpo do sistema Apple, não 16 — e o tracking negativo é o que
+       impede o texto de parecer solto nesse tamanho. */
+    font-size: 17px;
+    line-height: 1.47;
+    letter-spacing: -0.019em;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@keyframes clara-dots {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes clara-slidein {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Escala tipográfica do sistema Apple.
+ *
+ * Definida como classes e não como utilitários soltos porque cada degrau é um
+ * conjunto acoplado — tamanho, altura de linha e tracking andam juntos. Deixar
+ * o autor combinar `text-5xl` com um leading qualquer é como o sistema se
+ * desfaz na segunda tela.
+ * ------------------------------------------------------------------------- */
+@layer components {
+  .clara-eyebrow {
+    font-size: 12px;
+    line-height: 1.33;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--clara-slate);
+  }
+
+  .clara-hero {
+    font-family: var(--clara-display);
+    font-weight: 600;
+    /* 56px no celular, 96px no desktop: o design permite 56–112. */
+    font-size: clamp(2.75rem, 1.5rem + 5vw, 6rem);
+    line-height: 1.07;
+    letter-spacing: 0.005em;
+  }
+
+  .clara-display-lg {
+    font-family: var(--clara-display);
+    font-weight: 600;
+    font-size: clamp(2rem, 1.2rem + 3vw, 3.5rem);
+    line-height: 1.07;
+    letter-spacing: 0.004em;
+  }
+
+  .clara-display-md {
+    font-family: var(--clara-display);
+    font-weight: 600;
+    font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2rem);
+    line-height: 1.19;
+    letter-spacing: -0.005em;
+  }
+
+  .clara-display-sm {
+    font-family: var(--clara-display);
+    font-weight: 600;
+    font-size: 1.75rem;
+    line-height: 1.14;
+    letter-spacing: -0.009em;
+  }
+
+  .clara-display-xs {
+    font-family: var(--clara-display);
+    font-weight: 600;
+    font-size: 1.1875rem;
+    letter-spacing: -0.015em;
+  }
+
+  /* Números grandes: o dado é o herói destas telas. */
+  .clara-metric {
+    font-family: var(--clara-display);
+    font-weight: 600;
+    font-size: clamp(2.5rem, 1.5rem + 4vw, 4.5rem);
+    line-height: 1.07;
+    letter-spacing: 0.005em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .clara-lead {
+    font-size: 1.25rem;
+    line-height: 1.47;
+    letter-spacing: -0.01em;
+    color: var(--clara-graphite);
+    text-wrap: pretty;
+  }
+
+  .clara-small {
+    font-size: 12px;
+    letter-spacing: -0.022em;
+    color: var(--clara-slate);
+  }
+
+  /* Superfícies */
+  .clara-card {
+    background: var(--clara-white);
+    border-radius: var(--clara-radius-card);
+  }
+
+  .clara-shell {
+    max-width: 1024px;
+    margin-inline: auto;
+    padding-inline: 24px;
+  }
+
+  /* Ações */
+  .clara-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--clara-radius-pill);
+    padding: 11px 22px;
+    font-size: 17px;
+    letter-spacing: -0.019em;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+  }
+  .clara-pill:focus-visible {
+    outline: 2px solid var(--clara-blue);
+    outline-offset: 2px;
+  }
+
+  .clara-pill-primary {
+    background: var(--clara-blue);
+    color: var(--clara-white);
+  }
+  .clara-pill-primary:hover {
+    opacity: 0.9;
+  }
+
+  .clara-pill-outline {
+    background: transparent;
+    border: 1px solid var(--clara-ink);
+    padding: 10px 20px;
+    color: var(--clara-ink);
+  }
+  .clara-pill-outline:hover {
+    background: var(--clara-ash);
+  }
+
+  .clara-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--clara-radius-chip);
+    padding: 5px 12px;
+    font-size: 12px;
+    letter-spacing: -0.022em;
+    background: var(--clara-fog);
+  }
+
+  .clara-link {
+    color: var(--clara-link);
+    font-size: 17px;
+    letter-spacing: -0.019em;
+  }
+  .clara-link:hover {
+    color: var(--clara-ink);
   }
 }

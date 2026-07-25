@@ -27,10 +27,10 @@ export default async function PreparandoPage() {
     <main className="mx-auto flex min-h-svh w-full max-w-md flex-col justify-center px-6 py-16">
       {failed ? (
         <>
-          <h1 className="text-3xl font-semibold tracking-tight">
+          <h1 className="clara-display-lg">
             Não conseguimos preparar seu espaço.
           </h1>
-          <p className="mt-3 leading-relaxed text-muted-foreground">
+          <p className="clara-lead mt-4">
             Nada do que é seu foi perdido — o espaço apenas não terminou de ser criado. Podemos
             tentar de novo.
           </p>
@@ -48,8 +48,8 @@ export default async function PreparandoPage() {
         </>
       ) : (
         <>
-          <h1 className="text-3xl font-semibold tracking-tight">Preparando seu espaço.</h1>
-          <p className="mt-3 leading-relaxed text-muted-foreground">
+          <h1 className="clara-display-lg">Preparando seu espaço.</h1>
+          <p className="clara-lead mt-4">
             Estamos criando um lugar só seu para guardar suas finanças. Leva cerca de um minuto —
             pode deixar esta página aberta.
           </p>

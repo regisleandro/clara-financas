@@ -5,8 +5,8 @@ import { GoogleSignIn } from "@/components/google-sign-in";
 export default function SignInPage() {
   return (
     <>
-      <h1 className="text-3xl font-semibold tracking-tight">Bem-vindo de volta.</h1>
-      <p className="mt-3 leading-relaxed text-muted-foreground">
+      <h1 className="clara-display-lg">Bem-vindo de volta.</h1>
+      <p className="clara-lead mt-4">
         Entre para ver seus gastos, suas regras e seus próximos vencimentos.
       </p>
 
