@@ -18,11 +18,13 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { InputGroupAddon } from "@/components/ui/input-group";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
+import { AnalysisArtifact } from "@/components/analysis-artifact";
 import { ChatHeader, ChatWelcome, type Starter } from "@/components/chat-welcome";
 import { ExecutionTrace } from "@/components/execution-trace";
 import { ReviewCard, type ReviewCardData } from "@/components/review-card";
 import { deriveActivity } from "@/lib/activity";
 import { findLatestBatchProposal, findPendingRequest } from "@/lib/input-request";
+import { findChildSessions, useSubagentResults } from "@/lib/use-subagent-stream";
 
 /**
  * A conversa.
@@ -90,6 +92,12 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
 
   const busy = agent.status === "submitted" || agent.status === "streaming";
   const activity = useMemo(() => deriveActivity(agent.events), [agent.events]);
+
+  // As ferramentas do especialista rodam na sessão FILHA e não chegam ao
+  // stream do pai. Sem assinar aquela sessão, o artefato de análise não teria
+  // de onde tirar número — só a prosa do modelo.
+  const childSessions = useMemo(() => findChildSessions(agent.events), [agent.events]);
+  const subagentResults = useSubagentResults(agentHost, childSessions, bearer);
   const pending = findPendingRequest(agent.data.messages);
   const proposal = findLatestBatchProposal(agent.data.messages);
   const isWelcome = agent.data.messages.length === 0;
@@ -170,7 +178,7 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
             );
           })}
 
-          {!isWelcome ? <ExecutionTrace activity={activity} /> : null}
+          {!isWelcome ? <ExecutionTrace activity={activity} busy={busy} /> : null}
 
           {showReview && reviewData !== null ? (
             <ReviewCard
@@ -181,6 +189,8 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
               onReject={() => answer("deny")}
             />
           ) : null}
+
+          {!showReview && !busy ? <AnalysisArtifact results={subagentResults} /> : null}
 
           {pending && !showReview ? (
             <GenericPrompt pending={pending} disabled={busy} onAnswer={answer} />
@@ -214,6 +224,19 @@ export function Chat({ agentHost, name }: { agentHost: string; name: string | nu
             send(text);
           }}
         >
+          {/* O anexo precisa existir fora da tela de boas-vindas: depois da
+              primeira mensagem, os cards somem e este é o único caminho. */}
+          <InputGroupAddon align="inline-start">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading || busy}
+              aria-label="Anexar fatura em PDF"
+              className="grid size-8 place-items-center rounded-full bg-[var(--clara-fog)] text-base leading-none transition-colors hover:bg-[var(--clara-ash)] disabled:opacity-50"
+            >
+              {uploading ? "…" : "+"}
+            </button>
+          </InputGroupAddon>
           <PromptInputBody>
             <PromptInputTextarea
               placeholder="Pergunte sobre seu dinheiro…"
