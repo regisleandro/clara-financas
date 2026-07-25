@@ -1,4 +1,4 @@
-import { env } from "@clara-financas/env/server";
+import { env } from "@clara-financas/env/database";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 

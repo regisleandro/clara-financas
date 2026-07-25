@@ -1,0 +1,19 @@
+# O deploy do agente roda com este diretório como raiz, então o .vercelignore
+# da raiz do repositório NÃO vale aqui — foi o que estourou o limite de 10 MB
+# do upload na primeira tentativa.
+#
+# `.eve/` sozinho tem 1,8 GB: o dev-runtime guarda um snapshot com uma cópia
+# completa do código-fonte a cada sessão de `eve dev`. Nada disso é insumo do
+# build; a Vercel recompila a partir de `agent/`.
+.eve/
+.output/
+.turbo/
+.vercel/
+
+# Testes não vão para produção.
+tests/
+
+# Segredos e dado local, pelas mesmas razões da raiz.
+.env
+.env.*
+!.env.example

@@ -1,6 +1,42 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
+  // O Turbo roda cada tarefa num ambiente HIGIENIZADO: variável não declarada
+  // aqui simplesmente não chega ao processo filho. Em desenvolvimento isso
+  // passa despercebido, porque o Next lê `apps/web/.env` do disco por conta
+  // própria. Num build da Vercel, onde as variáveis vêm da plataforma e não de
+  // arquivo, a validação do `packages/env` recebia `undefined` em cinco campos
+  // e derrubava o build — com a mensagem apontando para o env, não para o
+  // Turbo, que é o que torna esse defeito caro de diagnosticar.
+  //
+  // Ficam em `globalEnv` e não no `env` da tarefa de build porque os testes
+  // também precisam do banco.
+  //
+  // NEXT_PUBLIC_* não precisa constar: o Turbo já inclui as variáveis do
+  // framework detectado.
+  "globalEnv": [
+    "DATABASE_URL",
+    "DATABASE_ADMIN_URL",
+    "BETTER_AUTH_SECRET",
+    "BETTER_AUTH_URL",
+    "APP_ORIGIN",
+    "AGENT_TOKEN_SECRET",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "BLOB_READ_WRITE_TOKEN",
+    "CLARA_MODEL",
+    "CLARA_EXTRACTOR_MODEL",
+    "CLARA_MODEL_CONTEXT_WINDOW",
+    "OPENAI_API_KEY",
+    "TENANT_ID",
+    "SKIP_ENV_VALIDATION",
+    "NODE_ENV",
+    "VERCEL",
+    "VERCEL_ENV",
+    "VERCEL_URL",
+    "VERCEL_PROJECT_PRODUCTION_URL",
+    "VERCEL_OIDC_TOKEN"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
