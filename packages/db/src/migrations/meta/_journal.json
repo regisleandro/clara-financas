@@ -15,6 +15,20 @@
       "when": 1784985212040,
       "tag": "0001_rls_tenant_isolation",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784986247995,
+      "tag": "0002_goofy_revanche",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784986248451,
+      "tag": "0003_ledger_rls_and_immutability",
+      "breakpoints": true
     }
   ]
 }
