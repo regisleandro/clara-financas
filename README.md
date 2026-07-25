@@ -201,6 +201,13 @@ pnpm exec turbo run build --affected
 
 ## Implantação
 
+No ar:
+
+```
+control plane  https://clara-financas-six.vercel.app
+agente         https://clara-financas-agent.vercel.app
+```
+
 São **dois projetos Vercel**: o control plane (Next.js, na raiz) e a instância do agente (eve, em `packages/agent`). O navegador fala com o agente cross-origin, autenticado por um JWT curto emitido pelo control plane, e os dois compartilham `AGENT_TOKEN_SECRET` no modo pool atual.
 
 O passo a passo, a dependência circular entre `APP_ORIGIN` e `NEXT_PUBLIC_AGENT_HOST`, a tabela de variáveis por projeto e as armadilhas conhecidas estão em **[docs/deploy.md](docs/deploy.md)**.

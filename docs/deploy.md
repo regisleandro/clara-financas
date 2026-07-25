@@ -22,16 +22,30 @@ Cada plano precisa da URL do outro:
 - o **control plane** precisa de `NEXT_PUBLIC_AGENT_HOST` — é para onde o
   navegador abre a conexão.
 
-Quem tentar deployar um e depois o outro entra num vaivém de redeploys. A saída
-é **nomear os dois projetos primeiro** e derivar as URLs antes de qualquer
-deploy: a Vercel dá o domínio de produção a partir do nome do projeto.
+Quem tentar deployar um e depois o outro entra num vaivém de redeploys.
+
+A tentação é derivar o domínio do nome do projeto. **Não funciona**: se o nome
+já estiver tomado por outra conta da Vercel, ela acrescenta um sufixo aleatório
+sem avisar. Aconteceu neste projeto — `clara-financas` estava ocupado e o
+domínio virou `clara-financas-six.vercel.app`. O `APP_ORIGIN` configurado por
+suposição apontava para o app de um estranho, e o sintoma seria um preflight de
+CORS falhando sem mensagem útil.
+
+Crie os projetos, **leia os domínios de volta** e só então preencha:
+
+```bash
+vercel project ls
+# ou, por projeto:
+curl -s "https://api.vercel.com/v9/projects/<id>/domains?teamId=<team>" \
+  -H "Authorization: Bearer $TOKEN" | jq '.domains[].name'
+```
+
+Os domínios reais deste deployment:
 
 ```
-projeto  clara-financas        →  https://clara-financas.vercel.app
-projeto  clara-financas-agent  →  https://clara-financas-agent.vercel.app
+control plane  https://clara-financas-six.vercel.app
+agente         https://clara-financas-agent.vercel.app
 ```
-
-Com os dois domínios em mãos, as variáveis já podem ser preenchidas de uma vez.
 
 ## Passo a passo
 
@@ -138,6 +152,37 @@ conferência e gate.
 Se o deploy usar Deployment Protection, defina `VERCEL_AUTOMATION_BYPASS_SECRET`
 localmente antes de conectar o `eve dev` a ele.
 
+## Configuração de projeto que não mora em arquivo
+
+Três ajustes vivem nas configurações do projeto Vercel, não no repositório, e
+sem eles o build falha de formas que não apontam para a causa:
+
+| Ajuste | control plane | agente |
+| --- | --- | --- |
+| Root Directory | `apps/web` | `packages/agent` |
+| Framework | `nextjs` | `eve` (detectado) |
+| Build/Install Command | padrão do framework | padrão do framework |
+
+Com Root Directory definido, o `vercel.json` é lido de DENTRO dele — um
+`vercel.json` na raiz do repositório passa a ser ignorado. E o deploy pela CLI
+tem de partir da **raiz do repositório** nos dois casos: rodar `vercel deploy`
+de dentro de `packages/agent` com Root Directory `packages/agent` resolve o
+caminho duas vezes e falha.
+
+Para deployar o agente da raiz, aponte o projeto por variável:
+
+```bash
+VERCEL_ORG_ID=<team> VERCEL_PROJECT_ID=<projeto-do-agente> vercel deploy --prod
+```
+
+## Proteção de deployment precisa sair
+
+A Vercel liga *Deployment Protection* (SSO) por padrão em `*.vercel.app`. Ela
+**quebra a arquitetura**: o navegador fala com o agente cross-origin com Bearer
+token e não carrega cookie de SSO daquele domínio, então toda conversa falha.
+Desligue nos dois projetos. Quem protege o app é o login Google, o isolamento
+por tenant e a RLS — não um gate da plataforma.
+
 ## Armadilhas conhecidas
 
 **Sem `BLOB_READ_WRITE_TOKEN`, o upload quebra.** Em desenvolvimento os PDFs
@@ -145,6 +190,14 @@ vão para `.data/documents`. Num runtime serverless o sistema de arquivos é
 somente-leitura fora de `/tmp`, e `/tmp` morre com a invocação. O código falha
 com uma mensagem explícita (`apps/web/lib/storage.ts`) em vez de um `EROFS`
 obscuro, mas o token continua sendo obrigatório.
+
+**O papel do banco não é o que o Neon entrega.** A integração injeta
+`DATABASE_URL` com o papel `neondb_owner`, dono do schema. O runtime tem de usar
+`clara_app` — sem superusuário e sem `BYPASSRLS`. Sobrescreva `DATABASE_URL` nos
+dois projetos depois de criar o papel. E note que a migração `0001` fixa
+`PASSWORD 'clara_app'`, que qualquer Postgres gerenciado recusa por fraca: crie
+o papel à mão com senha forte antes de migrar, que o `IF NOT EXISTS` da migração
+a respeita.
 
 **`OPENAI_API_KEY` presente muda o caminho do modelo.** Com a chave, o AI SDK
 fala direto com a OpenAI. Sem ela, o ID de modelo é roteado pelo Vercel AI
