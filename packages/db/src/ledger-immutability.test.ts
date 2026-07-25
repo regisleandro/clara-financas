@@ -110,21 +110,46 @@ describe("imutabilidade do razão", () => {
     };
   });
 
+  /**
+   * A limpeza roda como DONO DO SCHEMA, não como aplicação.
+   *
+   * A versão anterior apagava só os rascunhos e deixava os confirmados para
+   * trás, justificando que o trigger impede apagá-los — o que é verdade pelo
+   * papel da aplicação, e é justamente a garantia sob teste. Mas a consequência
+   * era que CADA execução da suíte deixava resíduo permanente no banco de
+   * desenvolvimento, sem caminho de volta. Foram 8 documentos e 8 lotes por
+   * rodada; três rodadas seguidas e o banco tinha 24 faturas fantasma que
+   * ninguém tinha enviado.
+   *
+   * Desligar o trigger aqui não enfraquece nada: os testes acima já provaram,
+   * pelo papel da aplicação, que confirmado não se apaga nem se altera. O dono
+   * do schema sempre pôde fazer isso — é o mesmo poder que roda migração — e
+   * usá-lo no teardown é o que separa "a garantia vale" de "o banco de dev vira
+   * lixeira".
+   */
   after(async () => {
-    for (const tenantId of [TENANT, OTHER]) {
-      await forTenant(
-        tenantId,
-        async (tx) => {
-          // Rascunhos saem; confirmados ficam — o trigger impede apagá-los, e
-          // é exatamente esse o comportamento sob teste.
-          await tx.execute(
-            sql`delete from transactions where tenant_id = ${tenantId} and status = 'proposed'`,
-          );
-        },
-        db,
-      );
+    const admin = createDbClient(process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL);
+
+    try {
+      await admin.db.execute(sql`alter table transactions disable trigger user`);
+      await admin.db.execute(sql`alter table batches disable trigger user`);
+      try {
+        for (const tenantId of [TENANT, OTHER]) {
+          await admin.db.execute(sql`delete from transactions where tenant_id = ${tenantId}`);
+          await admin.db.execute(sql`delete from batches where tenant_id = ${tenantId}`);
+          await admin.db.execute(sql`delete from documents where tenant_id = ${tenantId}`);
+        }
+      } finally {
+        // Reabilitar SEMPRE. Um trigger desligado por uma limpeza que falhou no
+        // meio deixaria o razão editável, e o defeito só apareceria muito
+        // depois, na forma mais cara possível: um número que mudou sozinho.
+        await admin.db.execute(sql`alter table transactions enable trigger user`);
+        await admin.db.execute(sql`alter table batches enable trigger user`);
+      }
+    } finally {
+      await admin.client.end({ timeout: 5 });
+      await close();
     }
-    await close();
   });
 
   it("rascunho pode ser editado — é o que permite o botão Corrigir", async () => {
