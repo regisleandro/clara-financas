@@ -311,9 +311,16 @@ function ChatSession({
             {/* `items-end`, não `items-center`: o campo cresce com o conteúdo
                 (até ~6 linhas, depois rola por dentro), e os botões ficam
                 ancorados na base — centralizados, eles flutuariam no meio de
-                um campo alto. */}
+                um campo alto.
+
+                Duas formas, uma marcação: no celular a caixa quebra em duas
+                linhas (campo em cima, botões embaixo, `justify-between`), e a
+                partir de `sm` volta a ser a linha única do desktop. Numa tela
+                de 360px os três itens lado a lado não caberiam — o texto do
+                placeholder quebrava e sobrava tarja azul por cima da borda. A
+                ordem visual é dada por `order-*`, não pela ordem no DOM. */}
             <PromptInput
-              className="items-end rounded-[var(--clara-radius-card)] py-1.5 pl-2 pr-1.5"
+              className="flex-wrap items-end justify-between gap-y-1 rounded-[var(--clara-radius-card)] p-1.5 sm:flex-nowrap sm:justify-start sm:py-1.5 sm:pl-2 sm:pr-1.5"
               onSubmit={(message, event) => {
                 event.preventDefault();
                 const text = message.text?.trim();
@@ -321,7 +328,7 @@ function ChatSession({
                 clara.send(text);
               }}
             >
-              <InputGroupAddon align="inline-start">
+              <InputGroupAddon align="inline-start" className="order-2 sm:order-first">
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
@@ -348,10 +355,10 @@ function ChatSession({
                   placeholder="Pergunte sobre seu dinheiro…"
                   disabled={busy}
                   rows={1}
-                  className="min-h-11 py-2.5"
+                  className="order-1 min-h-11 basis-full px-3 py-2.5 sm:order-none sm:basis-0"
                 />
               </PromptInputBody>
-              <InputGroupAddon align="inline-end">
+              <InputGroupAddon align="inline-end" className="order-3 sm:order-last">
                 {/* Durante o streaming o botão vira "Parar" DE VERDADE: antes
                     ele só trocava o ícone, sem função — um botão de stop morto
                     é pior que nenhum. */}
