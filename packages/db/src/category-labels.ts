@@ -1,3 +1,4 @@
+import { categorySlug } from "@clara-financas/ledger";
 import { and, eq } from "drizzle-orm";
 
 import { getDb, type Database } from "./index";
@@ -32,7 +33,7 @@ export async function loadCategoryLabels(
     // O id do conceito é o caminho no bundle (`categories/groceries`), mas o
     // razão guarda só o slug. Aceitar as duas formas evita que a origem do
     // dado decida se a tradução funciona.
-    const slug = row.conceptId.replace(/^categories\//, "");
+    const slug = categorySlug(row.conceptId);
     const title = row.frontmatter.title;
     if (typeof title === "string" && title !== "") labels[slug] = title;
   }

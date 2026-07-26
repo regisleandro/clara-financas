@@ -33,4 +33,55 @@ describe("contratos estruturados dos subagentes", () => {
     });
     assert.equal(result.success, true);
   });
+
+  /**
+   * Os três casos que faltavam — e cuja ausência produziu, em produção, a
+   * resposta "a consulta não retornou a estrutura necessária". Toda resposta
+   * CERTA para uma fatura que não fecha era inválida pelo schema.
+   */
+  it("analista pode devolver a conferência de uma fatura", () => {
+    const result = AnalysisResultSchema.safeParse({
+      kind: "checksum",
+      title: "Conferência da fatura",
+      summary: "A soma dos lançamentos ficou 3 centavos acima do total declarado.",
+      checksum: {
+        batchId: "bat_1",
+        declaredTotal: 438_792,
+        extractedTotal: 438_795,
+        difference: 3,
+        result: "mismatch",
+        cause: "Compatível com arredondamento do IOF.",
+      },
+      rows: [
+        { label: "Total declarado", amount: 438_792 },
+        { label: "Diferença", amount: 3, detail: "Não há item culpado." },
+      ],
+      warnings: [],
+    });
+    assert.equal(result.success, true);
+  });
+
+  it("conferência sem o objeto checksum é recusada", () => {
+    const result = AnalysisResultSchema.safeParse({
+      kind: "checksum",
+      title: "Conferência",
+      summary: "Falta o que sustenta a afirmação.",
+      rows: [],
+      warnings: [],
+    });
+    assert.equal(result.success, false);
+  });
+
+  it('"não encontrei nada neste recorte" é uma resposta válida', () => {
+    const result = AnalysisResultSchema.safeParse({
+      kind: "transactions",
+      title: "Nada neste recorte",
+      summary: "Não há lançamentos entre 01/07 e 31/07; o razão cobre 31/05 a 30/06.",
+      warnings: [],
+      ledgerCoverage: { count: 48, firstDate: "2026-05-31", lastDate: "2026-06-30" },
+    });
+    assert.equal(result.success, true);
+    // `rows` era obrigatório: o modelo não tinha como dizer "vazio".
+    assert.deepEqual(result.data?.rows, []);
+  });
 });

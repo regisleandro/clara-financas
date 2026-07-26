@@ -338,6 +338,9 @@ importers:
       '@clara-financas/env':
         specifier: workspace:*
         version: link:../env
+      '@clara-financas/ledger':
+        specifier: workspace:*
+        version: link:../ledger
       '@clara-financas/okf':
         specifier: workspace:*
         version: link:../okf

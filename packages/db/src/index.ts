@@ -32,10 +32,31 @@ export type Database = ReturnType<typeof createDb>;
  * requisição.
  */
 let cached: Database | null = null;
+let cachedClient: ReturnType<typeof postgres> | null = null;
 
 export function getDb(): Database {
-  cached ??= createDb();
+  if (cached === null) {
+    const connection = createDbClient();
+    cached = connection.db;
+    cachedClient = connection.client;
+  }
   return cached;
+}
+
+/**
+ * Encerra a conexão do singleton.
+ *
+ * Só para testes e scripts: enquanto o socket está aberto o processo não sai, e
+ * uma suíte que exercita tools (que usam `getDb()`) terminava verde e ficava
+ * pendurada até o timeout do runner — sintoma que parece falha e não é.
+ * Runtime servido a usuário não chama isto: a conexão vive com o processo.
+ */
+export async function closeDb(): Promise<void> {
+  if (cachedClient === null) return;
+  const client = cachedClient;
+  cached = null;
+  cachedClient = null;
+  await client.end({ timeout: 5 });
 }
 
 export { schema };

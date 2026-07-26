@@ -36,7 +36,25 @@ export type ActivityStep = {
   label: string;
   detail?: string;
   icon: ActivityIcon;
-  status: "running" | "done" | "failed";
+  /**
+   * `warning` é o estado que faltava, e a falta custava caro: um pedido que a
+   * tool recusa APONTANDO o caminho (categoria que não existe, alcance que
+   * mudou, lote já decidido) é o sistema funcionando, e aparecia na tela como
+   * etapa quebrada. Vermelho é para o que não tem saída.
+   */
+  status: "running" | "done" | "failed" | "warning";
+  /**
+   * O nome cru da tool. Não vai para a tela — vai para o diagnóstico. Sem ele
+   * era impossível saber, olhando uma sessão, QUAL ferramenta falhou: o rótulo
+   * traduzido é ambíguo de propósito.
+   */
+  toolName?: string;
+  /**
+   * Por que falhou, em português. A causa chegava no evento e era descartada:
+   * a interface lia `output.error` como booleano e jogava fora a mensagem, o
+   * que tornava a falha impossível de explicar para quem estava olhando.
+   */
+  cause?: string;
 };
 
 export type Activity = {
@@ -74,6 +92,13 @@ export const TOOL_LABEL: Record<string, string> = {
   present_view: "Montando o painel",
   read_pdf_pages: "Lendo as páginas do documento",
   ask_question: "Aguardando sua resposta",
+  read_batch: "Abrindo a fatura",
+  create_adjustment: "Registrando o ajuste",
+  reject_batch: "Descartando a fatura",
+  mark_reviewed: "Marcando como revisado",
+  set_transaction_category: "Ajustando a categoria",
+  name_issuer: "Nomeando a operadora",
+  list_review_queue: "Olhando o que falta revisar",
 };
 
 /** O que se diz de uma ferramenta que ainda não tem rótulo próprio. */
@@ -106,6 +131,13 @@ export const TOOL_ICON: Record<string, ActivityIcon> = {
   present_view: "ledger",
   read_pdf_pages: "document",
   ask_question: "brain",
+  read_batch: "document",
+  create_adjustment: "ledger",
+  reject_batch: "ledger",
+  mark_reviewed: "save",
+  set_transaction_category: "tags",
+  name_issuer: "tags",
+  list_review_queue: "search",
 };
 
 const SUBAGENT_ICON: Record<string, ActivityIcon> = {
@@ -161,6 +193,7 @@ export function deriveActivity(events: readonly unknown[]): Activity {
             label: TOOL_LABEL[toolName] ?? TOOL_FALLBACK_LABEL,
             icon: TOOL_ICON[toolName] ?? "search",
             status: "running",
+            toolName,
           });
         }
         break;
@@ -185,7 +218,12 @@ export function deriveActivity(events: readonly unknown[]): Activity {
       case "subagent.completed": {
         const callId = asString(data?.callId);
         const step = callId === undefined ? undefined : steps.get(callId);
-        if (step) steps.set(step.id, { ...step, status: "done" });
+        if (step === undefined) break;
+        // NÃO sobrescreve uma falha já registrada. Este evento marcava `done`
+        // incondicionalmente, e a ordem de emissão decidia a cor: chegando
+        // depois do `action.result`, um subagente que falhou voltava a verde.
+        if (step.status === "failed" || step.status === "warning") break;
+        steps.set(step.id, { ...step, status: "done" });
         break;
       }
 
@@ -196,8 +234,22 @@ export function deriveActivity(events: readonly unknown[]): Activity {
         if (!step) break;
 
         const output = asRecord(result?.output);
-        const failed = data?.status === "failed" || output?.error !== undefined;
-        steps.set(step.id, { ...step, status: failed ? "failed" : "done" });
+        const error = output?.error;
+        const structured = asRecord(error);
+        // Erro estruturado (`{ code, message, retryable }`) traz a causa e diz
+        // se havia saída. Erro em string é o formato antigo: sem código, e
+        // tratado como quebra por não ter como afirmar o contrário.
+        const cause = structured === undefined ? asString(error) : asString(structured.message);
+        const retryable = structured?.retryable === true;
+        const crashed = data?.status === "failed";
+        const status =
+          crashed || (error !== undefined && !retryable)
+            ? ("failed" as const)
+            : error !== undefined
+              ? ("warning" as const)
+              : ("done" as const);
+
+        steps.set(step.id, { ...step, status, ...(cause !== undefined ? { cause } : {}) });
         break;
       }
 
@@ -206,8 +258,26 @@ export function deriveActivity(events: readonly unknown[]): Activity {
         break;
       }
 
+      case "turn.failed": {
+        // Um turno pode falhar sem que nenhuma tool tenha falhado — erro de
+        // transporte, contexto estourado, schema recusado na saída de um
+        // subagente. Sem marcar nada, o trace desenhava check verde e o
+        // título "Como cheguei a esta resposta" para um turno que morreu.
+        for (const step of steps.values()) {
+          if (step.status === "running") {
+            steps.set(step.id, {
+              ...step,
+              status: "failed",
+              cause: step.cause ?? asString(data?.error) ?? "O turno terminou antes desta etapa.",
+            });
+          }
+        }
+        turnActive = false;
+        writing = false;
+        break;
+      }
+
       case "turn.completed":
-      case "turn.failed":
       case "session.waiting": {
         turnActive = false;
         writing = false;

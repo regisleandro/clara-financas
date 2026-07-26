@@ -1,8 +1,9 @@
 import { getDb } from "@clara-financas/db";
 import { transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import type { Transaction } from "@clara-financas/ledger";
-import { and, desc, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
+import type { Confidence, EntryKind, Transaction } from "@clara-financas/ledger";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
+import type { PgColumn } from "drizzle-orm/pg-core";
 
 import { categoryLabel, type CategoryLabels } from "./categories";
 
@@ -20,25 +21,142 @@ export type LedgerRange = {
   to?: string;
   /** Restringe a UMA fatura, pelo id do lote que a registrou. */
   batchId?: string;
+  /**
+   * Inclui o lote em rascunho na leitura. Só faz sentido junto de `batchId`.
+   *
+   * Existe porque a exclusão de `proposed` tinha um efeito colateral que
+   * inviabilizava o trabalho principal do produto: uma fatura EM CONFERÊNCIA
+   * está, por definição, em rascunho. A pessoa perguntava "onde está a
+   * diferença desta fatura?", a coordenadora — proibida de calcular sozinha —
+   * delegava ao analista, e o analista consultava um razão onde aquele lote
+   * não existia. Voltava vazio, e a conversa terminava em desculpa.
+   *
+   * O cuidado que justificava a exclusão continua de pé e é outro: rascunho
+   * não entra em AGREGAÇÃO do razão (total do mês, comparação, recorrência),
+   * porque ali ele viraria fato. Quem liga isto devolve o `status` junto, para
+   * que a resposta possa dizer que aquilo ainda espera decisão.
+   */
+  includeProposed?: boolean;
+  /**
+   * Texto procurado na descrição crua ou no comerciante.
+   *
+   * Vai ao BANCO, não à memória. Antes era um `includes()` aplicado depois de
+   * carregar o razão inteiro: além de não escalar, exigia acerto exato de
+   * acentuação e caixa, e casava só a frase inteira — "descrição próxima a
+   * pagamento" não achava "PAGTO FATURA" nem "Pagamento efetuado". Aqui a
+   * comparação é sem acento, sem caixa, e por TERMO: qualquer palavra da busca
+   * que apareça já traz a linha.
+   */
+  search?: string;
+  /** Natureza da linha: compra, pagamento, estorno, encargo, ajuste. */
+  kinds?: readonly EntryKind[];
+  /** Confiança da extração, para achar o que foi lido com dúvida. */
+  confidences?: readonly Confidence[];
+  /** `true` = só o já revisado por uma pessoa; `false` = só o que falta. */
+  reviewed?: boolean;
+  /** `false` = só o que está sem categoria. */
+  hasCategory?: boolean;
+  /** Categoria exata, pelo identificador. */
+  category?: string;
+  /** Restringe a um conjunto de ids — a resposta de "de onde veio este número". */
+  ids?: readonly string[];
 };
 
 /**
- * Carrega transações CONFIRMADAS do razão, no escopo do tenant.
+ * Comparação de texto sem acento e sem caixa, no banco.
  *
- * Rascunhos (`proposed`) ficam de fora de propósito: análise sobre lote não
- * aprovado apresentaria como fato algo que a pessoa ainda não confirmou.
+ * `translate` em vez de `unaccent()`: é função nativa e imutável, não depende
+ * de extensão instalada nem de privilégio de superusuário para funcionar em
+ * qualquer Postgres gerenciado — e, por ser imutável, aceita índice de
+ * expressão. A tabela de origem e a de destino têm o mesmo número de
+ * caracteres; mudar uma exige mudar a outra.
+ */
+const ACCENTED = "áàâãäéèêëíìîïóòôõöúùûüçñ";
+const PLAIN = "aaaaaeeeeiiiiooooouuuucn";
+
+function unaccentLower(column: PgColumn): SQL {
+  return sql`translate(lower(coalesce(${column}, '')), ${ACCENTED}, ${PLAIN})`;
+}
+
+/** Marcas de acento, para tirar o acento do lado JS igual ao lado SQL. */
+const COMBINING_MARKS = /[\u0300-\u036f]/g;
+
+/** Divide a busca em termos; casar qualquer um deles já traz a linha. */
+function searchTerms(search: string): string[] {
+  return search
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(COMBINING_MARKS, "")
+    .split(/[^a-z0-9]+/)
+    .filter((term) => term.length >= 3);
+}
+
+/**
+ * Linha do razão como o agente a enxerga.
+ *
+ * Superset de `Transaction` (o tipo puro do domínio, que alimenta checksum e
+ * agregações) com os três campos operacionais que o modelo precisa para
+ * RACIOCINAR sobre a linha, e que antes eram descartados na fronteira: em que
+ * estado ela está, de que fatura veio, e se alguém já a revisou.
+ */
+export type LedgerEntry = Transaction & {
+  status: "proposed" | "confirmed" | "adjustment";
+  batchId: string;
+  reviewedAt: string | null;
+};
+
+/**
+ * Carrega transações do razão, no escopo do tenant.
+ *
+ * Por padrão só o que está CONFIRMADO (mais os ajustes): análise sobre lote não
+ * aprovado apresentaria como fato algo que a pessoa ainda não confirmou. Ver
+ * `includeProposed` para a exceção — e por que ela existe.
  */
 export async function loadLedger(
   tenantId: string,
   range: LedgerRange = {},
-): Promise<Transaction[]> {
+): Promise<LedgerEntry[]> {
+  const statuses =
+    range.includeProposed === true
+      ? (["confirmed", "adjustment", "proposed"] as const)
+      : (["confirmed", "adjustment"] as const);
+
   const filters: SQL[] = [
     eq(transactions.tenantId, tenantId),
-    inArray(transactions.status, ["confirmed", "adjustment"]),
+    inArray(transactions.status, [...statuses]),
   ];
   if (range.from !== undefined) filters.push(gte(transactions.date, range.from));
   if (range.to !== undefined) filters.push(lte(transactions.date, range.to));
   if (range.batchId !== undefined) filters.push(eq(transactions.batchId, range.batchId));
+  if (range.ids !== undefined) filters.push(inArray(transactions.id, [...range.ids]));
+  if (range.kinds !== undefined && range.kinds.length > 0) {
+    filters.push(inArray(transactions.kind, [...range.kinds]));
+  }
+  if (range.confidences !== undefined && range.confidences.length > 0) {
+    filters.push(inArray(transactions.extractionConfidence, [...range.confidences]));
+  }
+  if (range.reviewed !== undefined) {
+    filters.push(
+      range.reviewed ? isNotNull(transactions.reviewedAt) : isNull(transactions.reviewedAt),
+    );
+  }
+  if (range.category !== undefined) filters.push(eq(transactions.category, range.category));
+  if (range.hasCategory !== undefined) {
+    filters.push(
+      range.hasCategory ? isNotNull(transactions.category) : isNull(transactions.category),
+    );
+  }
+  if (range.search !== undefined) {
+    const terms = searchTerms(range.search);
+    // Busca sem termo aproveitável (só palavrinhas curtas) não pode virar
+    // "tudo": devolver o razão inteiro como se fosse resultado é pior do que
+    // devolver nada, porque parece uma resposta.
+    const matches = terms.flatMap((term) => [
+      sql`${unaccentLower(transactions.originalDescription)} like ${`%${term}%`}`,
+      sql`${unaccentLower(transactions.merchant)} like ${`%${term}%`}`,
+    ]);
+    filters.push(matches.length > 0 ? or(...matches)! : sql`false`);
+  }
 
   const rows = await forTenant(
     tenantId,
@@ -96,8 +214,13 @@ export async function ledgerCoverage(
 }
 
 /** Traduz a linha do banco para o tipo do domínio, que é o que o ledger usa. */
-export function toDomain(row: typeof transactions.$inferSelect): Transaction {
+export function toDomain(row: typeof transactions.$inferSelect): LedgerEntry {
   return {
+    status: row.status,
+    batchId: row.batchId,
+    // O atestado de revisão viaja como data ISO: o modelo compara e ordena
+    // texto, e um Date atravessando a fronteira vira `{}` no JSON da tool.
+    reviewedAt: row.reviewedAt === null ? null : row.reviewedAt.toISOString(),
     id: row.id,
     date: row.date,
     originalDescription: row.originalDescription,
@@ -119,19 +242,34 @@ export function toDomain(row: typeof transactions.$inferSelect): Transaction {
 /**
  * Resumo enviado ao modelo para uma transação.
  *
- * Deliberadamente enxuto: mandar a linha inteira gastaria contexto e faria o
- * modelo repetir dado em vez de referenciar por id.
+ * Enxuto por contexto, mas não amputado: os campos abaixo são o que permite
+ * RACIOCINAR sobre a linha, e a falta deles produzia respostas erradas com
+ * cara de certas. Sem `kind`, a Clara não conseguia ver que uma linha é
+ * pagamento de fatura — e pagamento não compõe o total (`countsTowardDeclaredTotal`),
+ * então "categorize os pagamentos" era literalmente impossível de executar.
+ * Sem `extractionConfidence` ela não sabia o que a extração marcou como
+ * duvidoso; sem `reviewedAt`, devolvia para revisão o que a pessoa já conferiu;
+ * sem `status`, apresentava rascunho como razão.
+ *
+ * O que continua de fora é o que o modelo não usa para decidir: `merchantKey`
+ * (chave interna), `sourceDocument` e os campos de parcela, que viajam só
+ * quando a resposta é sobre o documento.
  */
-export function brief(transaction: Transaction, labels: CategoryLabels = {}) {
+export function brief(entry: LedgerEntry, labels: CategoryLabels = {}) {
   return {
-    id: transaction.id,
-    date: transaction.date,
-    description: transaction.originalDescription,
-    merchant: transaction.merchant,
-    amountCents: transaction.amount,
-    category: transaction.category,
+    id: entry.id,
+    date: entry.date,
+    description: entry.originalDescription,
+    merchant: entry.merchant,
+    amountCents: entry.amount,
+    kind: entry.kind,
+    category: entry.category,
     // O rótulo vai junto para o modelo escrever "Restaurantes" e não "dining".
-    categoryLabel: categoryLabel(labels, transaction.category),
-    page: transaction.page,
+    categoryLabel: categoryLabel(labels, entry.category),
+    confidence: entry.extractionConfidence,
+    status: entry.status,
+    batchId: entry.batchId,
+    reviewed: entry.reviewedAt !== null,
+    page: entry.page,
   };
 }

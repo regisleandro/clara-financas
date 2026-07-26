@@ -190,10 +190,18 @@ export const ViewSchema = ViewShapeSchema.superRefine((view, ctx) => {
   // pedir. Exigir proveniência aqui reprovaria todo painel de vencimentos na
   // validação, e o sintoma seria justamente o que esta regra quer evitar: a
   // pessoa perguntando o que vence e não recebendo painel nenhum.
-  const traceable = view.kind !== "commitments";
+  //
+  // `checksum` sai pelo mesmo motivo, e a falta custou caro: as linhas de uma
+  // conferência são "Total declarado", "Total extraído" e "Diferença" — fatos
+  // do DOCUMENTO, não somas de lançamentos. A diferença de arredondamento não
+  // tem item culpado (é o que `likelyCause: "rounding"` significa), então não
+  // existe id para pedir. A métrica já era isenta aqui; as linhas não eram, e
+  // o painel de conferência caía na validação exatamente quando mais
+  // importava: quando a conta não bate.
+  const traceable = view.kind !== "commitments" && view.kind !== "checksum";
 
   const metric = "metric" in view ? view.metric : undefined;
-  if (traceable && view.kind !== "checksum" && metric?.amount !== undefined) {
+  if (traceable && metric?.amount !== undefined) {
     if (metric.transactionIds.length === 0) {
       ctx.addIssue({
         code: "custom",

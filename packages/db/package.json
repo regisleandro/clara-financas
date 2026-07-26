@@ -25,7 +25,8 @@
     "drizzle-orm": "catalog:",
     "postgres": "^3.4.7",
     "zod": "catalog:",
-    "@clara-financas/okf": "workspace:*"
+    "@clara-financas/okf": "workspace:*",
+    "@clara-financas/ledger": "workspace:*"
   },
   "devDependencies": {
     "@clara-financas/config": "workspace:*",

@@ -1,4 +1,4 @@
-import { formatCents, totalSpend } from "@clara-financas/ledger";
+import { CONFIDENCE, ENTRY_KINDS, formatCents, totalSpend } from "@clara-financas/ledger";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
@@ -26,44 +26,53 @@ export default defineTool({
     from: optionalText().describe("Start date, YYYY-MM-DD."),
     to: optionalText().describe("End date, YYYY-MM-DD, inclusive."),
     batchId: optionalText().describe(
-      "Restrict to ONE invoice, by the batchId shown in the ledger state. Prefer this over guessing dates whenever the question is about a specific invoice or 'nesta fatura'.",
+      "Restrict to ONE invoice, by the batchId shown in the ledger state. Prefer this over guessing dates whenever the question is about a specific invoice or 'nesta fatura'. An invoice still awaiting approval is included and every row says which `status` it is in.",
     ),
-    search: optionalText().describe("Text to match in the description or the merchant."),
+    search: optionalText().describe(
+      "Words to look for in the raw description or the merchant. Accent- and case-insensitive, and ANY word matching brings the row — use it for 'descrição parecida com X'.",
+    ),
     category: optionalText().describe("Filter by category identifier."),
     uncategorizedOnly: z
       .boolean()
       .optional()
       .describe("Only transactions that still have no category."),
+    kinds: z
+      .array(z.enum(ENTRY_KINDS))
+      .optional()
+      .describe(
+        "Nature of the entry. `payment` is the invoice payment itself, which does NOT count toward the invoice total.",
+      ),
+    confidences: z
+      .array(z.enum(CONFIDENCE))
+      .optional()
+      .describe("Extraction confidence. Use `baixa` to find what was read with doubt."),
+    reviewed: z
+      .boolean()
+      .optional()
+      .describe("true = only what a person already reviewed; false = only what is still pending."),
   }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);
 
-    // O filtro por data vai ao banco; o resto é em memória, porque o volume de
-    // um razão pessoal cabe folgadamente e evita montar SQL dinâmico aqui.
-    let rows = await loadLedger(tenantId, {
+    // Todo o recorte vai ao BANCO. Antes, só a data ia; o resto era filtrado em
+    // memória depois de carregar o razão inteiro — e a busca por texto, sendo
+    // `includes()`, exigia acerto exato de caixa e acentuação.
+    const rows = await loadLedger(tenantId, {
       from: input.from,
       to: input.to,
       batchId: input.batchId,
+      // Perguntar sobre UMA fatura inclui a que ainda espera decisão: é
+      // justamente a que está em conferência. Fora desse recorte, rascunho
+      // continua fora, para não virar fato numa soma.
+      includeProposed: input.batchId !== undefined,
+      ids: input.transactionIds,
+      search: input.search,
+      kinds: input.kinds,
+      confidences: input.confidences,
+      reviewed: input.reviewed,
+      category: input.category,
+      ...(input.uncategorizedOnly === true ? { hasCategory: false } : {}),
     });
-
-    if (input.transactionIds !== undefined && input.transactionIds.length > 0) {
-      const wanted = new Set(input.transactionIds);
-      rows = rows.filter((row) => wanted.has(row.id));
-    }
-    if (input.category !== undefined) {
-      rows = rows.filter((row) => row.category === input.category);
-    }
-    if (input.uncategorizedOnly === true) {
-      rows = rows.filter((row) => row.category === null);
-    }
-    if (input.search !== undefined) {
-      const needle = input.search.toLowerCase();
-      rows = rows.filter(
-        (row) =>
-          row.originalDescription.toLowerCase().includes(needle) ||
-          (row.merchant ?? "").toLowerCase().includes(needle),
-      );
-    }
 
     if (rows.length === 0) {
       return {
@@ -88,10 +97,20 @@ export default defineTool({
       .reduce((sum, row) => sum + row.amount, 0);
     const truncated = rows.length > LIMIT;
     const labels = await loadCategoryLabels(tenantId);
+    // Rascunho no resultado tem de ser dito, não deduzido: apresentar como
+    // registrado o que ainda espera aprovação é o erro que a exclusão de
+    // `proposed` tentava evitar. Aqui ele entra — mas anunciado.
+    const draftCount = rows.filter((row) => row.status === "proposed").length;
 
     return {
       matched: rows.length,
       truncated,
+      ...(draftCount > 0
+        ? {
+            draftCount,
+            draftNote: `${draftCount} ${draftCount === 1 ? "lançamento pertence" : "lançamentos pertencem"} a uma fatura ainda em conferência, não ao razão confirmado. Diga isso na resposta.`,
+          }
+        : {}),
       // Dizer que truncou importa: sem isso o modelo apresentaria um recorte
       // parcial como se fosse o conjunto inteiro.
       note: truncated ? `Mostrando as ${LIMIT} primeiras de ${rows.length}.` : undefined,

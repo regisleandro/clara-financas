@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import { getDb } from "@clara-financas/db";
-import { concepts } from "@clara-financas/db/schema/knowledge";
 import { transactions } from "@clara-financas/db/schema/ledger";
 import { transactionReclassifications } from "@clara-financas/db/schema/reclassification";
 import { forTenant } from "@clara-financas/db/tenant-scope";
@@ -9,6 +8,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
+import { loadValidCategories, unknownCategory } from "../lib/category-scope";
 import { optionalText } from "../lib/schema";
 import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
 
@@ -61,30 +61,11 @@ export default defineTool({
     return forTenant(
       tenantId,
       async (tx) => {
-        // Categorias válidas vêm dos DOIS bundles: a constituição semeia, e o
-        // que a pessoa aprovou depois vale igual. Restringir à constituição
-        // tornaria inútil criar categoria nova — ela nunca poderia ser usada.
-        const known = await tx
-          .select({ conceptId: concepts.conceptId })
-          .from(concepts)
-          .where(and(eq(concepts.tenantId, tenantId), eq(concepts.type, "Category")));
-
-        const valid = new Set(
-          known.map((row) => row.conceptId.replace(/^categories\//, "")),
-        );
-
+        const valid = await loadValidCategories(tx, tenantId);
         const invalid = [...new Set(input.changes.map((c) => c.category))].filter(
           (category) => !valid.has(category),
         );
-        if (invalid.length > 0) {
-          return {
-            error: "categoria_desconhecida" as const,
-            invalid,
-            validCategories: [...valid].sort(),
-            message:
-              "Those categories do not exist in the constitution. Use one of the valid ones, or leave the transaction uncategorised.",
-          };
-        }
+        if (invalid.length > 0) return unknownCategory(invalid, valid);
 
         const ids = input.changes.map((change) => change.transactionId);
         // Só transações do razão de verdade: um lote ainda `proposed` se

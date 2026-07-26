@@ -87,4 +87,98 @@ describe("deriveActivity", () => {
 
     assert.equal(activity.steps[0]?.status, "failed");
   });
+
+  /**
+   * Um pedido que a tool recusa APONTANDO a saída não é uma quebra. Pintar de
+   * vermelho o que o sistema resolveu ensina a pessoa a desconfiar do trace.
+   */
+  it("erro recuperável vira aviso, não falha, e carrega a causa", () => {
+    const activity = deriveActivity(
+      turn([
+        requested("c1", "recategorize_transactions"),
+        {
+          type: "action.result",
+          data: {
+            result: {
+              callId: "c1",
+              output: {
+                error: {
+                  code: "categoria_desconhecida",
+                  message: 'Não existe categoria "pagamento-de-fatura".',
+                  hint: "Proponha a criação com save_concept.",
+                  retryable: true,
+                },
+              },
+            },
+          },
+        },
+      ]),
+    );
+
+    assert.equal(activity.steps[0]?.status, "warning");
+    assert.equal(activity.steps[0]?.cause, 'Não existe categoria "pagamento-de-fatura".');
+  });
+
+  it("erro sem saída continua sendo falha, com a causa preservada", () => {
+    const activity = deriveActivity(
+      turn([
+        requested("c1", "edit_proposed_batch"),
+        {
+          type: "action.result",
+          data: {
+            result: {
+              callId: "c1",
+              output: {
+                error: {
+                  code: "lote_ja_decidido",
+                  message: "Esta fatura já foi registrada no razão.",
+                  retryable: false,
+                },
+              },
+            },
+          },
+        },
+      ]),
+    );
+
+    assert.equal(activity.steps[0]?.status, "failed");
+    assert.equal(activity.steps[0]?.cause, "Esta fatura já foi registrada no razão.");
+  });
+
+  it("o nome cru da ferramenta fica no passo, para diagnóstico", () => {
+    const activity = deriveActivity(turn([requested("c1", "create_adjustment")]));
+
+    assert.equal(activity.steps[0]?.toolName, "create_adjustment");
+    // …e continua fora da tela: o rótulo é a frase em português.
+    assert.equal(activity.steps[0]?.label, "Registrando o ajuste");
+  });
+
+  it("subagent.completed não reverte um passo que já falhou", () => {
+    // A ordem de emissão decidia a cor: chegando por último, este evento
+    // pintava de verde uma delegação que tinha falhado.
+    const activity = deriveActivity(
+      turn([
+        { type: "subagent.called", data: { callId: "c1", name: "analyst" } },
+        {
+          type: "action.result",
+          data: { status: "failed", result: { callId: "c1", output: {} } },
+        },
+        { type: "subagent.completed", data: { callId: "c1" } },
+      ]),
+    );
+
+    assert.equal(activity.steps[0]?.status, "failed");
+  });
+
+  it("um turno que falha não deixa passo pendurado em verde", () => {
+    const activity = deriveActivity(
+      turn([
+        requested("c1", "commit_batch"),
+        { type: "turn.failed", data: { error: "A sessão expirou." } },
+      ]),
+    );
+
+    assert.equal(activity.steps[0]?.status, "failed");
+    assert.equal(activity.steps[0]?.cause, "A sessão expirou.");
+  });
 });

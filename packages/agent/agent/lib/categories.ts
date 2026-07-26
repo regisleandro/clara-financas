@@ -4,5 +4,5 @@
  * conversa dizia "Restaurantes"). As tools do agente continuam importando
  * daqui — o lar mudou, o contrato não.
  */
-export { categoryLabel, type CategoryLabels } from "@clara-financas/ledger";
+export { categoryLabel, categorySlug, type CategoryLabels } from "@clara-financas/ledger";
 export { loadCategoryLabels } from "@clara-financas/db/category-labels";
