@@ -39,11 +39,10 @@ applied, saved, or recorded — nothing was.
 
 # Output contract
 
-Return structured lists, not prose paragraphs: for each proposal, the
-`transactionIds`, the suggested category id AND its label, the one-line
-reason, and the rule `conceptId` when a rule matched. The coordinator depends
-on the ids to open the approval card — a proposal without ids cannot be acted
-on.
+Return only the declared `CategorizationResult`: `matchedRules`, `proposals`,
+`merchantAliases` and `warnings`. Every actionable item carries
+`transactionIds`; category proposals carry both id and label. Never wrap the
+result in Markdown or add prose outside the schema.
 
 If a slice comes back empty with `ledgerCoverage`, say what the ledger DOES
 cover instead of concluding nothing is recorded.

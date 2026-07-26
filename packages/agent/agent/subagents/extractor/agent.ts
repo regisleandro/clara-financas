@@ -1,4 +1,5 @@
 import { defineAgent } from "eve";
+import { ExtractionResultSchema } from "@clara-financas/views/agent-contracts";
 
 import { extractorModel } from "../../lib/models";
 
@@ -17,4 +18,5 @@ export default defineAgent({
   description:
     "Turns the text of a financial document (card invoice, bank statement, receipt) into proposed structured transactions, with a confidence grade and per-page location. Delegate when there is a document to interpret.",
   model: extractorModel(),
+  outputSchema: ExtractionResultSchema,
 });

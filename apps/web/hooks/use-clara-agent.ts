@@ -77,6 +77,49 @@ export function useClaraAgent({
     void agent.send({ inputResponses: [{ requestId: pending.requestId, optionId }] });
   };
 
+  const answerTextRef = useRef<(text: string, sensitive?: boolean) => Promise<void>>(
+    async () => {},
+  );
+  answerTextRef.current = async (text: string, sensitive = false) => {
+    if (!pending) return;
+    try {
+      let protectedInput: { requestId: string; token: string } | undefined;
+      if (sensitive) {
+        const response = await fetch("/api/documents/password", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ requestId: pending.requestId, password: text }),
+        });
+        if (!response.ok) throw new Error("Não foi possível proteger a senha.");
+        const data = (await response.json()) as { token: string };
+        protectedInput = { requestId: pending.requestId, token: data.token };
+      }
+
+      setAnswered(true);
+      void agent.send({
+        inputResponses: [
+          {
+            requestId: pending.requestId,
+            text: sensitive ? "Resposta protegida fornecida." : text,
+          },
+        ],
+        ...(protectedInput
+          ? {
+              clientContext: {
+                protectedInput: {
+                  ...protectedInput,
+                  instruction:
+                    "Encaminhe este token somente à tool de leitura do documento. Não o repita.",
+                },
+              },
+            }
+          : {}),
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível enviar a resposta.");
+    }
+  };
+
   const onTurnStartRef = useRef<() => void>(() => {});
   sendRef.current = (message: string) => {
     setAnswered(null);
@@ -104,9 +147,16 @@ export function useClaraAgent({
       }
       if (result.warning !== null) toast.warning(result.warning);
 
-      sendRef.current(
-        `Enviei o documento ${result.filename} (documentId: ${result.documentId}). Extraia as transações e me mostre a conferência.`,
-      );
+      setAnswered(null);
+      onTurnStartRef.current();
+      void agent.send({
+        message: `Enviei ${result.filename}.`,
+        clientContext: {
+          event: "document_uploaded",
+          documentId: result.documentId,
+          filename: result.filename,
+        },
+      });
     } finally {
       setUploading(false);
       setProgress(null);
@@ -151,6 +201,9 @@ export function useClaraAgent({
     send: (message: string) => sendRef.current(message),
     /** Responde o gate pendente (aprovar/negar/opção). */
     answer: (optionId: string) => answerRef.current(optionId),
+    /** Responde uma pergunta livre; valores sensíveis viajam em contexto efêmero. */
+    answerText: (text: string, sensitive = false) =>
+      answerTextRef.current(text, sensitive),
     /** Registra o que fazer quando um turno novo começa (ex.: reabrir painel). */
     onTurnStart: (fn: () => void) => {
       onTurnStartRef.current = fn;

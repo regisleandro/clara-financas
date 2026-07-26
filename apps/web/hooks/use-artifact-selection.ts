@@ -83,7 +83,12 @@ export function useArtifactSelection({
 
   // Painel novo reabre a coluna, seguindo o artefato mais recente: a pessoa
   // acabou de pedir algo que o produz.
-  const openKey = artifact?.title ?? presented?.title ?? null;
+  const openKey =
+    artifact !== null
+      ? `batch:${proposalMessageId ?? artifact.title}`
+      : presented !== null
+        ? `view:${JSON.stringify(presented)}`
+        : null;
   useEffect(() => {
     if (openKey !== null) setSelection({ type: "latest" });
   }, [openKey]);

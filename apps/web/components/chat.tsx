@@ -29,7 +29,6 @@ import {
   latestConversation,
   listConversations,
   loadSession,
-  removeConversation,
   type StoredSession,
 } from "@/lib/session-store";
 import { useMediaQuery } from "@/lib/use-media-query";
@@ -187,8 +186,6 @@ function ChatSession({
   );
 
   const startNewConversation = () => {
-    const sessionId = agent.session.sessionId;
-    if (sessionId !== undefined) removeConversation(tenantKey, sessionId);
     agent.reset();
     onSwitchConversation(null);
   };
@@ -260,15 +257,20 @@ function ChatSession({
 
             {/* A decisão sobre o lote vem PRIMEIRO e dentro da conversa: é o
                 momento em que a pessoa decide. */}
-            {pending?.toolName === "commit_batch" && answered === null ? (
+            {pending !== null && pending.toolName !== "ask_question" && answered === null ? (
               <DecisionCard
                 pending={pending}
                 proposal={proposal}
                 disabled={busy}
                 onAnswer={clara.answer}
               />
-            ) : pending && pending.toolName !== "commit_batch" ? (
-              <GenericPrompt pending={pending} disabled={busy} onAnswer={clara.answer} />
+            ) : pending?.toolName === "ask_question" && answered === null ? (
+              <GenericPrompt
+                pending={pending}
+                disabled={busy}
+                onAnswer={clara.answer}
+                onAnswerText={clara.answerText}
+              />
             ) : null}
 
             {!isWelcome && !busy && pending === null ? (
@@ -400,25 +402,26 @@ function GenericPrompt({
   pending,
   disabled,
   onAnswer,
+  onAnswerText,
 }: {
   pending: NonNullable<ReturnType<typeof findPendingRequest>>;
   disabled: boolean;
   onAnswer: (optionId: string) => void;
+  onAnswerText: (text: string, sensitive?: boolean) => void;
 }) {
-  const options = pending.options?.length
-    ? pending.options
-    : [
-        { optionId: "approve", label: "Aprovar" },
-        { optionId: "deny", label: "Não" },
-      ];
+  const [value, setValue] = useState("");
+  const options = pending.options ?? [];
+  const sensitive = /senha|password/i.test(pending.prompt ?? "");
+  const allowText = pending.allowFreeform === true || options.length === 0;
 
   return (
     <section className="clara-card p-7">
       <p className="clara-display-xs">
         {pending.prompt ?? "A Clara precisa da sua confirmação."}
       </p>
-      <Suggestions className="mt-5">
-        {options.map((option, index) => {
+      {options.length > 0 ? (
+        <Suggestions className="mt-5">
+          {options.map((option, index) => {
           const id = option.optionId ?? option.id ?? String(index);
           return (
             <Suggestion
@@ -428,8 +431,45 @@ function GenericPrompt({
               onClick={() => onAnswer(id)}
             />
           );
-        })}
-      </Suggestions>
+          })}
+        </Suggestions>
+      ) : null}
+      {allowText ? (
+        <form
+          className="mt-5 flex flex-col gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const answer = value.trim();
+            if (answer === "" || disabled) return;
+            onAnswerText(answer, sensitive);
+          }}
+        >
+          <label className="clara-small" htmlFor={`answer-${pending.requestId}`}>
+            {sensitive ? "Senha do documento" : "Sua resposta"}
+          </label>
+          <input
+            id={`answer-${pending.requestId}`}
+            type={sensitive ? "password" : "text"}
+            autoComplete={sensitive ? "off" : undefined}
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            disabled={disabled}
+            className="h-11 rounded-[var(--clara-radius-tile)] border bg-background px-3 text-base"
+          />
+          <button
+            type="submit"
+            disabled={disabled || value.trim() === ""}
+            className="clara-pill clara-pill-primary h-10 self-start px-5 text-sm disabled:opacity-50"
+          >
+            {sensitive ? "Ler documento" : "Enviar resposta"}
+          </button>
+          {sensitive ? (
+            <p className="clara-small">
+              A senha não aparece na conversa nem é guardada no histórico deste dispositivo.
+            </p>
+          ) : null}
+        </form>
+      ) : null}
     </section>
   );
 }

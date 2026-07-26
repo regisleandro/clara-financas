@@ -28,7 +28,16 @@ const EYEBROW: Record<View["kind"], string> = {
   comparison: "Comparação",
   recurrences: "Recorrências",
   transactions: "Razão",
+  commitments: "Agenda",
+  proposal: "Proposta",
   checksum: "Conferência",
+};
+
+/** A cor do marcador de severidade. Segue o significado, não a estética. */
+const ACCENT_COLOR: Record<NonNullable<ViewRow["accent"]>, string> = {
+  danger: "var(--clara-amber)",
+  attention: "var(--clara-blue)",
+  positive: "var(--clara-green)",
 };
 
 /**
@@ -137,7 +146,18 @@ function Rows({
           >
             <div className="grid grid-cols-[1fr_auto] items-baseline gap-4">
               <span className="min-w-0">
-                <strong className="block truncate font-semibold">{row.label}</strong>
+                <strong className="flex items-baseline gap-2 font-semibold">
+                  {/* O marcador vem ANTES do rótulo: numa agenda, a urgência é
+                      lida antes do nome de quem cobra. */}
+                  {row.accent !== undefined ? (
+                    <span
+                      aria-hidden="true"
+                      className="size-1.5 shrink-0 rounded-full"
+                      style={{ background: ACCENT_COLOR[row.accent] }}
+                    />
+                  ) : null}
+                  <span className="min-w-0 truncate">{row.label}</span>
+                </strong>
                 {row.detail !== undefined && row.detail !== "" ? (
                   <small className="clara-small mt-[3px] block">{row.detail}</small>
                 ) : null}

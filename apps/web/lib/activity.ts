@@ -52,8 +52,13 @@ export type Activity = {
  *
  * O mapa cobre TODAS as tools do coordenador (as de subagente rodam na sessão
  * filha e nunca chegam aqui, exceto `read_pdf_pages` que fica documentada por
- * garantia). Uma tool sem entrada cai no nome cru em inglês — num produto
- * inteiro em pt-BR, isso é bug visível.
+ * garantia).
+ *
+ * O que falta cai em `TOOL_FALLBACK_LABEL`, e não no nome cru: uma tool nova —
+ * do harness ou nossa — chegava à tela como `apply_learned_rules`, em inglês e
+ * com underline, no meio de um produto inteiramente em português. O mapa é a
+ * primeira linha; o fallback é o que garante que esquecer de atualizá-lo custe
+ * precisão, não um identificador exposto a quem usa.
  */
 export const TOOL_LABEL: Record<string, string> = {
   read_concept: "Consultando o que já foi aprendido",
@@ -63,6 +68,7 @@ export const TOOL_LABEL: Record<string, string> = {
   save_concept: "Guardando o aprendizado",
   save_commitment: "Agendando o lembrete",
   list_commitments: "Olhando os próximos vencimentos",
+  list_invoices: "Consultando o histórico de faturas",
   recategorize_transactions: "Recategorizando lançamentos",
   apply_learned_rules: "Aplicando as regras aprendidas",
   present_view: "Montando o painel",
@@ -70,16 +76,19 @@ export const TOOL_LABEL: Record<string, string> = {
   ask_question: "Aguardando sua resposta",
 };
 
+/** O que se diz de uma ferramenta que ainda não tem rótulo próprio. */
+export const TOOL_FALLBACK_LABEL = "Consultando os dados";
+
 const SUBAGENT_LABEL: Record<string, string> = {
-  extractor: "Extrator lendo o documento",
-  analyst: "Analista calculando sobre o razão",
-  categorizer: "Guarda-livros organizando as categorias",
+  extractor: "Lendo o documento",
+  analyst: "Conferindo os valores no razão",
+  categorizer: "Organizando as categorias",
 };
 
 const SUBAGENT_DETAIL: Record<string, string> = {
-  extractor: "contexto isolado · sem acesso ao razão",
-  analyst: "só leitura · todo número vem de ferramenta",
-  categorizer: "só leitura · propõe, não grava",
+  extractor: "A leitura ainda será conferida antes de qualquer registro",
+  analyst: "Os cálculos usam os lançamentos registrados",
+  categorizer: "As sugestões não alteram nada sem sua decisão",
 };
 
 /** Ícone por ferramenta: o desenho diz o que está acontecendo antes do texto. */
@@ -91,6 +100,7 @@ export const TOOL_ICON: Record<string, ActivityIcon> = {
   save_concept: "save",
   save_commitment: "calendar",
   list_commitments: "calendar",
+  list_invoices: "document",
   recategorize_transactions: "tags",
   apply_learned_rules: "tags",
   present_view: "ledger",
@@ -148,7 +158,7 @@ export function deriveActivity(events: readonly unknown[]): Activity {
           steps.set(callId, {
             id: callId,
             kind: "tool",
-            label: TOOL_LABEL[toolName] ?? toolName,
+            label: TOOL_LABEL[toolName] ?? TOOL_FALLBACK_LABEL,
             icon: TOOL_ICON[toolName] ?? "search",
             status: "running",
           });
@@ -164,7 +174,7 @@ export function deriveActivity(events: readonly unknown[]): Activity {
         steps.set(callId, {
           id: callId,
           kind: "subagent",
-          label: SUBAGENT_LABEL[name] ?? `Delegando ao ${name}`,
+          label: SUBAGENT_LABEL[name] ?? "Consultando os dados",
           detail: SUBAGENT_DETAIL[name],
           icon: SUBAGENT_ICON[name] ?? "brain",
           status: "running",

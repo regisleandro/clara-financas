@@ -47,6 +47,7 @@ describe("deriveFollowups", () => {
   it("checksum só sugere investigar quando há divergência", () => {
     const mismatch = ViewSchema.parse({
       kind: "checksum",
+      batchId: "bat_1",
       title: "Conferência",
       declaredTotal: 100,
       extractedTotal: 99,

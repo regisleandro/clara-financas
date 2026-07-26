@@ -244,6 +244,9 @@ importers:
       '@ai-sdk/openai':
         specifier: ^4.0.20
         version: 4.0.20(zod@4.4.3)
+      '@clara-financas/auth':
+        specifier: workspace:*
+        version: link:../auth
       '@clara-financas/db':
         specifier: workspace:*
         version: link:../db
@@ -274,6 +277,9 @@ importers:
       eve:
         specifier: 'catalog:'
         version: 0.27.6(@libsql/client@0.17.4)(@vercel/blob@2.6.1)(ai@7.0.37(zod@4.4.3))(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@libsql/client@0.17.4)(bun-types@1.3.14)(kysely@0.29.4)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(microsandbox@0.6.6)(vite@8.1.5(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      jose:
+        specifier: ^6.1.0
+        version: 6.2.4
       unpdf:
         specifier: ^1.8.0
         version: 1.8.0
@@ -287,9 +293,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.1
-      jose:
-        specifier: ^6.1.0
-        version: 6.2.4
       microsandbox:
         specifier: ^0.6.6
         version: 0.6.6
@@ -314,6 +317,9 @@ importers:
       dotenv:
         specifier: 'catalog:'
         version: 17.4.2
+      jose:
+        specifier: ^6.1.0
+        version: 6.2.4
       zod:
         specifier: 'catalog:'
         version: 4.4.3

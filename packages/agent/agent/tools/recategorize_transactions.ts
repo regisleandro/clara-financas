@@ -24,7 +24,7 @@ import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
  */
 export default defineTool({
   description:
-    "Changes the category of transactions already recorded in the ledger. Requires approval. Use when categories are wrong or outside the constitution's taxonomy.",
+    "Requests approval to change categories of recorded transactions. Call with the exact affected ids and destination category when the proposal is ready; the approval card is where the person decides.",
   inputSchema: z.object({
     changes: z
       .array(
@@ -34,6 +34,10 @@ export default defineTool({
             .string()
             .min(1)
             .describe("Category identifier from the constitution, e.g. 'groceries'."),
+          categoryLabel: z
+            .string()
+            .min(1)
+            .describe("Human-readable category label in Brazilian Portuguese, for the approval card."),
         }),
       )
       .min(1)

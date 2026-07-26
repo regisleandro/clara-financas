@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-26T00:00:00.000Z",
+  "title": "Design System: Clara Finanças",
+  "extensions": {
+    "colorMeta": {
+      "ink": { "role": "neutral", "displayName": "Tinta", "canonical": "#1d1d1f" },
+      "fog": { "role": "neutral", "displayName": "Névoa", "canonical": "#f5f5f7" },
+      "surface": { "role": "neutral", "displayName": "Superfície", "canonical": "#ffffff" },
+      "action-blue": { "role": "primary", "displayName": "Azul de Ação", "canonical": "#0071e3" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Títulos, decisões e métricas." },
+      "body": { "displayName": "Texto", "purpose": "Conversa e explicações." }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "state-fast",
+        "value": "150ms ease-out",
+        "purpose": "Feedback curto de hover, foco e estado."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Botão primário",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "A ação principal de uma decisão.",
+      "html": "<button class=\"ds-button-primary\">Registrar fatura</button>",
+      "css": ".ds-button-primary { background: var(--clara-blue, #0071e3); color: var(--clara-white, #fff); border: 0; border-radius: 980px; padding: 11px 22px; font: 600 17px/1.2 system-ui, sans-serif; transition: opacity 150ms ease-out; } .ds-button-primary:hover { opacity: .9; } .ds-button-primary:focus-visible { outline: 2px solid var(--clara-blue, #0071e3); outline-offset: 2px; }"
+    },
+    {
+      "name": "Cartão de decisão",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Explica alcance e consequência antes de uma escrita.",
+      "html": "<section class=\"ds-decision\"><strong>Registrar 42 lançamentos?</strong><p>Depois do registro, valor, data e origem não mudam mais.</p></section>",
+      "css": ".ds-decision { max-width: 420px; background: var(--clara-white, #fff); color: var(--clara-ink, #1d1d1f); border-radius: 28px; padding: 28px; font: 17px/1.47 system-ui, sans-serif; } .ds-decision strong { display: block; font-size: 19px; line-height: 1.2; } .ds-decision p { color: var(--clara-slate, #86868b); margin: 12px 0 0; }"
+    },
+    {
+      "name": "Campo protegido",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Entrada efêmera para senha de documento.",
+      "html": "<label class=\"ds-field\">Senha do documento<input type=\"password\" /></label>",
+      "css": ".ds-field { display: grid; gap: 8px; color: var(--clara-slate, #86868b); font: 12px/1.33 system-ui, sans-serif; } .ds-field input { min-height: 44px; border: 1px solid var(--clara-ash, #e8e8ed); border-radius: 12px; background: var(--clara-white, #fff); color: var(--clara-ink, #1d1d1f); padding: 0 12px; font-size: 16px; } .ds-field input:focus-visible { outline: 2px solid var(--clara-blue, #0071e3); outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Clareza de Mesa",
+    "overview": "Uma conversa tranquila diante de documentos organizados. A complexidade técnica permanece atrás de resultados verificáveis e decisões explícitas.",
+    "keyCharacteristics": ["Claro e restrito", "Dados densos apenas onde ajudam", "Estado antes de decoração"],
+    "rules": [
+      { "name": "One Action Rule", "body": "Azul identifica a ação principal ou o estado atual.", "section": "colors" },
+      { "name": "Tonal Depth Rule", "body": "Primeiro cor e espaço; sombra apenas em sobreposição real.", "section": "elevation" }
+    ],
+    "dos": ["Mostrar consequência e alcance antes de pedir uma decisão."],
+    "donts": ["Não expor linguagem técnica, identificadores, prompts, raciocínio ou JSON."]
+  }
+}

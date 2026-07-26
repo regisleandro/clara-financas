@@ -20,7 +20,7 @@ import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
  */
 export default defineTool({
   description:
-    "Records a due date or reminder so the person is warned before it arrives. Requires approval. Use when an invoice reveals a due date, or when the person asks to be reminded of something.",
+    "Requests approval to record a due date or reminder. Call when date, recurrence and warning lead time are ready to show; the call opens the decision card and executes only after approval.",
   inputSchema: z.object({
     kind: z.enum(["invoice_due", "subscription_charge", "custom"]),
     title: z.string().min(1).describe("How the commitment appears in the schedule. Write it in Brazilian Portuguese."),

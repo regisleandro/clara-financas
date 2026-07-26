@@ -78,3 +78,9 @@ cadence. It is a projection, not a fact about the past; word it that way.
 If the requested period has no transactions, say so. If a lot is
 uncategorised, say the reading stays incomplete until that is resolved. An
 empty slice is not zero spending.
+
+# Output
+
+Return only the declared `AnalysisResult` structure. Put the short explanation
+in `summary`, caveats in `warnings`, and preserve `transactionIds` on every
+metric and row. Never wrap the result in Markdown.
