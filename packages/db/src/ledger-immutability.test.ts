@@ -235,6 +235,60 @@ describe("imutabilidade do razão", () => {
     );
   });
 
+  it("atestar revisão humana é permitido e não altera nenhum número", async () => {
+    // O atestado é uma terceira natureza, ao lado de FATO e LEITURA: registra
+    // que alguém olhou. Precisa ser gravável numa linha já confirmada — é o que
+    // tira o item da fila de revisão quando a conclusão é "a leitura já estava
+    // certa" e nada muda.
+    const { transactionId } = await createBatch(TENANT, "confirmed");
+
+    const [before] = await forTenant(
+      TENANT,
+      async (tx) => tx.select().from(transactions).where(eq(transactions.id, transactionId)),
+      db,
+    );
+
+    await forTenant(
+      TENANT,
+      async (tx) =>
+        tx
+          .update(transactions)
+          .set({ reviewedAt: new Date(), reviewedBy: "human:usuario_1" })
+          .where(eq(transactions.id, transactionId)),
+      db,
+    );
+
+    const [after] = await forTenant(
+      TENANT,
+      async (tx) => tx.select().from(transactions).where(eq(transactions.id, transactionId)),
+      db,
+    );
+
+    assert.equal(after?.reviewedBy, "human:usuario_1");
+    assert.ok(after?.reviewedAt instanceof Date);
+    assert.equal(after?.amount, before?.amount, "atestar não move dinheiro");
+    assert.equal(after?.date, before?.date);
+    assert.equal(after?.status, "confirmed");
+  });
+
+  it("o atestado não abre caminho para editar valor junto", async () => {
+    const { transactionId } = await createBatch(TENANT, "confirmed");
+
+    await assert.rejects(
+      () =>
+        forTenant(
+          TENANT,
+          async (tx) =>
+            tx
+              .update(transactions)
+              .set({ reviewedAt: new Date(), amount: 1 })
+              .where(eq(transactions.id, transactionId)),
+          db,
+        ),
+      rejectsWith(/não podem ser alterados/),
+    );
+  });
+
   it("transação confirmada NÃO pode ser apagada", async () => {
     const { transactionId } = await createBatch(TENANT, "confirmed");
 

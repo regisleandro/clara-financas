@@ -3,9 +3,11 @@ import { describe, it } from "node:test";
 
 import {
   aggregateByCategory,
+  aggregateByIssuerMonth,
   comparePeriods,
   detectRecurrences,
   totalSpend,
+  type IssuedTransaction,
 } from "./analysis";
 import { TransactionSchema, type Transaction } from "./types";
 
@@ -278,5 +280,113 @@ describe("detectRecurrences", () => {
 
     const [recorrencia] = detectRecurrences(rows);
     assert.equal(recorrencia?.occurrences, 3);
+  });
+});
+
+describe("aggregateByIssuerMonth", () => {
+  function issued(partial: Partial<IssuedTransaction> = {}): IssuedTransaction {
+    const { issuer = null, ...rest } = partial;
+    return { ...tx(rest), issuer };
+  }
+
+  it("cruza operadora com mês e mantém as duas margens somando o mesmo total", () => {
+    const rows = [
+      issued({ id: "a", issuer: "Nubank", amount: 1000, date: "2026-05-03" }),
+      issued({ id: "b", issuer: "Nubank", amount: 2000, date: "2026-06-11" }),
+      issued({ id: "c", issuer: "Itaú", amount: 500, date: "2026-06-20" }),
+    ];
+
+    const matrix = aggregateByIssuerMonth(rows);
+
+    assert.deepEqual(matrix.months, ["2026-06", "2026-05"], "mês mais recente primeiro");
+    assert.equal(matrix.total.value, 3500);
+    assert.equal(
+      matrix.monthTotals.reduce((sum, month) => sum + month.value, 0),
+      matrix.total.value,
+      "a margem por mês fecha com o total",
+    );
+    assert.equal(
+      matrix.issuers.reduce((sum, issuer) => sum + issuer.total.value, 0),
+      matrix.total.value,
+      "a margem por operadora fecha com o total",
+    );
+  });
+
+  it("ordena as operadoras pelo que pesa mais", () => {
+    const matrix = aggregateByIssuerMonth([
+      issued({ issuer: "Itaú", amount: 500 }),
+      issued({ issuer: "Nubank", amount: 9000 }),
+    ]);
+
+    assert.deepEqual(
+      matrix.issuers.map((row) => row.issuer),
+      ["Nubank", "Itaú"],
+    );
+  });
+
+  it("mês sem lançamento da operadora é null, não zero", () => {
+    // A distinção importa na tela: zero seria "gastou e se anulou", e uma
+    // célula vazia é "não teve fatura neste mês".
+    const matrix = aggregateByIssuerMonth([
+      issued({ issuer: "Nubank", amount: 1000, date: "2026-05-03" }),
+      issued({ issuer: "Itaú", amount: 500, date: "2026-06-20" }),
+    ]);
+
+    const nubank = matrix.issuers.find((row) => row.issuer === "Nubank")!;
+    const junho = matrix.months.indexOf("2026-06");
+    assert.equal(nubank.byMonth[junho], null);
+  });
+
+  it("documento sem operadora identificada vira linha, não desaparece", () => {
+    const matrix = aggregateByIssuerMonth([
+      issued({ issuer: "Nubank", amount: 1000 }),
+      issued({ issuer: null, amount: 700 }),
+    ]);
+
+    const orfa = matrix.issuers.find((row) => row.issuer === null);
+    assert.equal(orfa?.total.value, 700, "o que não foi identificado continua visível");
+  });
+
+  it("pagamento da fatura não entra no gasto da célula", () => {
+    const matrix = aggregateByIssuerMonth([
+      issued({ id: "compra", issuer: "Nubank", amount: 1000, date: "2026-06-02" }),
+      issued({
+        id: "pagamento",
+        issuer: "Nubank",
+        amount: -1000,
+        kind: "payment",
+        date: "2026-06-02",
+      }),
+    ]);
+
+    assert.equal(matrix.total.value, 1000);
+    assert.ok(!matrix.issuers[0]?.byMonth[0]?.transactionIds.includes("pagamento"));
+  });
+
+  it("cada célula reconstrói o próprio valor pelos ids que carrega", () => {
+    const rows = [
+      issued({ id: "a", issuer: "Nubank", amount: 1234, date: "2026-06-01" }),
+      issued({ id: "b", issuer: "Nubank", amount: 4321, date: "2026-06-15" }),
+      issued({ id: "c", issuer: "Itaú", amount: 999, date: "2026-05-15" }),
+    ];
+    const byId = new Map(rows.map((row) => [row.id, row]));
+
+    for (const issuer of aggregateByIssuerMonth(rows).issuers) {
+      for (const cell of issuer.byMonth) {
+        if (cell === null) continue;
+        const recomputed = cell.transactionIds.reduce(
+          (sum, id) => sum + (byId.get(id)?.amount ?? 0),
+          0,
+        );
+        assert.equal(recomputed, cell.value, `célula de ${issuer.issuer} não reconstrói`);
+      }
+    }
+  });
+
+  it("razão vazio devolve matriz vazia, não uma linha fantasma", () => {
+    const matrix = aggregateByIssuerMonth([]);
+    assert.deepEqual(matrix.months, []);
+    assert.deepEqual(matrix.issuers, []);
+    assert.equal(matrix.total.value, 0);
   });
 });

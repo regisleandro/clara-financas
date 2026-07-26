@@ -6,6 +6,7 @@ export {
 } from "./checksum";
 export {
   aggregateByCategory,
+  aggregateByIssuerMonth,
   comparePeriods,
   detectRecurrences,
   totalSpend,
@@ -14,6 +15,9 @@ export {
   type CategoryTotal,
   type CategoryComparison,
   type Recurrence,
+  type Bucket,
+  type IssuedTransaction,
+  type IssuerMonthMatrix,
 } from "./analysis";
 export { categoryLabel, type CategoryLabels } from "./categories";
 export {
