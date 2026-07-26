@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  activeConversation,
   latestConversation,
   listConversations,
   loadSession,
   removeConversation,
   saveSession,
+  setActiveConversation,
 } from "./session-store";
 
 /**
@@ -118,6 +120,54 @@ describe("session-store", () => {
       listConversations("t1", storage).map((entry) => entry.sessionId),
       ["s1"],
     );
+  });
+
+  it("retoma a conversa ABERTA, não a mais recente por data", () => {
+    const storage = memoryStorage();
+    saveSession("t1", cursor("s1"), [], "Antiga", storage);
+    saveSession("t1", cursor("s2"), [], "Recente", storage);
+
+    // Abrir a antiga pelo menu não a promove no registro — mas é ela que a
+    // próxima visita deve retomar.
+    setActiveConversation("t1", "s1", storage);
+    assert.equal(activeConversation("t1", storage), "s1");
+    assert.equal(latestConversation("t1", storage)?.sessionId, "s2");
+  });
+
+  it("conversa nova em aberto não traz a anterior de volta", () => {
+    const storage = memoryStorage();
+    saveSession("t1", cursor("s1"), [], "Antiga", storage);
+    setActiveConversation("t1", null, storage);
+    assert.equal(activeConversation("t1", storage), null);
+  });
+
+  it("o primeiro turno de uma conversa nova a torna a conversa aberta", () => {
+    const storage = memoryStorage();
+    setActiveConversation("t1", null, storage);
+    saveSession("t1", cursor("s9"), [{ type: "turn.started" }], "Nova", storage);
+    assert.equal(activeConversation("t1", storage), "s9");
+  });
+
+  it("sem ponteiro (primeiro acesso) cai na mais recente", () => {
+    const storage = memoryStorage();
+    saveSession("t1", cursor("s1"), [], "A", storage);
+    saveSession("t1", cursor("s2"), [], "B", storage);
+    storage.removeItem("clara:active:t1");
+    assert.equal(activeConversation("t1", storage), "s2");
+  });
+
+  it("ponteiro para conversa que já não existe cai na mais recente", () => {
+    const storage = memoryStorage();
+    saveSession("t1", cursor("s1"), [], "A", storage);
+    setActiveConversation("t1", "fantasma", storage);
+    assert.equal(activeConversation("t1", storage), "s1");
+  });
+
+  it("remover a conversa aberta abre em branco", () => {
+    const storage = memoryStorage();
+    saveSession("t1", cursor("s1"), [], "A", storage);
+    removeConversation("t1", "s1", storage);
+    assert.equal(activeConversation("t1", storage), null);
   });
 
   it("registro corrompido devolve vazio em vez de quebrar", () => {

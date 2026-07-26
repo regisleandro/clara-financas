@@ -62,9 +62,12 @@ export function useClaraAgent({
   /**
    * A sessão desta conversa, criada UMA vez por montagem.
    *
-   * `preserveCompletedSessions: true` porque a sessão é interativa: sem isso o
-   * handle zera o cursor na fronteira `session.completed` e perde o
-   * `sessionId` — que é justamente o endereço da rota de cancelamento.
+   * `preserveCompletedSessions: true` porque a sessão é interativa, e a falta
+   * disso quebrava DUAS coisas: o handle zera o cursor na fronteira
+   * `session.completed` e leva embora o `sessionId` — que é o endereço da rota
+   * de cancelamento, e é também o que `saveSession` exige para gravar. Sem ele
+   * a conversa não entrava no registro local, e ao recarregar a página retomava
+   * a última que por acaso ainda tinha cursor, não a última de verdade.
    *
    * Ref, não `useMemo`: memo é cache, não garantia, e um novo `Client` no meio
    * da conversa apontaria para uma sessão que não é a corrente.
@@ -290,11 +293,23 @@ export function useClaraAgent({
   const snapshotRef = useRef({ session: agent.session, events: agent.events, firstUserText });
   snapshotRef.current = { session: agent.session, events: agent.events, firstUserText };
 
+  // Só grava depois de um turno REAL desta montagem. Antes, montar já bastava
+  // para regravar a conversa retomada — e como o registro era ordenado por
+  // data, abrir uma conversa antiga a promovia a "a última", embaralhando qual
+  // conversa a próxima visita retomaria. Agora quem responde por isso é o
+  // ponteiro de conversa aberta (`setActiveConversation`), e `updatedAt` volta
+  // a significar atividade de verdade — que é o que o menu mostra.
+  const turnRan = useRef(false);
+
   useEffect(() => {
-    if (agent.status !== "ready" && agent.status !== "error") return;
-    const { session, events, firstUserText: title } = snapshotRef.current;
+    if (agent.status === "submitted" || agent.status === "streaming") {
+      turnRan.current = true;
+      return;
+    }
+    if (!turnRan.current) return;
+    const { session: cursor, events, firstUserText: title } = snapshotRef.current;
     if (events.length === 0) return;
-    saveSession(tenantKey, session, events, title);
+    saveSession(tenantKey, cursor, events, title);
   }, [agent.status, tenantKey]);
 
   return {
