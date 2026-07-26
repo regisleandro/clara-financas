@@ -20,5 +20,8 @@ WHERE a.kind <> 'custom'
   AND coalesce(b.counterparty, '') = coalesce(a.counterparty, '')
   AND (b.updated_at > a.updated_at OR (b.updated_at = a.updated_at AND b.id > a.id));--> statement-breakpoint
 ALTER TABLE "commitments" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
-DROP INDEX "commitments_tenant_kind_counterparty_idx";--> statement-breakpoint
+-- IF EXISTS: num banco que já passou por `db:push` o índice pode ter outro
+-- nome (ou não existir); o objetivo aqui é o índice NOVO valer, não o antigo
+-- morrer com erro.
+DROP INDEX IF EXISTS "commitments_tenant_kind_counterparty_idx";--> statement-breakpoint
 CREATE UNIQUE INDEX "commitments_tenant_kind_counterparty_idx" ON "commitments" USING btree ("tenant_id","kind",coalesce("counterparty", '')) WHERE "commitments"."kind" <> 'custom';

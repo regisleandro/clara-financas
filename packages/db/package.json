@@ -13,7 +13,7 @@
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "tsx src/migrate.ts",
     "check-types": "tsc --noEmit",
     "test": "SKIP_ENV_VALIDATION=1 node --import tsx --env-file=../../apps/web/.env --test src/*.test.ts",
     "test:isolation": "SKIP_ENV_VALIDATION=1 node --import tsx --env-file=../../apps/web/.env --test src/isolation.test.ts"

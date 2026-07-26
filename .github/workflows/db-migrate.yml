@@ -28,6 +28,10 @@ concurrency:
 jobs:
   migrate:
     runs-on: ubuntu-latest
+    # Os secrets do banco vivem no environment `production` — sem esta
+    # declaração o job não os enxerga e o DATABASE_ADMIN_URL chega vazio
+    # (foi exatamente o primeiro run: drizzle-kit falhando com "url: ''").
+    environment: production
     steps:
       - uses: actions/checkout@v4
 
@@ -40,17 +44,16 @@ jobs:
           cache: pnpm
 
       # Falhar AQUI, com diagnóstico, e não dentro do drizzle-kit com
-      # "url: ''". O secret chega vazio quando: foi salvo em "Variables" em
-      # vez de "Secrets"; foi salvo num Environment (este job não declara
-      # `environment:`, então não os enxerga); o nome não é exatamente
-      # DATABASE_ADMIN_URL; ou é um secret de organização sem acesso a este
-      # repositório.
+      # "url: ''". O secret chega vazio quando: o environment declarado no
+      # job não é o que guarda o secret; foi salvo em "Variables" em vez de
+      # "Secrets"; o nome não é exatamente DATABASE_ADMIN_URL; ou é um secret
+      # de organização sem acesso a este repositório.
       - name: Conferir o secret DATABASE_ADMIN_URL
         env:
           DATABASE_ADMIN_URL: ${{ secrets.DATABASE_ADMIN_URL }}
         run: |
           if [ -z "${DATABASE_ADMIN_URL}" ]; then
-            echo "::error::O secret DATABASE_ADMIN_URL está vazio ou invisível para este workflow. Confira em Settings → Secrets and variables → Actions → aba 'Secrets' → 'Repository secrets': o nome precisa ser exatamente DATABASE_ADMIN_URL (não vale a aba 'Variables', nem secret de Environment — este job não declara environment)."
+            echo "::error::O secret DATABASE_ADMIN_URL está vazio ou invisível para este workflow. Ele é lido do environment 'production' (declarado no job) — confira em Settings → Environments → production → Environment secrets se o nome é exatamente DATABASE_ADMIN_URL, na aba Secrets (não Variables)."
             exit 1
           fi
           echo "Secret presente."
