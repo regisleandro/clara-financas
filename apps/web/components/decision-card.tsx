@@ -124,6 +124,39 @@ function decisionCopy(pending: PendingRequest, proposal: BatchProposal | null): 
     };
   }
 
+  /**
+   * Sem um bloco próprio, uma escrita nova cai no genérico "Confirmar esta
+   * alteração?" — que é pedir para a pessoa aprovar no escuro. Cada tool com
+   * gate precisa dizer objeto, alcance e consequência aqui.
+   */
+  if (pending.toolName === "create_adjustment") {
+    const amount = asNumber(input?.amountCents);
+    const reason = asString(input?.reason);
+    return {
+      title:
+        amount === null
+          ? "Registrar um ajuste neste lançamento?"
+          : `Registrar um ajuste de ${formatCents(amount)}?`,
+      consequence:
+        "O lançamento original continua no razão; o ajuste entra como uma linha própria e as duas aparecem na fatura.",
+      approveLabel: "Registrar ajuste",
+      denyLabel: "Não ajustar",
+      details: reason === null ? [] : [reason],
+    };
+  }
+
+  if (pending.toolName === "reject_batch") {
+    const reason = asString(input?.reason);
+    return {
+      title: "Descartar esta fatura?",
+      consequence:
+        "Os lançamentos em rascunho são apagados e a fatura deixa de aparecer como pendente. Nada entra no razão.",
+      approveLabel: "Descartar fatura",
+      denyLabel: "Manter como rascunho",
+      details: reason === null ? [] : [reason],
+    };
+  }
+
   if (pending.toolName === "apply_learned_rules") {
     const ids = Array.isArray(input?.expectedTransactionIds)
       ? input.expectedTransactionIds

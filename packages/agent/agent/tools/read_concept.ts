@@ -19,6 +19,9 @@ import { requireTenantCaller } from "../lib/tenant";
  * Toda leitura passa por `forTenant`, então a RLS do banco vale mesmo que algo
  * acima falhe.
  */
+/** Teto de leitura. O que passa disso é anunciado, nunca cortado calado. */
+const LIMIT = 50;
+
 export default defineTool({
   description:
     "Reads concepts from the user's knowledge. Use to consult categories, conventions, and rules from the constitution, or what has been learned about the person, before deciding a category or applying a rule.",
@@ -63,16 +66,32 @@ export default defineTool({
         })
         .from(concepts)
         .where(and(...filters))
-        .limit(50);
+        // Pede um a mais que o teto só para saber se havia mais — o custo é uma
+        // linha e o que ele compra é a diferença entre "são estes" e "são estes
+        // e há outros".
+        .limit(LIMIT + 1);
 
       // Numa listagem o corpo inteiro é ruído; num conceito específico é a
       // resposta. Enviar tudo sempre gastaria contexto à toa.
       const isSingle = input.conceptId !== undefined;
 
+      // Truncar em silêncio era mentir com número: `count` dizia 50, o modelo
+      // concluía que aquilo era o total, e uma categoria fora da janela virava
+      // "não existe". É o mesmo defeito que a tool já corrigiu para o caso
+      // vazio, e que continuava de pé no caso cheio.
+      const truncated = rows.length > LIMIT;
+      const page = truncated ? rows.slice(0, LIMIT) : rows;
+
       return {
         bundle: input.bundle,
-        count: rows.length,
-        concepts: rows.map((row) => ({
+        count: page.length,
+        ...(truncated
+          ? {
+              truncated: true as const,
+              note: `Mostrando ${LIMIT} conceitos; há mais. Filtre por type ou prefix para ver o resto.`,
+            }
+          : {}),
+        concepts: page.map((row) => ({
           id: row.conceptId,
           type: row.type,
           title: row.frontmatter.title,

@@ -75,6 +75,52 @@ export function findPendingRequest(messages: unknown): PendingRequest | null {
 }
 
 /**
+ * O `optionId` que corresponde a aprovar ou negar ESTE pedido.
+ *
+ * A interface mandava as strings literais `"approve"` e `"deny"`, sem olhar as
+ * opções do pedido. Enquanto o harness usar esses ids, funciona; no dia em que
+ * usar outros, o `inputResponses` é recusado, o turno não retoma e os botões
+ * ficam desabilitados — a decisão morre na tela, sem erro visível. E hoje são
+ * três escritas dependendo dessa suposição, não uma.
+ *
+ * A resolução é por vocabulário e, em último caso, por posição: a primeira
+ * opção é a afirmativa e a última é a negativa, que é a convenção de todo
+ * pedido de aprovação. Só quando não há opção nenhuma é que a literal volta —
+ * aí ela é a única informação disponível.
+ */
+export type ApprovalIntent = "approve" | "deny";
+
+const APPROVE_WORDS = /^(approve[dr]?|accept|allow|confirm|yes|sim|aprovar?)$/i;
+const DENY_WORDS = /^(deny|denied|reject|refuse|decline|cancel|no|nao|não|negar|recusar)$/i;
+
+export function resolveApprovalOption(
+  pending: Pick<PendingRequest, "options"> | null,
+  intent: ApprovalIntent,
+): string {
+  const options = pending?.options ?? [];
+  const ids = options
+    .map((option) => option.optionId ?? option.id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+  if (ids.length === 0) return intent;
+
+  const words = intent === "approve" ? APPROVE_WORDS : DENY_WORDS;
+  const byWord = ids.find((id) => words.test(id));
+  if (byWord !== undefined) return byWord;
+
+  // Pelo rótulo, quando o id é opaco (`opt_1`) mas o texto não é.
+  const byLabel = options.find((option) => {
+    const label = option.label;
+    return typeof label === "string" && words.test(label.trim());
+  });
+  const labelId = byLabel?.optionId ?? byLabel?.id;
+  if (typeof labelId === "string" && labelId.length > 0) return labelId;
+
+  if (ids.length === 1) return ids[0]!;
+  return intent === "approve" ? ids[0]! : ids[ids.length - 1]!;
+}
+
+/**
  * Lotes já registrados no razão, segundo o resultado de `commit_batch`.
  *
  * Serve para o cartão de conferência SUMIR depois do registro. Sem isto ele
@@ -83,7 +129,25 @@ export function findPendingRequest(messages: unknown): PendingRequest | null {
  * sugere que nada aconteceu.
  */
 export function findCommittedBatchIds(messages: unknown): Set<string> {
-  const committed = new Set<string>();
+  return findDecidedBatchIds(messages, "commit_batch", "confirmed");
+}
+
+/**
+ * Lotes descartados, segundo o resultado de `reject_batch`.
+ *
+ * Registrar e descartar fecham a decisão do mesmo jeito, e o cartão precisa
+ * sumir nos DOIS casos. Enquanto descartar era só uma frase no chat, isso não
+ * aparecia; com a tool escrevendo `status: rejected` de verdade, o cartão
+ * sobrevivia ao próprio lote — oferecendo "Registrar fatura" sobre um lote
+ * cujas linhas já foram apagadas. Clicar levava a um erro, e o pior é que a
+ * pessoa tinha acabado de ver a Clara confirmar que descartou.
+ */
+export function findRejectedBatchIds(messages: unknown): Set<string> {
+  return findDecidedBatchIds(messages, "reject_batch", "rejected");
+}
+
+function findDecidedBatchIds(messages: unknown, toolName: string, status: string): Set<string> {
+  const decided = new Set<string>();
   const list = Array.isArray(messages) ? messages : [];
 
   for (const message of list) {
@@ -92,15 +156,15 @@ export function findCommittedBatchIds(messages: unknown): Set<string> {
 
     for (const part of parts) {
       const record = asRecord(part);
-      if (record?.type !== "dynamic-tool" || record.toolName !== "commit_batch") continue;
+      if (record?.type !== "dynamic-tool" || record.toolName !== toolName) continue;
 
       const output = asRecord(record.output);
-      if (output?.status !== "confirmed") continue;
-      if (typeof output.batchId === "string") committed.add(output.batchId);
+      if (output?.status !== status) continue;
+      if (typeof output.batchId === "string") decided.add(output.batchId);
     }
   }
 
-  return committed;
+  return decided;
 }
 
 /**
@@ -125,16 +189,47 @@ export function findOpenBatchProposal(messages: unknown): UnknownRecord | null {
 export function findOpenBatchProposalLocation(
   messages: unknown,
 ): { messageId: string | null; output: UnknownRecord } | null {
-  const committed = findCommittedBatchIds(messages);
-  const list = Array.isArray(messages) ? messages : [];
+  const latest = findBatchProposals(messages).at(-1);
+  if (latest === undefined || latest.outcome !== "open") return null;
+  return { messageId: latest.messageId, output: latest.output };
+}
 
-  for (let index = list.length - 1; index >= 0; index -= 1) {
-    const message = asRecord(list[index]);
+export type BatchOutcome = "open" | "confirmed" | "rejected";
+
+export type BatchProposalLocation = {
+  messageId: string | null;
+  batchId: string;
+  output: UnknownRecord;
+  outcome: BatchOutcome;
+};
+
+/**
+ * TODA conferência da conversa, em ordem, com o que aconteceu com cada uma.
+ *
+ * `findOpenBatchProposalLocation` responde "há decisão pendente?" e só enxerga
+ * a última. Faltava a outra pergunta, que a pessoa faz rolando a conversa para
+ * cima: "o que aquela fatura dizia mesmo?". O link "Ver artefato" da resposta
+ * que trouxe a conferência sumia no instante em que a fatura era decidida —
+ * a mensagem continuava lá, falando de uma conferência que já não tinha para
+ * onde levar. O histórico reescrito é sempre pior que o histórico completo.
+ *
+ * Uma proposta pode ser corrigida várias vezes (`edit_proposed_batch` devolve o
+ * mesmo `batchId` com a conferência refeita); vale a última leitura de cada
+ * lote, que é o estado com que a decisão foi tomada.
+ */
+export function findBatchProposals(messages: unknown): BatchProposalLocation[] {
+  const committed = findCommittedBatchIds(messages);
+  const rejected = findRejectedBatchIds(messages);
+  const list = Array.isArray(messages) ? messages : [];
+  const byBatch = new Map<string, BatchProposalLocation>();
+
+  for (const item of list) {
+    const message = asRecord(item);
     const parts = message?.parts;
     if (!Array.isArray(parts)) continue;
 
-    for (let partIndex = parts.length - 1; partIndex >= 0; partIndex -= 1) {
-      const record = asRecord(parts[partIndex]);
+    for (const part of parts) {
+      const record = asRecord(part);
       if (record?.type !== "dynamic-tool") continue;
       if (record.toolName !== "propose_batch" && record.toolName !== "edit_proposed_batch") {
         continue;
@@ -142,11 +237,21 @@ export function findOpenBatchProposalLocation(
 
       const output = asRecord(record.output);
       if (!output || typeof output.batchId !== "string" || !asRecord(output.checksum)) continue;
-      if (committed.has(output.batchId)) return null;
 
-      return { messageId: typeof message?.id === "string" ? message.id : null, output };
+      const batchId = output.batchId;
+      byBatch.set(batchId, {
+        // A correção herda a mensagem em que apareceu: é lá que a pessoa a viu.
+        messageId: typeof message?.id === "string" ? message.id : null,
+        batchId,
+        output,
+        outcome: committed.has(batchId)
+          ? "confirmed"
+          : rejected.has(batchId)
+            ? "rejected"
+            : "open",
+      });
     }
   }
 
-  return null;
+  return [...byBatch.values()];
 }

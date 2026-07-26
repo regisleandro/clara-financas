@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { findMessageView, findPresentedView } from "./stream";
+import { findMessageView, findMessageViews, findPresentedView, findPresentedViews } from "./stream";
 
 /**
  * Estes testes cobrem exatamente os erros que a inferência anterior cometia em
@@ -165,5 +165,51 @@ describe("findMessageView", () => {
     assert.equal(findMessageView(null), null);
     assert.equal(findMessageView({ parts: "não é lista" }), null);
     assert.equal(findMessageView({}), null);
+  });
+
+  it("os dois painéis de um turno chegam inteiros", () => {
+    // `findPresentedView` guarda o último — é o que a coluna abre. Mas o
+    // anterior existia e sumia sem sinal.
+    const panel = (title: string) => ({
+      kind: "metric",
+      title,
+      metric: { label: "Total", amount: 100, transactionIds: ["txn_1"] },
+    });
+    const events = [
+      { type: "turn.started", data: { turnId: "t1" } },
+      {
+        type: "actions.requested",
+        data: { actions: [{ callId: "c1", toolName: "present_view", input: panel("Proposta") }] },
+      },
+      {
+        type: "actions.requested",
+        data: { actions: [{ callId: "c2", toolName: "present_view", input: panel("Resultado") }] },
+      },
+    ];
+
+    assert.deepEqual(
+      findPresentedViews(events).map((view) => view.title),
+      ["Proposta", "Resultado"],
+    );
+    assert.equal(findPresentedView(events)?.title, "Resultado");
+  });
+
+  it("os painéis de uma mensagem também vêm inteiros", () => {
+    const part = (title: string) => ({
+      type: "dynamic-tool",
+      toolName: "present_view",
+      input: {
+        kind: "metric",
+        title,
+        metric: { label: "Total", amount: 100, transactionIds: ["txn_1"] },
+      },
+    });
+    const message = { parts: [part("Um"), part("Dois")] };
+
+    assert.deepEqual(
+      findMessageViews(message).map((view) => view.title),
+      ["Um", "Dois"],
+    );
+    assert.equal(findMessageView(message)?.title, "Dois");
   });
 });

@@ -231,10 +231,31 @@ Usa `TRUNCATE` como dono do schema porque o trigger `clara_transactions_immutabl
 ## Testes e verificações
 
 ```bash
+./scripts/dev-db.sh    # PostgreSQL local, os dois papéis e as migrações
 pnpm check-types
 pnpm test
 pnpm test:isolation
 ```
+
+O primeiro comando é pré-requisito dos outros dois, e não por conveniência:
+`forTenant` recusa conectar como superusuário (a RLS viraria enfeite), então
+testar exige um papel de aplicação de verdade, separado do dono do schema. O
+script cria os dois, sobe o cluster, aplica as migrações e escreve as URLs em
+`apps/web/.env` e `packages/agent/.env` sem sobrescrever o que já estiver lá.
+`--reset` recomeça do zero.
+
+As senhas são **geradas** na primeira execução e vivem só no `.env`, que é
+ignorado pelo git — nenhuma literal no script, nem de brincadeira. Execuções
+seguintes reaproveitam a que já está lá, para o banco e o arquivo não
+divergirem. Como o papel nasce antes da migração, a senha fraca de bootstrap
+que a migração `0001` define não chega a ser usada: é o mesmo caminho que
+[docs/deploy.md](docs/deploy.md) manda seguir em produção.
+
+Os testes de `packages/agent/tests/tools/` exercitam cada ferramenta do agente
+contra esse banco — propor uma fatura, conferir, corrigir a natureza de um
+lançamento, registrar, ajustar, recategorizar, revisar, descartar — e as
+asserções olham o estado do banco, não o texto da resposta. Nenhum modelo
+participa: uma tool é uma função, e é assim que ela é testada.
 
 O Turborepo usa o grafo de dependências declarado nos `package.json` para ordenar builds e verificações. Para trabalhar apenas no app web e suas dependências, use filtros:
 

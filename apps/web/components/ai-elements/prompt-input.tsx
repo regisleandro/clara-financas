@@ -915,13 +915,18 @@ export const PromptInput = ({
         title="Anexar arquivos"
         type="file"
       />
-      <form
-        className={cn("w-full", className)}
-        onSubmit={handleSubmit}
-        ref={formRef}
-        {...props}
-      >
-        <InputGroup className="overflow-hidden">{children}</InputGroup>
+      <form className="w-full" onSubmit={handleSubmit} ref={formRef} {...props}>
+        {/* O `className` do chamador vai para o InputGroup, não para o form: a
+            caixa visível — borda, raio, respiro, alinhamento dos botões — é o
+            grupo, e no form essas classes não tinham efeito nenhum.
+
+            `h-auto` é obrigatório: o `has-[>textarea]:h-auto` do InputGroup não
+            enxerga o textarea através do `display: contents` do
+            PromptInputBody, então a caixa ficava presa em `h-9` (36px) e
+            recortava campo e botões — era o campo torto no celular. */}
+        <InputGroup className={cn("h-auto overflow-hidden", className)}>
+          {children}
+        </InputGroup>
       </form>
     </>
   );
@@ -1090,7 +1095,13 @@ export const PromptInputTextarea = ({
 
   return (
     <InputGroupTextarea
-      className={cn("field-sizing-content max-h-48 min-h-16 overflow-y-auto", className)}
+      // `min-w-0`: um textarea tem largura intrínseca de ~20 colunas, e como
+      // item flex ele se recusava a encolher abaixo disso — em tela estreita a
+      // linha estourava a caixa e empurrava o botão de enviar para fora.
+      className={cn(
+        "field-sizing-content max-h-48 min-h-16 min-w-0 overflow-y-auto",
+        className,
+      )}
       name="message"
       onCompositionEnd={handleCompositionEnd}
       onCompositionStart={handleCompositionStart}

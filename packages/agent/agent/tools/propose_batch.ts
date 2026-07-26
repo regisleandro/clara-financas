@@ -77,78 +77,48 @@ export default defineTool({
     const { tenantId } = requireTenantCaller(ctx);
     const db = getDb();
 
-    const document = await forTenant(
+    /**
+     * UMA transação para a proposta inteira.
+     *
+     * Eram quatro — ler o documento, apagar o rascunho velho, conferir se já
+     * foi registrado, gravar —, e entre elas o banco ficava num estado que não
+     * existe em lugar nenhum do desenho: uma falha depois do apagamento e
+     * antes da gravação deixava o documento SEM lote nenhum, com a fatura
+     * anterior já destruída. Aqui ou tudo entra, ou nada muda.
+     *
+     * A ordem também mudou: a checagem de "já registrado" vem ANTES do
+     * apagamento. Fazendo depois, recusar a proposta já havia destruído o
+     * rascunho — um erro com efeito colateral.
+     */
+    const batchId = id("bat");
+    const result = await forTenant(
       tenantId,
       async (tx) => {
-        const [row] = await tx
+        const [document] = await tx
           .select()
           .from(documents)
           .where(and(eq(documents.id, input.documentId), eq(documents.tenantId, tenantId)))
           .limit(1);
-        return row;
-      },
-      db,
-    );
 
-    if (!document) return { error: "documento não encontrado" as const };
-
-    // Idempotência por documento: reprocessar a mesma fatura NÃO pode criar um
-    // segundo rascunho. Sem isto, cada tentativa deixava um lote órfão — foram
-    // 5 lotes e 374 transações fantasmas do mesmo PDF em teste real, e a
-    // análise passou a somar coisa que a pessoa nunca aprovou.
-    await forTenant(
-      tenantId,
-      async (tx) => {
-        const stale = await tx
-          .select({ id: batches.id })
-          .from(batches)
-          .where(
-            and(
-              eq(batches.tenantId, tenantId),
-              eq(batches.documentId, document.id),
-              eq(batches.status, "proposed"),
-            ),
-          );
-
-        for (const row of stale) {
-          // Só rascunho sai; o trigger do banco protege o que foi confirmado.
-          await tx.delete(transactions).where(eq(transactions.batchId, row.id));
-          await tx.delete(batches).where(eq(batches.id, row.id));
+        if (!document) {
+          return {
+            error: {
+              code: "documento_nao_encontrado" as const,
+              message: `Nenhum documento com o id ${input.documentId}.`,
+              hint: "Os documentId chegam no contexto do upload e aparecem em list_invoices.",
+              retryable: true,
+            },
+          };
         }
+
+        return { document };
       },
       db,
     );
 
-    // Documento já registrado no razão: propor de novo duplicaria o gasto.
-    const confirmed = await forTenant(
-      tenantId,
-      async (tx) => {
-        const [row] = await tx
-          .select({ id: batches.id })
-          .from(batches)
-          .where(
-            and(
-              eq(batches.tenantId, tenantId),
-              eq(batches.documentId, document.id),
-              eq(batches.status, "confirmed"),
-            ),
-          )
-          .limit(1);
-        return row;
-      },
-      db,
-    );
+    if ("error" in result) return result;
+    const { document } = result;
 
-    if (confirmed) {
-      return {
-        error: "documento_ja_registrado" as const,
-        batchId: confirmed.id,
-        message:
-          "This invoice is already recorded in the ledger. Do not propose it again — if something is wrong, record an adjustment.",
-      };
-    }
-
-    const batchId = id("bat");
     const prepared = input.transactions.map((transaction) => ({
       ...transaction,
       id: id("txn"),
@@ -190,9 +160,59 @@ export default defineTool({
 
     const checksum = verifyChecksum(batch);
 
-    await forTenant(
+    const written = await forTenant(
       tenantId,
       async (tx) => {
+        // Documento já registrado no razão: propor de novo duplicaria o gasto.
+        // A checagem vive DENTRO da transação que escreve — feita fora, entre
+        // ler e gravar cabe uma aprovação concorrente.
+        const [confirmed] = await tx
+          .select({ id: batches.id })
+          .from(batches)
+          .where(
+            and(
+              eq(batches.tenantId, tenantId),
+              eq(batches.documentId, document.id),
+              eq(batches.status, "confirmed"),
+            ),
+          )
+          .limit(1);
+
+        if (confirmed) {
+          return {
+            error: {
+              code: "documento_ja_registrado" as const,
+              message: "Esta fatura já está registrada no razão.",
+              hint: "Não proponha de novo. Para corrigir algo nela, chame read_batch e depois create_adjustment.",
+              retryable: false,
+            },
+            batchId: confirmed.id,
+          };
+        }
+
+        // Idempotência por documento: reprocessar a mesma fatura NÃO pode criar
+        // um segundo rascunho. Sem isto, cada tentativa deixava um lote órfão —
+        // foram 5 lotes e 374 transações fantasmas do mesmo PDF em teste real,
+        // e a análise passou a somar coisa que a pessoa nunca aprovou. O
+        // apagamento e a gravação são a MESMA transação: falhar no meio deixava
+        // o documento sem lote nenhum, com o anterior já destruído.
+        const stale = await tx
+          .select({ id: batches.id })
+          .from(batches)
+          .where(
+            and(
+              eq(batches.tenantId, tenantId),
+              eq(batches.documentId, document.id),
+              eq(batches.status, "proposed"),
+            ),
+          );
+
+        for (const row of stale) {
+          // Só rascunho sai; o trigger do banco protege o que foi confirmado.
+          await tx.delete(transactions).where(eq(transactions.batchId, row.id));
+          await tx.delete(batches).where(eq(batches.id, row.id));
+        }
+
         await tx.insert(batches).values({
           id: batchId,
           tenantId,
@@ -241,9 +261,13 @@ export default defineTool({
             })),
           );
         }
+
+        return { ok: true as const };
       },
       db,
     );
+
+    if ("error" in written) return written;
 
     return {
       batchId,

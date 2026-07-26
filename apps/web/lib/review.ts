@@ -4,12 +4,13 @@ import { getDb } from "@clara-financas/db";
 import { loadCategoryLabels } from "@clara-financas/db/category-labels";
 import { concepts } from "@clara-financas/db/schema/knowledge";
 import { batches, documents, transactions } from "@clara-financas/db/schema/ledger";
+import { needsReviewCondition, reviewReasonsFor } from "@clara-financas/db/queries/review";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import { categoryLabel } from "@clara-financas/ledger";
-import { and, asc, count, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
+import { categoryLabel, categorySlug } from "@clara-financas/ledger";
+import { and, asc, count, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { cache } from "react";
 
-import type { ReviewQueue, ReviewReason } from "@/lib/review-types";
+import type { ReviewQueue } from "@/lib/review-types";
 
 export type {
   DivergentBatch,
@@ -53,7 +54,7 @@ export const countPendingReview = cache(async (tenantId: string): Promise<number
     tx
       .select({ total: count() })
       .from(transactions)
-      .where(and(inArray(transactions.status, ["confirmed", "adjustment"]), needsReview())),
+      .where(and(inArray(transactions.status, ["confirmed", "adjustment"]), needsReviewCondition())),
   );
 
   return rows[0]?.total ?? 0;
@@ -74,7 +75,7 @@ export async function loadReviewQueue(tenantId: string): Promise<ReviewQueue> {
         })
         .from(transactions)
         .leftJoin(documents, eq(transactions.sourceDocumentId, documents.id))
-        .where(and(inArray(transactions.status, ["confirmed", "adjustment"]), needsReview()))
+        .where(and(inArray(transactions.status, ["confirmed", "adjustment"]), needsReviewCondition()))
         // Mais antigo primeiro: a fila é para ser esvaziada, e o que espera há
         // mais tempo é o que mais atrasa qualquer análise.
         .orderBy(asc(transactions.date));
@@ -126,7 +127,7 @@ export async function loadReviewQueue(tenantId: string): Promise<ReviewQueue> {
         page: transaction.page,
         issuer,
         filename,
-        reasons: reasonsFor(transaction),
+        reasons: reviewReasonsFor(transaction),
       }));
 
       const counts = { sem_categoria: 0, confianca_baixa: 0, sem_comerciante: 0 };
@@ -155,7 +156,7 @@ export async function loadReviewQueue(tenantId: string): Promise<ReviewQueue> {
         })),
         categories: taxonomy
           .map((concept) => {
-            const slug = concept.conceptId.replace(/^categories\//, "");
+            const slug = categorySlug(concept.conceptId);
             const title = concept.frontmatter.title;
             return { slug, label: typeof title === "string" && title !== "" ? title : slug };
           })
@@ -166,36 +167,6 @@ export async function loadReviewQueue(tenantId: string): Promise<ReviewQueue> {
     },
     db,
   );
-}
-
-/**
- * O predicado da fila, em um só lugar.
- *
- * A contagem do badge e a fila da tela têm de concordar sempre: se divergirem,
- * o badge mostra "3" e a tela abre vazia, e a pessoa deixa de acreditar nos
- * dois.
- */
-function needsReview() {
-  return and(
-    isNull(transactions.reviewedAt),
-    or(
-      isNull(transactions.category),
-      eq(transactions.extractionConfidence, "baixa"),
-      isNull(transactions.merchant),
-    ),
-  );
-}
-
-function reasonsFor(transaction: {
-  category: string | null;
-  merchant: string | null;
-  extractionConfidence: "alta" | "media" | "baixa";
-}): ReviewReason[] {
-  const reasons: ReviewReason[] = [];
-  if (transaction.category === null) reasons.push("sem_categoria");
-  if (transaction.extractionConfidence === "baixa") reasons.push("confianca_baixa");
-  if (transaction.merchant === null) reasons.push("sem_comerciante");
-  return reasons;
 }
 
 function periodLabel(start: string | null, end: string | null): string | null {

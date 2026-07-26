@@ -59,8 +59,11 @@ export function ExecutionTrace({ activity, busy }: { activity: Activity; busy: b
       ? "Não foi possível concluir uma etapa"
       : "Como cheguei a esta resposta";
 
+  // Falhou: abre sozinho. Colapsado, a pessoa via uma linha com X e um título
+  // genérico, e precisava adivinhar que havia mais atrás de um clique —
+  // justamente no momento em que ela precisa saber o que aconteceu.
   return (
-    <Task defaultOpen={false} className="w-full">
+    <Task defaultOpen={failed} className="w-full">
       <TaskTrigger title="">
         <div className="flex w-full cursor-pointer items-center gap-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
           <CurrentIcon activity={activity} running={running} failed={failed} />
@@ -87,6 +90,8 @@ export function ExecutionTrace({ activity, busy }: { activity: Activity; busy: b
                   <CheckIcon className="size-4 text-[var(--clara-green)]" />
                 ) : step.status === "failed" ? (
                   <XIcon className="size-4 text-destructive" />
+                ) : step.status === "warning" ? (
+                  <XIcon className="size-4 text-[var(--clara-amber)]" />
                 ) : (
                   <Icon className="size-4 animate-pulse text-[var(--clara-blue)]" />
                 )}
@@ -95,7 +100,11 @@ export function ExecutionTrace({ activity, busy }: { activity: Activity; busy: b
                 <span className={step.status === "failed" ? "text-destructive" : undefined}>
                   {step.label}
                 </span>
-                {step.detail !== undefined ? (
+                {/* A causa vem primeiro: quando algo não deu certo, o detalhe
+                    genérico da etapa é ruído perto do motivo. */}
+                {step.cause !== undefined ? (
+                  <span className="clara-small block">{step.cause}</span>
+                ) : step.detail !== undefined ? (
                   <span className="clara-small block">{step.detail}</span>
                 ) : null}
               </span>

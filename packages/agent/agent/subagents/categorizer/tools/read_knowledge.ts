@@ -16,6 +16,9 @@ import { requireTenantCaller } from "../../../lib/tenant";
  * de comerciante (`merchants/`). Sem `tenantId` no input — ele vem da sessão
  * autenticada, nunca do modelo.
  */
+/** Teto de leitura. O que passa disso é anunciado, nunca cortado calado. */
+const LIMIT = 50;
+
 export default defineTool({
   description:
     "Reads concepts from the user's knowledge: valid categories (type Category), learned categorisation rules (prefix rules/), and merchant aliases (prefix merchants/). Consult before proposing a category or an alias.",
@@ -58,16 +61,32 @@ export default defineTool({
         })
         .from(concepts)
         .where(and(...filters))
-        .limit(50);
+        // Pede um a mais que o teto só para saber se havia mais — o custo é uma
+        // linha e o que ele compra é a diferença entre "são estes" e "são estes
+        // e há outros".
+        .limit(LIMIT + 1);
 
       // Numa listagem o corpo inteiro é ruído; num conceito específico é a
       // resposta. Enviar tudo sempre gastaria contexto à toa.
       const isSingle = input.conceptId !== undefined;
 
+      // Truncar em silêncio era mentir com número: `count` dizia 50, o modelo
+      // concluía que aquilo era o total, e uma categoria fora da janela virava
+      // "não existe". É o mesmo defeito que a tool já corrigiu para o caso
+      // vazio, e que continuava de pé no caso cheio.
+      const truncated = rows.length > LIMIT;
+      const page = truncated ? rows.slice(0, LIMIT) : rows;
+
       return {
         bundle: input.bundle,
-        count: rows.length,
-        concepts: rows.map((row) => ({
+        count: page.length,
+        ...(truncated
+          ? {
+              truncated: true as const,
+              note: `Mostrando ${LIMIT} conceitos; há mais. Filtre por type ou prefix para ver o resto.`,
+            }
+          : {}),
+        concepts: page.map((row) => ({
           id: row.conceptId,
           type: row.type,
           title: row.frontmatter.title,

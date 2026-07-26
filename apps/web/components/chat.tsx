@@ -32,7 +32,11 @@ import {
   type StoredSession,
 } from "@/lib/session-store";
 import { useMediaQuery } from "@/lib/use-media-query";
-import { findOpenBatchProposalLocation, findPendingRequest } from "@clara-financas/views/hitl";
+import {
+  findBatchProposals,
+  findOpenBatchProposalLocation,
+  findPendingRequest,
+} from "@clara-financas/views/hitl";
 
 /**
  * A conversa, em duas colunas.
@@ -126,6 +130,13 @@ function ChatSession({
     () => findOpenBatchProposalLocation(agent.data.messages),
     [agent.data.messages],
   );
+
+  // Todas as conferências da conversa, para que as já decididas continuem
+  // alcançáveis pelo link da resposta que as trouxe.
+  const proposals = useMemo(
+    () => findBatchProposals(agent.data.messages),
+    [agent.data.messages],
+  );
   const proposal = (proposalLocation?.output ?? null) as BatchProposal | null;
   const canApprove = pending?.toolName === "commit_batch" && answered === null;
 
@@ -159,6 +170,8 @@ function ChatSession({
   const {
     setSelection,
     presented,
+    panelFailed,
+    invalidIssues,
     messageArtifacts,
     active,
     panelOpen,
@@ -168,12 +181,22 @@ function ChatSession({
     events: agent.events,
     artifact,
     proposalMessageId: proposalLocation?.messageId ?? null,
-    // Painel inválido não pode mais sumir em silêncio: este é o ponto único
-    // de telemetria — o sintoma "o artefato às vezes não abre" era
-    // indepurável sem ele.
-    onInvalidView: (issues, callId) =>
-      console.warn("[clara] present_view inválido", { issues, callId }),
+    proposalBatchId: typeof proposal?.batchId === "string" ? proposal.batchId : null,
+    proposals,
+    // O turno é o que faz a coluna reabrir a cada pergunta — inclusive quando
+    // a pergunta se repete e o painel sai idêntico.
+    turnId: activity.turnId,
+    // No celular a modal cobre a conversa; lá o artefato abre pelo link.
+    autoOpen: isDesktop,
   });
+
+  // Painel inválido não pode sumir em silêncio. A tela diz que não deu (ver
+  // abaixo, na conversa); aqui fica o rastro para quem for depurar.
+  useEffect(() => {
+    if (invalidIssues.length > 0) {
+      console.warn("[clara] present_view inválido", { issues: invalidIssues });
+    }
+  }, [invalidIssues]);
 
   // Turno novo: a coluna volta a seguir o artefato mais recente.
   clara.onTurnStart(() => setSelection({ type: "latest" }));
@@ -181,7 +204,12 @@ function ChatSession({
   // Follow-ups do turno (derivados do painel) na frente dos do servidor
   // (derivados do razão).
   const turnFollowups = useMemo(
-    () => deriveFollowups(presented, followups.length > 0 ? followups : FALLBACK_FOLLOWUPS),
+    () =>
+      deriveFollowups(
+        // O follow-up acompanha o painel que está À VISTA, que é o último.
+        presented.at(-1) ?? null,
+        followups.length > 0 ? followups : FALLBACK_FOLLOWUPS,
+      ),
     [presented, followups],
   );
 
@@ -255,6 +283,18 @@ function ChatSession({
 
             {!isWelcome ? <ExecutionTrace activity={activity} busy={busy} /> : null}
 
+            {/* O painel foi pedido e recusado pelo contrato. A resposta em
+                texto normalmente aponta para ele ("veja ao lado"), e ficar
+                calado deixa a pessoa procurando o que não existe. Dizer que
+                não deu, e o que dá para fazer, é o mínimo honesto. */}
+            {panelFailed && !busy ? (
+              <p className="clara-small">
+                Não consegui montar o painel desta resposta — os números acima
+                seguem válidos. Se quiser vê-los organizados, peça de novo em
+                outras palavras.
+              </p>
+            ) : null}
+
             {/* A decisão sobre o lote vem PRIMEIRO e dentro da conversa: é o
                 momento em que a pessoa decide. */}
             {pending !== null && pending.toolName !== "ask_question" && answered === null ? (
@@ -311,9 +351,16 @@ function ChatSession({
             {/* `items-end`, não `items-center`: o campo cresce com o conteúdo
                 (até ~6 linhas, depois rola por dentro), e os botões ficam
                 ancorados na base — centralizados, eles flutuariam no meio de
-                um campo alto. */}
+                um campo alto.
+
+                Duas formas, uma marcação: no celular a caixa quebra em duas
+                linhas (campo em cima, botões embaixo, `justify-between`), e a
+                partir de `sm` volta a ser a linha única do desktop. Numa tela
+                de 360px os três itens lado a lado não caberiam — o texto do
+                placeholder quebrava e sobrava tarja azul por cima da borda. A
+                ordem visual é dada por `order-*`, não pela ordem no DOM. */}
             <PromptInput
-              className="items-end rounded-[var(--clara-radius-card)] py-1.5 pl-2 pr-1.5"
+              className="flex-wrap items-end justify-between gap-y-1 rounded-[var(--clara-radius-card)] p-1.5 sm:flex-nowrap sm:justify-start sm:py-1.5 sm:pl-2 sm:pr-1.5"
               onSubmit={(message, event) => {
                 event.preventDefault();
                 const text = message.text?.trim();
@@ -321,7 +368,7 @@ function ChatSession({
                 clara.send(text);
               }}
             >
-              <InputGroupAddon align="inline-start">
+              <InputGroupAddon align="inline-start" className="order-2 sm:order-first">
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
@@ -348,10 +395,10 @@ function ChatSession({
                   placeholder="Pergunte sobre seu dinheiro…"
                   disabled={busy}
                   rows={1}
-                  className="min-h-11 py-2.5"
+                  className="order-1 min-h-11 basis-full px-3 py-2.5 sm:order-none sm:basis-0"
                 />
               </PromptInputBody>
-              <InputGroupAddon align="inline-end">
+              <InputGroupAddon align="inline-end" className="order-3 sm:order-last">
                 {/* Durante o streaming o botão vira "Parar" DE VERDADE: antes
                     ele só trocava o ícone, sem função — um botão de stop morto
                     é pior que nenhum. */}

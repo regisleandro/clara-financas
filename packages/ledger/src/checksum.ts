@@ -32,7 +32,11 @@ export function countsTowardDeclaredTotal(transaction: Transaction): boolean {
   return transaction.kind !== "payment";
 }
 
-export function verifyChecksum(batch: ProposedBatch, toleranceCents = 0): ChecksumReport {
+export function verifyChecksum(
+  batch: ProposedBatch,
+  toleranceCents = 0,
+  rounding: RoundingPolicy = DEFAULT_ROUNDING,
+): ChecksumReport {
   const counted = batch.transactions.filter(countsTowardDeclaredTotal);
   const extractedTotal = sumAmounts(counted);
 
@@ -61,7 +65,7 @@ export function verifyChecksum(batch: ProposedBatch, toleranceCents = 0): Checks
   }
 
   const exactMatch = counted.some((transaction) => transaction.amount === difference);
-  const likelyCause = classifyCause(difference, counted.length, exactMatch);
+  const likelyCause = classifyCause(difference, counted.length, exactMatch, rounding);
   const localizedIn = localize(batch, counted);
 
   return {
@@ -122,17 +126,31 @@ function localize(
  * arredondamento acumulado, não de item lido errado — um item errado erra por
  * ordens de grandeza maiores. O limiar cresce com a quantidade de itens porque
  * cada um pode contribuir com meio centavo.
+ *
+ * É heurística, e heurística com número fixo escondido no meio do arquivo é
+ * exatamente o tipo de decisão que ninguém consegue revisar depois. Fica aqui,
+ * nomeada e substituível: `verifyChecksum` aceita outra política, e o dia em
+ * que um emissor exigir tolerância diferente não vai precisar de um `if` novo
+ * dentro do cálculo.
  */
-const ROUNDING_FLOOR_CENTS = 2;
+export type RoundingPolicy = {
+  /** Piso, em centavos: abaixo disto a diferença é sempre arredondamento. */
+  floorCents: number;
+  /** Quanto cada item pode contribuir, em centavos. */
+  perItemCents: number;
+};
+
+export const DEFAULT_ROUNDING: RoundingPolicy = { floorCents: 2, perItemCents: 0.5 };
 
 function classifyCause(
   difference: number,
   itemCount: number,
   hasExactMatch: boolean,
+  rounding: RoundingPolicy,
 ): ChecksumCause {
   if (hasExactMatch) return "item";
 
-  const tolerance = Math.max(ROUNDING_FLOOR_CENTS, Math.ceil(itemCount / 2));
+  const tolerance = Math.max(rounding.floorCents, Math.ceil(itemCount * rounding.perItemCents));
   if (Math.abs(difference) <= tolerance) return "rounding";
 
   return "unknown";

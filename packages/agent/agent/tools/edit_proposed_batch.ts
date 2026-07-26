@@ -1,11 +1,14 @@
+import { randomUUID } from "node:crypto";
+
 import { getDb } from "@clara-financas/db";
 import { batches, transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import { merchantKey, verifyChecksum } from "@clara-financas/ledger";
+import { CONFIDENCE, ENTRY_KINDS, merchantKey, verifyChecksum } from "@clara-financas/ledger";
 import { and, eq } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
+import { notFound, refused } from "../lib/errors";
 import { requireTenantCaller } from "../lib/tenant";
 
 /**
@@ -21,26 +24,64 @@ import { requireTenantCaller } from "../lib/tenant";
  */
 export default defineTool({
   description:
-    "Fixes transactions in a batch that is not yet approved (date, amount, category, merchant) and re-runs the checksum. Use when the person points out an error on the verification card.",
-  inputSchema: z.object({
-    batchId: z.string().min(1),
-    edits: z
-      .array(
-        z.object({
-          transactionId: z.string().min(1),
-          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-          amount: z.number().int().optional().describe("IN CENTS, signed."),
-          category: z.string().nullable().optional(),
-          merchant: z.string().nullable().optional(),
-          originalDescription: z.string().min(1).optional(),
-        }),
-      )
-      .min(1),
-    removeTransactionIds: z
-      .array(z.string().min(1))
-      .optional()
-      .describe("Items read by mistake that do not exist in the document."),
-  }),
+    "Fixes transactions in a batch that is not yet approved and re-runs the checksum. Corrects date, amount, kind, category, merchant, description and confidence; removes entries read by mistake; adds entries the extraction missed. Use when the verification does not add up, or when the person points out an error on the card. Entry ids come from read_batch.",
+  inputSchema: z
+    .object({
+      batchId: z.string().min(1),
+      edits: z
+        .array(
+          z.object({
+            transactionId: z.string().min(1),
+            date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+            amount: z.number().int().optional().describe("IN CENTS, signed."),
+            // `kind` faltava, e era a correção mais necessária de todas: é ele
+            // que decide se a linha compõe o total da fatura. Um pagamento lido
+            // como compra produz divergência do tamanho exato do pagamento — a
+            // causa mais documentada do repositório — e não havia como corrigir.
+            kind: z
+              .enum(ENTRY_KINDS)
+              .optional()
+              .describe(
+                "Nature of the entry. `payment` does NOT count toward the invoice total; fixing a payment read as a purchase usually closes the whole difference.",
+              ),
+            extractionConfidence: z.enum(CONFIDENCE).optional(),
+            category: z.string().nullable().optional(),
+            merchant: z.string().nullable().optional(),
+            originalDescription: z.string().min(1).optional(),
+          }),
+        )
+        .optional(),
+      removeTransactionIds: z
+        .array(z.string().min(1))
+        .optional()
+        .describe("Items read by mistake that do not exist in the document."),
+      // Faltava o caminho inverso da remoção: quando a conferência acusa item
+      // FALTANTE, a única saída era reextrair o PDF inteiro.
+      add: z
+        .array(
+          z.object({
+            date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+            originalDescription: z.string().min(1),
+            amount: z.number().int().describe("IN CENTS, signed."),
+            merchant: z.string().nullable().optional(),
+            kind: z.enum(ENTRY_KINDS).optional(),
+            category: z.string().nullable().optional(),
+            page: z.number().int().positive().nullable().optional(),
+          }),
+        )
+        .optional()
+        .describe("Entries present in the document that the extraction missed."),
+    })
+    .refine(
+      (input) =>
+        (input.edits?.length ?? 0) > 0 ||
+        (input.removeTransactionIds?.length ?? 0) > 0 ||
+        (input.add?.length ?? 0) > 0,
+      // `edits` era obrigatório com `.min(1)`, o que proibia a operação mais
+      // comum de uma divergência tipo "item": só REMOVER a linha duplicada. O
+      // modelo tinha de inventar uma edição no-op para conseguir remover.
+      { message: "informe ao menos uma correção, remoção ou inclusão" },
+    ),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);
     const db = getDb();
@@ -54,14 +95,22 @@ export default defineTool({
           .where(and(eq(batches.id, input.batchId), eq(batches.tenantId, tenantId)))
           .limit(1);
 
-        if (!batch) return { error: "lote não encontrado" as const };
+        if (!batch) {
+          return notFound("lote_nao_encontrado", `Nenhuma fatura com o id ${input.batchId}.`, {
+            hint: "Confira os batchId do estado do razão, ou chame list_invoices.",
+          });
+        }
         if (batch.status !== "proposed") {
-          return {
-            error: "este lote já foi decidido; correções agora exigem uma linha de ajuste" as const,
-          };
+          return refused(
+            "lote_ja_decidido",
+            "Esta fatura já foi registrada no razão, e lançamento confirmado não se edita.",
+            {
+              hint: "Para corrigir algo aqui, chame create_adjustment com o transactionId e o valor da correção.",
+            },
+          );
         }
 
-        for (const edit of input.edits) {
+        for (const edit of input.edits ?? []) {
           const { transactionId, ...fields } = edit;
           const changes: Record<string, unknown> = Object.fromEntries(
             Object.entries(fields).filter(([, value]) => value !== undefined),
@@ -116,6 +165,31 @@ export default defineTool({
             );
         }
 
+        for (const entry of input.add ?? []) {
+          await tx.insert(transactions).values({
+            id: `txn_${randomUUID().replace(/-/g, "").slice(0, 20)}`,
+            tenantId,
+            batchId: batch.id,
+            sourceDocumentId: batch.documentId,
+            status: "proposed",
+            date: entry.date,
+            originalDescription: entry.originalDescription,
+            merchant: entry.merchant ?? null,
+            merchantKey: merchantKey({
+              originalDescription: entry.originalDescription,
+              merchant: entry.merchant ?? null,
+            }),
+            amount: entry.amount,
+            kind: entry.kind ?? "purchase",
+            category: entry.category ?? null,
+            // Item acrescentado à mão não foi lido pelo extrator: a confiança
+            // é da correção humana que o trouxe, e marcá-lo como `alta` faria
+            // a fila de revisão perder de vista o que não veio do documento.
+            extractionConfidence: "media",
+            page: entry.page ?? null,
+          });
+        }
+
         const rows = await tx
           .select()
           .from(transactions)
@@ -159,7 +233,18 @@ export default defineTool({
           })
           .where(eq(batches.id, batch.id));
 
-        return { batchId: batch.id, transactionCount: rows.length, checksum };
+        return {
+          batchId: batch.id,
+          transactionCount: rows.length,
+          checksum,
+          // O que mudou é o que a Clara vai contar para a pessoa; deduzir do
+          // input daria número errado quando um id não casa com o lote.
+          applied: {
+            edited: input.edits?.length ?? 0,
+            removed: input.removeTransactionIds?.length ?? 0,
+            added: input.add?.length ?? 0,
+          },
+        };
       },
       db,
     );

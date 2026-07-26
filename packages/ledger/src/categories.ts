@@ -24,3 +24,17 @@ export function categoryLabel(labels: CategoryLabels, category: string | null): 
   if (category === null) return "Sem categoria";
   return labels[category] ?? category;
 }
+
+/**
+ * O identificador da categoria a partir do id do conceito.
+ *
+ * O conceito OKF é identificado pelo CAMINHO no bundle (`categories/groceries`)
+ * e o razão guarda só o slug (`groceries`). A conversão estava copiada em
+ * quatro arquivos, cada um com a sua regex — e quatro cópias de uma regra são
+ * quatro chances de uma divergir. Aceitar as duas formas é deliberado: o id
+ * chega ora do conceito, ora do razão, e a origem do dado não deve decidir se
+ * a tradução funciona.
+ */
+export function categorySlug(conceptId: string): string {
+  return conceptId.startsWith("categories/") ? conceptId.slice("categories/".length) : conceptId;
+}

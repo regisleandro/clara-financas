@@ -1,4 +1,5 @@
 export {
+  DEFAULT_ROUNDING,
   verifyChecksum,
   sumAmounts,
   formatCents,
@@ -19,7 +20,7 @@ export {
   type IssuedTransaction,
   type IssuerMonthMatrix,
 } from "./analysis";
-export { categoryLabel, type CategoryLabels } from "./categories";
+export { categoryLabel, categorySlug, type CategoryLabels } from "./categories";
 export {
   merchantKey,
   isTruncationOf,

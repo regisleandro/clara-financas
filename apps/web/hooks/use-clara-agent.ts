@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { uploadDocument } from "@/lib/document-upload";
 import { saveSession, type StoredSession } from "@/lib/session-store";
-import { findPendingRequest } from "@clara-financas/views/hitl";
+import { findPendingRequest, resolveApprovalOption } from "@clara-financas/views/hitl";
 
 /**
  * A sessão da Clara, encapsulada: token, envio, upload, gate e persistência.
@@ -73,8 +73,15 @@ export function useClaraAgent({
   const answerRef = useRef<(optionId: string) => void>(() => {});
   answerRef.current = (optionId: string) => {
     if (!pending) return;
-    setAnswered(optionId === "approve");
-    void agent.send({ inputResponses: [{ requestId: pending.requestId, optionId }] });
+    // "approve" e "deny" são INTENÇÕES vindas dos cartões, não ids: quem sabe
+    // o id de verdade é o pedido. As respostas de `ask_question` já chegam com
+    // o id da opção e passam direto.
+    const intent = optionId === "approve" || optionId === "deny" ? optionId : null;
+    const resolved = intent === null ? optionId : resolveApprovalOption(pending, intent);
+    setAnswered(intent === null ? true : intent === "approve");
+    void agent.send({
+      inputResponses: [{ requestId: pending.requestId, optionId: resolved }],
+    });
   };
 
   const answerTextRef = useRef<(text: string, sensitive?: boolean) => Promise<void>>(
@@ -137,6 +144,12 @@ export function useClaraAgent({
     setUploading(true);
     setProgress(null);
     try {
+      // O `catch` faltava, e o buraco era exatamente o caminho não previsto:
+      // `uploadDocument` devolve `{ ok: false }` para o que ele antecipa, mas
+      // um `fetch` que rejeita ou o parser estourando dentro do PDF viram
+      // exceção. Sem isto a promessa rejeitava sem dono, o spinner do "+"
+      // parava e a conversa não dizia nada — a pessoa ficava esperando uma
+      // fatura que nunca chegou.
       const result = await uploadDocument(file, (percentage) =>
         setProgress(Math.round(percentage)),
       );
@@ -157,6 +170,12 @@ export function useClaraAgent({
           filename: result.filename,
         },
       });
+    } catch (error) {
+      toast.error(
+        error instanceof Error && error.message !== ""
+          ? error.message
+          : "Não consegui enviar esse arquivo. Tente de novo.",
+      );
     } finally {
       setUploading(false);
       setProgress(null);
