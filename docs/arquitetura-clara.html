@@ -511,7 +511,7 @@
             <article class="node data">
               <span class="tag">blob / filesystem</span>
               <h3>Arquivos PDF</h3>
-              <p>Vercel Blob em produção; disco local no desenvolvimento. O banco guarda chave e hash.</p>
+              <p>Vercel Blob em produção, gravado direto pelo navegador; disco local no desenvolvimento. O banco guarda chave e hash.</p>
             </article>
             <article class="node data">
               <span class="tag">openai / ai gateway</span>
@@ -555,13 +555,14 @@
             <div class="flow-number">02</div>
             <h3>Importação com aprovação humana</h3>
             <div class="pipeline" aria-label="Fluxo de importação">
-              <div class="pipeline-step">Upload PDF</div><div class="pipeline-arrow">→</div>
+              <div class="pipeline-step">Conferir no navegador</div><div class="pipeline-arrow">→</div>
+              <div class="pipeline-step">PDF direto ao Blob</div><div class="pipeline-arrow">→</div>
               <div class="pipeline-step">Extrair e conferir</div><div class="pipeline-arrow">→</div>
               <div class="pipeline-step">Lote proposto</div><div class="pipeline-arrow">→</div>
               <div class="pipeline-step">Pessoa aprova</div><div class="pipeline-arrow">→</div>
               <div class="pipeline-step">Razão confirmado</div>
             </div>
-            <p class="note">Checksum, idempotência e status <code>proposed</code> impedem escrita silenciosa.</p>
+            <p class="note">O arquivo não passa pela API: o parser roda no navegador e o PDF vai direto ao armazenamento. Checksum, idempotência e status <code>proposed</code> impedem escrita silenciosa.</p>
           </article>
 
           <article class="flow-card ve-card">

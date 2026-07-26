@@ -19,8 +19,12 @@ Navegador
   ├── HTTPS → Next.js / Control plane
   │             ├── Better Auth (sessão)
   │             ├── /api/token (JWT para o agente)
-  │             ├── /api/documents (upload e idempotência)
+  │             ├── /api/documents/prepare (hash, deduplicação, modo)
+  │             ├── /api/documents/upload (token de escrita no Blob)
+  │             ├── /api/documents (registro e idempotência)
   │             └── Server Components → PostgreSQL
+  │
+  ├── HTTPS → Vercel Blob (PDF direto, sem passar pela função)
   │
   └── HTTPS + Bearer JWT → Eve / Agent plane
                            ├── Coordenadora Clara
@@ -39,6 +43,33 @@ O fluxo financeiro principal é:
 upload PDF → extração → lote proposto → checksum/conferência
            → aprovação explícita da pessoa → transações confirmadas no razão
 ```
+
+### O PDF não atravessa a API
+
+O arquivo vai do navegador **direto** para o armazenamento; a função só recebe
+um registro com o URL, o caminho e o hash. Três motivos, em ordem de peso:
+
+1. **O teto de 4,5 MB some.** Uma Vercel Function recusa corpos acima disso
+   antes de qualquer código rodar. O limite de 20 MB que o app anunciava era,
+   em produção, um 413 da plataforma sem mensagem para a pessoa.
+2. **O arquivo trafega uma vez, não duas.** Antes era navegador → função →
+   Blob, com a fatura inteira bufferizada na memória da função no meio.
+3. **O erro chega antes do upload.** O parser roda no navegador
+   (`lib/pdf-precheck.ts`): abre o PDF, confere que existe camada de texto e
+   descarta o que leu. Um escaneado é recusado na hora, em vez de subir, virar
+   linha no banco, virar mensagem no chat e só então falhar no extrator.
+
+O passo `prepare` calcula o caminho a partir do tenant da sessão e do SHA-256
+que o navegador computou — e, quando aquele conteúdo já é um documento do
+tenant, responde `reused` e **nada sobe**. O token de escrita é emitido para
+aquele caminho, com `application/pdf` e teto de tamanho; o registro re-deriva o
+caminho e confere o blob com um `head` autenticado antes de gravar a linha.
+
+Quem extrai o texto continua sendo o agente, lendo o PDF do armazenamento
+(`read_pdf_pages`). Nenhum texto extraído é transmitido nem armazenado.
+
+Sem `BLOB_READ_WRITE_TOKEN` — o desenvolvimento local — `prepare` responde
+`proxy` e o arquivo volta a passar pela função, para o disco.
 
 Um lote `proposed` não é considerado gasto confirmado. A tool `commit_batch` é o único caminho de escrita no razão e exige aprovação humana. Consultas e agregações usam `packages/ledger`, que preserva a proveniência através dos `transactionIds`.
 
@@ -140,7 +171,7 @@ pnpm db:studio     # abre o Drizzle Studio
 pnpm db:reset      # zera o razão para recomeçar os testes
 ```
 
-O banco atual é PostgreSQL. Os PDFs não são armazenados como bytes no banco: em produção são enviados ao Vercel Blob; localmente, quando `BLOB_READ_WRITE_TOKEN` não está definido, são gravados em `.data/documents`.
+O banco atual é PostgreSQL. Os PDFs não são armazenados como bytes no banco: em produção o navegador os envia direto ao Vercel Blob e o banco guarda apenas chave e hash; localmente, quando `BLOB_READ_WRITE_TOKEN` não está definido, são gravados em `.data/documents` pela função.
 
 Dois papéis de banco, e a distinção é de segurança:
 
