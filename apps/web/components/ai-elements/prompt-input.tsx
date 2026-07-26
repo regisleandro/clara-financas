@@ -958,11 +958,42 @@ export const PromptInputTextarea = ({
   onKeyDown,
   className,
   placeholder = "What would you like to know?",
+  ref: forwardedRef,
   ...props
 }: PromptInputTextareaProps) => {
   const controller = useOptionalPromptInputController();
   const attachments = usePromptInputAttachments();
   const [isComposing, setIsComposing] = useState(false);
+
+  // Auto-grow com fallback: o CSS `field-sizing: content` faz o textarea
+  // acompanhar o conteúdo em navegadores Chromium, mas Firefox e Safari o
+  // ignoram — lá o campo ficava numa linha fixa com rolagem interna. Quando o
+  // suporte não existe, medimos o scrollHeight a cada mudança; o teto continua
+  // sendo o `max-h-*` do CSS (o inline height é limitado por max-height).
+  const innerRef = useRef<HTMLTextAreaElement | null>(null);
+  const autoResize = useCallback(() => {
+    const element = innerRef.current;
+    if (element === null) return;
+    if (typeof CSS !== "undefined" && CSS.supports("field-sizing", "content")) return;
+    element.style.height = "auto";
+    element.style.height = `${element.scrollHeight}px`;
+  }, []);
+
+  const setRefs = useCallback(
+    (element: HTMLTextAreaElement | null) => {
+      innerRef.current = element;
+      if (typeof forwardedRef === "function") forwardedRef(element);
+      else if (forwardedRef) forwardedRef.current = element;
+    },
+    [forwardedRef],
+  );
+
+  // Cobre as mudanças que não passam pelo onChange: montagem com valor
+  // inicial, e o esvaziamento do campo depois do submit (controlado).
+  const controlledValue = controller?.textInput.value;
+  useEffect(() => {
+    autoResize();
+  }, [controlledValue, autoResize]);
 
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = useCallback(
     (e) => {
@@ -1045,23 +1076,28 @@ export const PromptInputTextarea = ({
     ? {
         onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
           controller.textInput.setInput(e.currentTarget.value);
+          autoResize();
           onChange?.(e);
         },
         value: controller.textInput.value,
       }
     : {
-        onChange,
+        onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
+          autoResize();
+          onChange?.(e);
+        },
       };
 
   return (
     <InputGroupTextarea
-      className={cn("field-sizing-content max-h-48 min-h-16", className)}
+      className={cn("field-sizing-content max-h-48 min-h-16 overflow-y-auto", className)}
       name="message"
       onCompositionEnd={handleCompositionEnd}
       onCompositionStart={handleCompositionStart}
       onKeyDown={handleKeyDown}
       onPaste={handlePaste}
       placeholder={placeholder}
+      ref={setRefs}
       {...props}
       {...controlledProps}
     />

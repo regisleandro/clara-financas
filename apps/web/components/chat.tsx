@@ -207,7 +207,7 @@ function ChatSession({
           empurrar a página; a largura de leitura é imposta em cada faixa. */}
       <div className="flex h-[calc(100svh-3rem)] min-w-0 flex-1 flex-col">
         <div className="shrink-0 bg-background">
-          <div className="mx-auto w-full max-w-[720px] px-6 pb-4 pt-8">
+          <div className="mx-auto w-full max-w-[720px] px-4 pb-4 pt-6 sm:px-6 sm:pt-8">
             <ChatHeader
               onReset={isWelcome ? null : startNewConversation}
               onToggleArtifact={
@@ -226,7 +226,7 @@ function ChatSession({
         {/* `min-h-0` permite encolher abaixo do conteúdo; sem ele a rolagem
             interna nunca acontece. */}
         <Conversation className="min-h-0 flex-1">
-          <ConversationContent className="mx-auto w-full max-w-[720px] space-y-8 px-6 pb-8 pt-4">
+          <ConversationContent className="mx-auto w-full max-w-[720px] space-y-8 px-4 pb-8 pt-4 sm:px-6">
             {isWelcome ? (
               <ChatWelcome
                 name={name}
@@ -305,9 +305,13 @@ function ChatSession({
         </Conversation>
 
         <div className="shrink-0 bg-background">
-          <div className="mx-auto w-full max-w-[720px] px-6 pb-8 pt-2">
+          <div className="mx-auto w-full max-w-[720px] px-4 pb-4 pt-2 sm:px-6 sm:pb-8">
+            {/* `items-end`, não `items-center`: o campo cresce com o conteúdo
+                (até ~6 linhas, depois rola por dentro), e os botões ficam
+                ancorados na base — centralizados, eles flutuariam no meio de
+                um campo alto. */}
             <PromptInput
-              className="items-center rounded-[var(--clara-radius-card)] py-1.5 pl-2 pr-1.5"
+              className="items-end rounded-[var(--clara-radius-card)] py-1.5 pl-2 pr-1.5"
               onSubmit={(message, event) => {
                 event.preventDefault();
                 const text = message.text?.trim();
@@ -321,7 +325,7 @@ function ChatSession({
                   onClick={() => fileRef.current?.click()}
                   disabled={uploading || busy}
                   aria-label="Anexar fatura em PDF"
-                  className="grid size-8 place-items-center rounded-full bg-[var(--clara-fog)] text-base leading-none transition-colors hover:bg-[var(--clara-ash)] disabled:opacity-50"
+                  className="mb-1 grid size-8 place-items-center rounded-full bg-[var(--clara-fog)] text-base leading-none transition-colors hover:bg-[var(--clara-ash)] disabled:opacity-50"
                 >
                   {/* Uma fatura de 20 MB agora sobe inteira, então a espera
                       precisa ter número: "…" cobre o hash, o parser e o
@@ -353,7 +357,7 @@ function ChatSession({
                   status={agent.status === "error" ? "ready" : agent.status}
                   onStop={() => agent.stop()}
                   size="sm"
-                  className="clara-pill clara-pill-primary h-10 w-auto px-5 text-sm"
+                  className="clara-pill clara-pill-primary mb-0.5 h-10 w-auto px-4 text-sm sm:px-5"
                 >
                   {busy ? "Parar" : "Enviar"}
                 </PromptInputSubmit>
