@@ -7,7 +7,8 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start --port 3000",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "test": "node --import tsx --test lib/*.test.ts"
   },
   "dependencies": {
     "@clara-financas/auth": "workspace:*",
@@ -54,6 +55,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "tailwindcss": "catalog:",
+    "tsx": "^4.22.5",
     "typescript": "catalog:"
   }
 }

@@ -67,6 +67,12 @@ aplicação não as roda sozinha.
 DATABASE_ADMIN_URL='postgres://…' pnpm db:migrate
 ```
 
+Depois do primeiro deploy, o CI assume: o workflow
+`.github/workflows/db-migrate.yml` aplica as migrações quando um arquivo novo
+em `packages/db/src/migrations/` chega à `main` (e pode ser disparado à mão
+pelo `workflow_dispatch`). Ele usa o secret `DATABASE_ADMIN_URL` do
+repositório — a credencial de dono continua fora da Vercel.
+
 Dois papéis distintos, e a diferença é de segurança, não de estilo:
 
 - `DATABASE_ADMIN_URL` — dono do schema. Só o `drizzle-kit` usa. **Nunca vai

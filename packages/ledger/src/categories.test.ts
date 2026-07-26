@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { categoryLabel } from "../agent/lib/categories";
+import { categoryLabel } from "./categories";
 
 /**
  * O identificador é inglês por decisão de projeto; a interface é inteiramente

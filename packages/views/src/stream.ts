@@ -1,4 +1,4 @@
-import { parseView, type View } from "./index";
+import { parseViewResult, type View } from "./index";
 
 /**
  * Lê do stream do eve o painel que a Clara mandou desenhar.
@@ -23,6 +23,16 @@ const asString = (value: unknown): string | undefined =>
 export const PRESENT_VIEW_TOOL = "present_view";
 
 /**
+ * Chamado quando um payload COMPLETO de `present_view` falha no schema.
+ *
+ * Sem isto, o painel sumia em silêncio — sem log, sem fallback — e o sintoma
+ * em produção era "o artefato às vezes não abre", indepurável. O callback é o
+ * ponto único onde o consumidor pluga log ou telemetria; ele nunca é chamado
+ * para input parcial de streaming (só lemos eventos com o input inteiro).
+ */
+export type OnInvalidView = (issues: string[], callId?: string) => void;
+
+/**
  * O último painel do turno corrente, ou null.
  *
  * Lê o INPUT da chamada, não o resultado: o painel aparece no instante em que
@@ -32,7 +42,10 @@ export const PRESENT_VIEW_TOOL = "present_view";
  * corrente" porque painel de pergunta antiga ao lado de resposta nova sugere
  * que aqueles números são desta resposta — erro que ninguém percebe cometer.
  */
-export function findPresentedView(events: readonly unknown[]): View | null {
+export function findPresentedView(
+  events: readonly unknown[],
+  onInvalid?: OnInvalidView,
+): View | null {
   let latest: View | null = null;
 
   for (const raw of events) {
@@ -57,8 +70,9 @@ export function findPresentedView(events: readonly unknown[]): View | null {
 
       // Payload inválido não vira painel — e não derruba a conversa. O modelo
       // erra campo, e um erro de render custaria a resposta inteira.
-      const view = parseView(action?.input);
-      if (view !== null) latest = view;
+      const parsed = parseViewResult(action?.input);
+      if (parsed.ok) latest = parsed.view;
+      else onInvalid?.(parsed.issues, asString(action?.callId));
     }
   }
 
@@ -78,7 +92,7 @@ export function findPresentedView(events: readonly unknown[]): View | null {
  * o resultado: o painel é o que a Clara mandou desenhar, e `present_view` não
  * devolve saída de conteúdo.
  */
-export function findMessageView(message: unknown): View | null {
+export function findMessageView(message: unknown, onInvalid?: OnInvalidView): View | null {
   const parts = asRecord(message)?.parts;
   if (!Array.isArray(parts)) return null;
 
@@ -89,8 +103,11 @@ export function findMessageView(message: unknown): View | null {
     if (part?.type !== "dynamic-tool" || asString(part.toolName) !== PRESENT_VIEW_TOOL) {
       continue;
     }
-    const view = parseView(part.input);
-    if (view !== null) latest = view;
+    // Parte materializada já tem o input completo — aqui falha de schema é
+    // definitiva, nunca efeito de streaming pela metade.
+    const parsed = parseViewResult(part.input);
+    if (parsed.ok) latest = parsed.view;
+    else onInvalid?.(parsed.issues, asString(part.toolCallId));
   }
 
   return latest;

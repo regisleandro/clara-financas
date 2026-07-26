@@ -5,7 +5,7 @@ import { z } from "zod";
 import { categoryLabel, loadCategoryLabels } from "../../../lib/categories";
 import { requireTenantCaller } from "../../../lib/tenant";
 import { optionalText } from "../../../lib/schema";
-import { ledgerCoverage, loadLedger } from "../lib/query";
+import { ledgerCoverage, loadLedger } from "../../../lib/ledger-query";
 
 /**
  * Composição do gasto por categoria.

@@ -107,13 +107,19 @@ export const ViewSchema = z.discriminatedUnion("kind", [
   /**
    * A conferência (H2). `difference` é o que a pessoa precisa ver primeiro
    * quando não bate — o resto é contexto.
+   *
+   * `declaredTotal` e `difference` são nuláveis porque o domínio permite
+   * fatura sem total declarado (`ChecksumReport` em `@clara-financas/ledger`).
+   * Exigir número aqui forçava o modelo a inventar `0` — e "Total da fatura
+   * R$ 0,00" na tela é um número falso — ou a mandar `null` e perder o painel
+   * inteiro na validação.
    */
   z.object({
     ...base,
     kind: z.literal("checksum"),
-    declaredTotal: cents,
+    declaredTotal: cents.nullable().describe("Null when the document declares no total."),
     extractedTotal: cents,
-    difference: cents,
+    difference: cents.nullable().describe("Null when there is no declared total to compare against."),
     result: z.enum(["match", "mismatch", "no_declared_total"]),
     cause: z.string().optional().describe("Likely cause, in Brazilian Portuguese."),
     rows: z.array(RowSchema).max(20).default([]),
@@ -141,10 +147,30 @@ export const VIEW_KINDS = [
  * ingenuidade: campo faltando derrubaria a conversa inteira num erro de
  * render. Aqui um payload inválido simplesmente não vira painel, e o texto da
  * resposta segue de pé.
+ *
+ * A forma com `issues` existe porque "não virou painel" sem rastro era
+ * indepurável em produção: o sintoma era só "o artefato às vezes não abre".
+ * Quem consome decide o que fazer com os issues (log, telemetria); o contrato
+ * apenas garante que a falha tem descrição.
  */
-export function parseView(value: unknown): View | null {
+export type ParseViewResult =
+  | { ok: true; view: View }
+  | { ok: false; issues: string[] };
+
+export function parseViewResult(value: unknown): ParseViewResult {
   const result = ViewSchema.safeParse(value);
-  return result.success ? result.data : null;
+  if (result.success) return { ok: true, view: result.data };
+  return {
+    ok: false,
+    issues: result.error.issues.map(
+      (issue) => `${issue.path.join(".") || "(raiz)"}: ${issue.message}`,
+    ),
+  };
+}
+
+export function parseView(value: unknown): View | null {
+  const result = parseViewResult(value);
+  return result.ok ? result.view : null;
 }
 
 /** Soma os ids de proveniência de um painel, sem repetir. */

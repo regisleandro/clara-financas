@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { loadMerchantAliases } from "../../../lib/aliases";
 import { requireTenantCaller } from "../../../lib/tenant";
-import { loadLedger } from "../lib/query";
+import { loadLedger } from "../../../lib/ledger-query";
 
 /**
  * Cobranças recorrentes.

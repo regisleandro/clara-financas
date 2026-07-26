@@ -27,9 +27,10 @@ Navegador
   ├── HTTPS → Vercel Blob (PDF direto, sem passar pela função)
   │
   └── HTTPS + Bearer JWT → Eve / Agent plane
-                           ├── Coordenadora Clara
-                           ├── Extrator de PDFs
-                           ├── Analista do razão
+                           ├── Coordenadora Clara (gerente de conta)
+                           ├── Extrator de PDFs (escrituração)
+                           ├── Analista do razão (análise)
+                           ├── Categorizador (guarda-livros)
                            └── Tools + HITL + schedules
 
 PostgreSQL ← Drizzle, RLS e escopo transacional por tenant
@@ -79,7 +80,7 @@ A Clara não descobre o que existe perguntando. Antes de cada turno, instruçõe
 
 Resolve em `turn.started`, não em `session.started`: dentro da mesma conversa a pessoa aprova uma fatura, e o turno seguinte precisa enxergar o razão já atualizado.
 
-O analista tem o seu próprio — um subagente declarado não herda nada do root, e essa duplicação é o preço do isolamento que garante que o extrator não alcance o razão.
+O analista e o categorizador têm cada um o seu próprio — um subagente declarado não herda nada do root, e essa duplicação é o preço do isolamento que garante que o extrator não alcance o razão.
 
 ### Fatura não é intervalo de datas
 

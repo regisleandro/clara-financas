@@ -22,6 +22,15 @@ export default async function ConversaPage() {
     : [[], []];
 
   return (
-    <Chat agentHost={agentHost} name={firstName} starters={starters} followups={followups} />
+    <Chat
+      agentHost={agentHost}
+      name={firstName}
+      starters={starters}
+      followups={followups}
+      // Chave do armazenamento LOCAL de conversas (retomada por dispositivo).
+      // O tenantId não é segredo para o próprio usuário — ele já viaja como
+      // claim no JWT que o navegador segura.
+      tenantKey={context?.tenantId ?? "anon"}
+    />
   );
 }

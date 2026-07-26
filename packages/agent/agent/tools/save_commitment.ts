@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "@clara-financas/db";
 import { commitments } from "@clara-financas/db/schema/commitment";
 import { forTenant } from "@clara-financas/db/tenant-scope";
+import { and, eq, sql } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
@@ -60,8 +61,47 @@ export default defineTool({
         const id = `cmt_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
 
         // Reprocessar a mesma fatura não pode criar um segundo lembrete do
-        // mesmo vencimento — o índice único cuida disso, e aqui atualizamos
-        // em vez de falhar.
+        // mesmo vencimento. O upsert é manual porque o índice único é parcial
+        // e por expressão (`coalesce(counterparty,'')`, só para kinds que vêm
+        // de documento) — um ON CONFLICT por colunas nunca casaria com ele, e
+        // era exatamente assim que counterparty nulo duplicava lembretes.
+        // `custom` fica de fora de propósito: lembretes livres da pessoa são
+        // linhas independentes.
+        if (input.kind !== "custom") {
+          const [existing] = await tx
+            .select({ id: commitments.id })
+            .from(commitments)
+            .where(
+              and(
+                eq(commitments.tenantId, tenantId),
+                eq(commitments.kind, input.kind),
+                sql`coalesce(${commitments.counterparty}, '') = coalesce(${input.counterparty ?? null}, '')`,
+              ),
+            )
+            .limit(1);
+
+          if (existing !== undefined) {
+            const [row] = await tx
+              .update(commitments)
+              .set({
+                title: input.title,
+                dueDate: input.dueDate,
+                recurrenceDayOfMonth: input.recurrenceDayOfMonth ?? null,
+                expectedAmount: input.expectedAmount ?? null,
+                remindDaysBefore: input.remindDaysBefore ?? 3,
+                active: "yes",
+              })
+              .where(eq(commitments.id, existing.id))
+              .returning({ id: commitments.id, dueDate: commitments.dueDate });
+
+            return {
+              commitmentId: row?.id ?? existing.id,
+              dueDate: row?.dueDate ?? input.dueDate,
+              remindDaysBefore: input.remindDaysBefore ?? 3,
+            };
+          }
+        }
+
         const [row] = await tx
           .insert(commitments)
           .values({
@@ -74,17 +114,6 @@ export default defineTool({
             recurrenceDayOfMonth: input.recurrenceDayOfMonth ?? null,
             expectedAmount: input.expectedAmount ?? null,
             remindDaysBefore: input.remindDaysBefore ?? 3,
-          })
-          .onConflictDoUpdate({
-            target: [commitments.tenantId, commitments.kind, commitments.counterparty],
-            set: {
-              title: input.title,
-              dueDate: input.dueDate,
-              recurrenceDayOfMonth: input.recurrenceDayOfMonth ?? null,
-              expectedAmount: input.expectedAmount ?? null,
-              remindDaysBefore: input.remindDaysBefore ?? 3,
-              active: "yes",
-            },
           })
           .returning({ id: commitments.id, dueDate: commitments.dueDate });
 

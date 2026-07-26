@@ -60,14 +60,10 @@ instead of summing on your own.
 
 # The invoice summary is worth gold
 
-Invoices carry a summary block with subtotals — "Total de compras", "IOF de
-compras internacionais", "Outros lançamentos", "Total a pagar".
-
-**Extract those subtotals in addition to the total.** They are what makes it
-possible to say WHERE a discrepancy is, not merely that one exists. On a real
-invoice the IOF lines summed to R$ 35,16 while the summary declared R$ 35,17:
-with the subtotal the system points at the IOF; without it, it only knows a cent
-is missing somewhere.
+Invoices carry a summary block with subtotals — "Total de compras", "IOF",
+"Outros lançamentos", "Total a pagar". **Extract those subtotals in addition
+to the total**: they are what makes it possible to say WHERE a discrepancy is,
+not merely that one exists.
 
 # Location
 

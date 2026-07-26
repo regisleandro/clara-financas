@@ -5,7 +5,7 @@ import { z } from "zod";
 import { categoryLabel, loadCategoryLabels } from "../../../lib/categories";
 import { optionalText } from "../../../lib/schema";
 import { requireTenantCaller } from "../../../lib/tenant";
-import { loadLedger } from "../lib/query";
+import { ledgerCoverage, loadLedger } from "../../../lib/ledger-query";
 
 /**
  * Comparação entre dois períodos.
@@ -63,8 +63,23 @@ export default defineTool({
       }),
     ]);
 
-    if (current.length === 0 && previous.length === 0) {
-      return { empty: true as const, message: "Nenhum dos dois períodos tem transações." };
+    // Por LADO, não `&&`: um recorte que existe mas voltou vazio (batchId
+    // rejeitado, mês em que a fatura não caiu) fazia a comparação rodar com
+    // previousTotal = 0 — e o modelo apresentava "subiu" contra uma base
+    // inexistente. Exatamente o que o guard acima tenta evitar.
+    if (current.length === 0 || previous.length === 0) {
+      return {
+        warning: "lado_vazio" as const,
+        emptySides: {
+          current: current.length === 0,
+          previous: previous.length === 0,
+        },
+        // O que o razão de fato cobre, para o modelo corrigir o recorte em
+        // vez de concluir que não há nada registrado.
+        ledgerCoverage: await ledgerCoverage(tenantId),
+        message:
+          "One side of the comparison returned no transactions. Do NOT present any variation — check the batchIds or date ranges against the ledger state and try again, or tell the person which side has no data.",
+      };
     }
 
     const { totalDelta, categories } = comparePeriods(current, previous);

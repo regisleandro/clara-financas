@@ -1,3 +1,7 @@
+import { getDb } from "@clara-financas/db";
+import { agentSessions } from "@clara-financas/db/schema/agent-session";
+import { forTenant } from "@clara-financas/db/tenant-scope";
+import { eq, sql } from "drizzle-orm";
 import { eveChannel } from "eve/channels/eve";
 import {
   ForbiddenError,
@@ -23,6 +27,78 @@ const AUDIENCE = "clara-agent";
 function appOrigin(): string {
   const value = process.env.APP_ORIGIN ?? "http://localhost:3000";
   return value;
+}
+
+/**
+ * Extrai o `:sessionId` da URL das rotas de sessão do eve.
+ *
+ * Cobre `POST /eve/v1/session/:id`, `GET /eve/v1/session/:id/stream` e
+ * `POST /eve/v1/session/:id/cancel`. `session/reset` e o `POST /eve/v1/session`
+ * de criação não carregam id — devolvem null e a ACL não se aplica.
+ */
+function sessionIdFromUrl(url: string): string | null {
+  const match = /\/eve\/v1\/session\/([^/?#]+)(?:\/(?:stream|cancel))?(?:[?#]|$)/.exec(url);
+  const id = match?.[1];
+  if (id === undefined || id === "reset") return null;
+  return decodeURIComponent(id);
+}
+
+/**
+ * ACL de posse de sessão — a tabela `agent_sessions` finalmente imposta.
+ *
+ * O eve não faz isso ("route auth does not enforce session ownership"): sem a
+ * verificação, um usuário autenticado que descubra o `sessionId` de outro lê a
+ * conversa inteira e ainda posta `inputResponses` — aprova escritas em nome da
+ * vítima. Com a retomada de sessão no cliente, os ids passam a viver no
+ * localStorage do navegador, o que aumenta a superfície; a ACL deixa de ser
+ * rede de segurança e vira requisito.
+ *
+ * Claim-on-first-use: a linha nasce no primeiro acesso com id (o `POST
+ * /session` de criação não tem id na URL; o primeiro `GET /stream`, que o
+ * cliente abre em seguida, registra a posse — janela de corrida minúscula e
+ * aceitável). Cross-tenant aparece como "não encontrado" porque a RLS esconde
+ * a linha, e o INSERT com tenant errado é bloqueado pelo WITH CHECK.
+ *
+ * Fail-closed: qualquer erro de banco vira Forbidden, nunca "deixa passar".
+ */
+async function assertSessionOwnership(
+  sessionId: string,
+  tenantId: string,
+  userId: string,
+): Promise<void> {
+  let owner: { userId: string } | undefined;
+  try {
+    owner = await forTenant(
+      tenantId,
+      async (tx) => {
+        await tx
+          .insert(agentSessions)
+          .values({ sessionId, tenantId, userId })
+          .onConflictDoNothing();
+
+        const [row] = await tx
+          .select({ userId: agentSessions.userId })
+          .from(agentSessions)
+          .where(eq(agentSessions.sessionId, sessionId))
+          .limit(1);
+
+        if (row !== undefined && row.userId === userId) {
+          await tx
+            .update(agentSessions)
+            .set({ lastSeenAt: sql`now()` })
+            .where(eq(agentSessions.sessionId, sessionId));
+        }
+        return row;
+      },
+      getDb(),
+    );
+  } catch {
+    throw new ForbiddenError({ message: "Session ownership could not be verified." });
+  }
+
+  if (owner === undefined || owner.userId !== userId) {
+    throw new ForbiddenError({ message: "Session does not belong to this user." });
+  }
 }
 
 /**
@@ -70,6 +146,13 @@ function tenantToken(): AuthFn<Request> {
     const instance = instanceTenantId();
     if (instance !== undefined && tenantId !== instance) {
       throw new ForbiddenError({ message: "Token tenant does not match this instance." });
+    }
+
+    // Posse de sessão: só nas rotas que carregam um id. Impõe a ACL descrita
+    // em `agent_sessions` — o eve valida o token, não a posse.
+    const sessionId = sessionIdFromUrl(request.url);
+    if (sessionId !== null) {
+      await assertSessionOwnership(sessionId, tenantId, userId);
     }
 
     return {
