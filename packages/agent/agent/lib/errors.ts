@@ -30,6 +30,7 @@ export type ToolErrorCode =
   | "alcance_alterado"
   | "recorte_incompleto"
   | "lancamento_nao_encontrado"
+  | "nenhuma_alteracao"
   | "operacao_nao_permitida"
   | "credencial_invalida"
   | "senha_necessaria";

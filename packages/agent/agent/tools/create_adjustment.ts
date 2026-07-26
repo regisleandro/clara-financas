@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { getDb } from "@clara-financas/db";
-import { transactions } from "@clara-financas/db/schema/ledger";
+import { batches, transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import { formatCents } from "@clara-financas/ledger";
 import { and, eq } from "drizzle-orm";
@@ -9,6 +9,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { notFound, refused } from "../lib/errors";
+import { recomputeBatchChecksum } from "../lib/recompute-checksum";
 import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
 
 /**
@@ -122,6 +123,20 @@ export default defineTool({
           reviewedBy: `human:${userId}`,
         });
 
+        // O ajuste entra na soma extraída (`countsTowardDeclaredTotal` só
+        // exclui pagamento), então ele pode FECHAR a divergência do lote — e
+        // sem reconferir aqui, a fatura já corrigida continuava marcada como
+        // divergente na tela de revisão, nos starters e no snapshot, para
+        // sempre.
+        const [batch] = await tx
+          .select()
+          .from(batches)
+          .where(and(eq(batches.id, original.batchId), eq(batches.tenantId, tenantId)))
+          .limit(1);
+        const rechecked = batch
+          ? await recomputeBatchChecksum(tx, tenantId, batch)
+          : null;
+
         return {
           adjustmentId: id,
           adjustsTransactionId: original.id,
@@ -132,7 +147,8 @@ export default defineTool({
           resultingAmountCents: original.amount + input.amountCents,
           resultingAmountFormatted: formatCents(original.amount + input.amountCents),
           auditedBy: `human:${userId}`,
-          note: "A linha original continua no razão; o ajuste soma por cima. As duas aparecem na fatura.",
+          ...(rechecked !== null ? { checksum: rechecked.checksum } : {}),
+          note: "A linha original continua no razão; o ajuste soma por cima. As duas aparecem na fatura. O campo checksum diz se a conferência da fatura fechou com o ajuste — se fechou, diga isso à pessoa.",
         };
       },
       getDb(),

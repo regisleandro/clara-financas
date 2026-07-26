@@ -3,12 +3,13 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "@clara-financas/db";
 import { batches, transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import { CONFIDENCE, ENTRY_KINDS, merchantKey, verifyChecksum } from "@clara-financas/ledger";
+import { CONFIDENCE, ENTRY_KINDS, merchantKey } from "@clara-financas/ledger";
 import { and, eq } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { notFound, refused } from "../lib/errors";
+import { recomputeBatchChecksum } from "../lib/recompute-checksum";
 import { requireTenantCaller } from "../lib/tenant";
 
 /**
@@ -190,52 +191,11 @@ export default defineTool({
           });
         }
 
-        const rows = await tx
-          .select()
-          .from(transactions)
-          .where(and(eq(transactions.batchId, batch.id), eq(transactions.tenantId, tenantId)));
-
-        const checksum = verifyChecksum({
-          documentId: batch.documentId,
-          issuer: null,
-          periodStart: batch.periodStart,
-          periodEnd: batch.periodEnd,
-          dueDate: batch.dueDate,
-          declaredTotal: batch.declaredTotal,
-          // Persistidos no lote: sem eles, reconferir após uma correção
-          // perderia a localização e voltaria a dizer só "não bate".
-          declaredSubtotals: batch.declaredSubtotals ?? null,
-          transactions: rows.map((row) => ({
-            id: row.id,
-            date: row.date,
-            originalDescription: row.originalDescription,
-            merchant: row.merchant,
-            merchantKey: row.merchantKey,
-            amount: row.amount,
-            kind: row.kind,
-            installment:
-              row.installmentCurrent !== null && row.installmentTotal !== null
-                ? { current: row.installmentCurrent, total: row.installmentTotal }
-                : null,
-            category: row.category,
-            extractionConfidence: row.extractionConfidence,
-            sourceDocument: row.sourceDocumentId,
-            page: row.page,
-          })),
-        });
-
-        await tx
-          .update(batches)
-          .set({
-            extractedTotal: checksum.extractedTotal,
-            checksumResult: checksum.result,
-            checksumReport: checksum,
-          })
-          .where(eq(batches.id, batch.id));
+        const { checksum, transactionCount } = await recomputeBatchChecksum(tx, tenantId, batch);
 
         return {
           batchId: batch.id,
-          transactionCount: rows.length,
+          transactionCount,
           checksum,
           // O que mudou é o que a Clara vai contar para a pessoa; deduzir do
           // input daria número errado quando um id não casa com o lote.
