@@ -2,9 +2,9 @@ import { getDb } from "@clara-financas/db";
 import { transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import type { Transaction } from "@clara-financas/ledger";
-import { and, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
 
-import { categoryLabel, type CategoryLabels } from "../../../lib/categories";
+import { categoryLabel, type CategoryLabels } from "./categories";
 
 /**
  * Recorte do razão.
@@ -32,14 +32,26 @@ export async function loadLedger(
   tenantId: string,
   range: LedgerRange = {},
 ): Promise<Transaction[]> {
-  const filters: SQL[] = [inArray(transactions.status, ["confirmed", "adjustment"])];
+  const filters: SQL[] = [
+    eq(transactions.tenantId, tenantId),
+    inArray(transactions.status, ["confirmed", "adjustment"]),
+  ];
   if (range.from !== undefined) filters.push(gte(transactions.date, range.from));
   if (range.to !== undefined) filters.push(lte(transactions.date, range.to));
   if (range.batchId !== undefined) filters.push(eq(transactions.batchId, range.batchId));
 
   const rows = await forTenant(
     tenantId,
-    async (tx) => tx.select().from(transactions).where(and(...filters)),
+    // Ordem estável (data recente primeiro, id como desempate): quem trunca o
+    // resultado com slice precisa que duas chamadas iguais mostrem as MESMAS
+    // linhas — sem ORDER BY, as 100 exibidas eram arbitrárias e mudavam entre
+    // consultas idênticas.
+    async (tx) =>
+      tx
+        .select()
+        .from(transactions)
+        .where(and(...filters))
+        .orderBy(desc(transactions.date), desc(transactions.id)),
     getDb(),
   );
 
@@ -68,7 +80,15 @@ export async function ledgerCoverage(
           lastDate: sql<string | null>`max(${transactions.date})`,
         })
         .from(transactions)
-        .where(inArray(transactions.status, ["confirmed", "adjustment"])),
+        .where(
+          and(
+            // RLS já escopa; o eq explícito é defesa em profundidade, no mesmo
+            // padrão do resto do código — uma agregação global silenciosa é o
+            // pior jeito de descobrir que a conexão errada desligou a RLS.
+            eq(transactions.tenantId, tenantId),
+            inArray(transactions.status, ["confirmed", "adjustment"]),
+          ),
+        ),
     getDb(),
   );
 

@@ -194,35 +194,56 @@ function Trend({ trend }: { trend: NonNullable<ViewRow["trend"]> }) {
  */
 function Checksum({ view }: { view: Extract<View, { kind: "checksum" }> }) {
   const matched = view.result === "match";
+  // Sem total declarado não há o que conferir automaticamente: o cartão fica
+  // neutro, a métrica é o total extraído e a linha do total declarado mostra
+  // "—" — nunca um R$ 0,00 que a fatura não disse.
+  const noDeclared = view.result === "no_declared_total" || view.declaredTotal === null;
 
   return (
     <>
       <div
         className="rounded-[var(--clara-radius-card)] p-7"
         style={{
-          background: matched ? "var(--clara-fog)" : "color-mix(in srgb, var(--clara-amber) 8%, transparent)",
+          background:
+            matched || noDeclared
+              ? "var(--clara-fog)"
+              : "color-mix(in srgb, var(--clara-amber) 8%, transparent)",
         }}
       >
         <p className="clara-eyebrow flex items-center gap-1.5">
           {matched ? (
             <Check className="size-3.5 text-[var(--clara-green)]" />
+          ) : noDeclared ? (
+            <Minus className="size-3.5 text-[var(--clara-slate)]" />
           ) : (
             <TriangleAlert className="size-3.5 text-[var(--clara-amber)]" />
           )}
-          {matched ? "Total confere" : "Diferença encontrada"}
+          {matched
+            ? "Total confere"
+            : noDeclared
+              ? "Sem total declarado"
+              : "Diferença encontrada"}
         </p>
         <p className="clara-metric mt-3.5">
-          {matched ? formatCents(view.extractedTotal) : formatCents(view.difference)}
+          {matched || noDeclared || view.difference === null
+            ? formatCents(view.extractedTotal)
+            : formatCents(view.difference)}
         </p>
         {view.cause !== undefined ? (
           <p className="mt-1.5 text-[var(--clara-graphite)]">{view.cause}</p>
+        ) : noDeclared ? (
+          <p className="mt-1.5 text-[var(--clara-graphite)]">
+            O documento não traz um total para conferir — confira os lançamentos.
+          </p>
         ) : null}
       </div>
 
       <ul className="mt-8">
         <li className="grid grid-cols-[1fr_auto] gap-4 border-b border-[var(--clara-fog)] py-3.5">
           <span className="clara-small">Total da fatura</span>
-          <span className="tabular-nums">{formatCents(view.declaredTotal)}</span>
+          <span className="tabular-nums">
+            {view.declaredTotal !== null ? formatCents(view.declaredTotal) : "—"}
+          </span>
         </li>
         <li className="grid grid-cols-[1fr_auto] gap-4 py-3.5">
           <span className="clara-small">Total extraído</span>

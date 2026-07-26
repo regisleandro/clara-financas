@@ -153,7 +153,22 @@ describe("detectRecurrences", () => {
     assert.equal(recorrencia?.occurrences, 3);
     assert.equal(recorrencia?.latestAmount, 1430);
     assert.ok(Math.abs((recorrencia?.priceChangeRatio ?? 0) - 0.43) < 0.001);
-    assert.equal(recorrencia?.annualizedCents, 1430 * 12);
+    // Cadência mediana de 30 dias → 365/30 ocorrências por ano, não ×12 fixo.
+    assert.equal(recorrencia?.medianIntervalDays, 30);
+    assert.equal(recorrencia?.annualizedCents, Math.round(1430 * (365 / 30)));
+  });
+
+  it("anualiza pela cadência observada, não por doze meses fixos", () => {
+    // Cobrança a cada 35 dias: ~10,4 ocorrências por ano. O ×12 antigo
+    // inflava a projeção em ~15% — dinheiro que nunca sairia.
+    const rows = ["2026-01-01", "2026-02-05", "2026-03-12"].map((date, index) =>
+      tx({ id: `stream-${index}`, merchant: "Streaming", amount: 2000, date }),
+    );
+    const [recorrencia] = detectRecurrences(rows);
+
+    assert.equal(recorrencia?.medianIntervalDays, 35);
+    assert.equal(recorrencia?.annualizedCents, Math.round(2000 * (365 / 35)));
+    assert.notEqual(recorrencia?.annualizedCents, 2000 * 12);
   });
 
   it("ignora compras esparsas no mesmo comerciante", () => {

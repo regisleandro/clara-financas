@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 /**
@@ -63,10 +64,15 @@ export const commitments = pgTable(
     index("commitments_tenant_due_idx").on(table.tenantId, table.dueDate),
     // Um compromisso por contraparte e tipo: reprocessar a mesma fatura não
     // deve criar um segundo lembrete do mesmo vencimento.
-    uniqueIndex("commitments_tenant_kind_counterparty_idx").on(
-      table.tenantId,
-      table.kind,
-      table.counterparty,
-    ),
+    //
+    // O `coalesce` existe porque, num índice único do Postgres, NULLs são
+    // DISTINTOS entre si: com `counterparty` nulo o conflito nunca disparava e
+    // cada chamada criava uma linha nova — lembretes duplicados, avisados N
+    // vezes pelo cron. (Expressão em vez de `NULLS NOT DISTINCT` para não
+    // exigir Postgres 15.) O índice é parcial: `custom` fica de fora porque
+    // lembretes livres da pessoa não devem colidir entre si.
+    uniqueIndex("commitments_tenant_kind_counterparty_idx")
+      .on(table.tenantId, table.kind, sql`coalesce(${table.counterparty}, '')`)
+      .where(sql`${table.kind} <> 'custom'`),
   ],
 );

@@ -15,6 +15,7 @@ export {
   type CategoryComparison,
   type Recurrence,
 } from "./analysis";
+export { categoryLabel, type CategoryLabels } from "./categories";
 export {
   merchantKey,
   isTruncationOf,

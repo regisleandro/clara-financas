@@ -47,8 +47,15 @@ export type Activity = {
   turnId: string;
 };
 
-/** Nomes de tool → o que a pessoa entende que está acontecendo. */
-const TOOL_LABEL: Record<string, string> = {
+/**
+ * Nomes de tool → o que a pessoa entende que está acontecendo.
+ *
+ * O mapa cobre TODAS as tools do coordenador (as de subagente rodam na sessão
+ * filha e nunca chegam aqui, exceto `read_pdf_pages` que fica documentada por
+ * garantia). Uma tool sem entrada cai no nome cru em inglês — num produto
+ * inteiro em pt-BR, isso é bug visível.
+ */
+export const TOOL_LABEL: Record<string, string> = {
   read_concept: "Consultando o que já foi aprendido",
   propose_batch: "Conferindo a soma com o total da fatura",
   edit_proposed_batch: "Aplicando as correções e reconferindo",
@@ -57,7 +64,8 @@ const TOOL_LABEL: Record<string, string> = {
   save_commitment: "Agendando o lembrete",
   list_commitments: "Olhando os próximos vencimentos",
   recategorize_transactions: "Recategorizando lançamentos",
-  export_bundle: "Exportando o conhecimento",
+  apply_learned_rules: "Aplicando as regras aprendidas",
+  present_view: "Montando o painel",
   read_pdf_pages: "Lendo as páginas do documento",
   ask_question: "Aguardando sua resposta",
 };
@@ -65,15 +73,17 @@ const TOOL_LABEL: Record<string, string> = {
 const SUBAGENT_LABEL: Record<string, string> = {
   extractor: "Extrator lendo o documento",
   analyst: "Analista calculando sobre o razão",
+  categorizer: "Guarda-livros organizando as categorias",
 };
 
 const SUBAGENT_DETAIL: Record<string, string> = {
   extractor: "contexto isolado · sem acesso ao razão",
   analyst: "só leitura · todo número vem de ferramenta",
+  categorizer: "só leitura · propõe, não grava",
 };
 
 /** Ícone por ferramenta: o desenho diz o que está acontecendo antes do texto. */
-const TOOL_ICON: Record<string, ActivityIcon> = {
+export const TOOL_ICON: Record<string, ActivityIcon> = {
   read_concept: "search",
   propose_batch: "calculator",
   edit_proposed_batch: "calculator",
@@ -82,7 +92,8 @@ const TOOL_ICON: Record<string, ActivityIcon> = {
   save_commitment: "calendar",
   list_commitments: "calendar",
   recategorize_transactions: "tags",
-  export_bundle: "save",
+  apply_learned_rules: "tags",
+  present_view: "ledger",
   read_pdf_pages: "document",
   ask_question: "brain",
 };
@@ -90,6 +101,7 @@ const TOOL_ICON: Record<string, ActivityIcon> = {
 const SUBAGENT_ICON: Record<string, ActivityIcon> = {
   extractor: "document",
   analyst: "calculator",
+  categorizer: "tags",
 };
 
 type UnknownRecord = Record<string, unknown>;

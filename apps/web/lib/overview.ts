@@ -1,6 +1,13 @@
 import "server-only";
 
-import { aggregateByCategory, comparePeriods, totalSpend } from "@clara-financas/ledger";
+import { loadCategoryLabels } from "@clara-financas/db/category-labels";
+import {
+  aggregateByCategory,
+  categoryLabel,
+  comparePeriods,
+  totalSpend,
+  type CategoryLabels,
+} from "@clara-financas/ledger";
 
 import { loadLedgerView } from "@/lib/ledger";
 
@@ -33,7 +40,10 @@ const dayLabel = (iso: string) =>
   );
 
 export async function loadOverview(tenantId: string): Promise<Overview> {
-  const { rows } = await loadLedgerView(tenantId);
+  const [{ rows }, labels] = await Promise.all([
+    loadLedgerView(tenantId),
+    loadCategoryLabels(tenantId),
+  ]);
 
   if (rows.length === 0) {
     return {
@@ -63,7 +73,9 @@ export async function loadOverview(tenantId: string): Promise<Overview> {
   const previousTotal = totalSpend(previous).value;
 
   const categories = aggregateByCategory(current).slice(0, 6).map((bucket) => ({
-    label: bucket.category ?? "sem categoria",
+    // O rótulo em português do conceito, nunca o identificador: a conversa já
+    // dizia "Restaurantes" enquanto o dashboard mostrava "dining".
+    label: categoryLabel(labels, bucket.category),
     value: bucket.value,
     share: bucket.share,
     countLabel: `${bucket.count} ${bucket.count === 1 ? "lançamento" : "lançamentos"}`,
@@ -82,7 +94,7 @@ export async function loadOverview(tenantId: string): Promise<Overview> {
     spark: buildSpark(current.map((row) => ({ date: row.date, amount: row.amount }))),
     rangeLabels: { from: dayLabel(first), to: dayLabel(last) },
     categories,
-    insight: buildInsight(current, previous),
+    insight: buildInsight(current, previous, labels),
   };
 }
 
@@ -118,6 +130,7 @@ function buildSpark(entries: Array<{ date: string; amount: number }>): number[] 
 function buildInsight(
   current: Parameters<typeof aggregateByCategory>[0],
   previous: Parameters<typeof aggregateByCategory>[0],
+  labels: CategoryLabels,
 ): Overview["insight"] {
   if (previous.length === 0 || current.length === 0) return null;
 
@@ -129,7 +142,7 @@ function buildInsight(
 
   const percent = Math.round(leader.deltaRatio * 100);
   return {
-    headline: `${capitalize(leader.category ?? "")} subiu ${percent}%. É o que mais explica o mês.`,
+    headline: `${capitalize(categoryLabel(labels, leader.category))} subiu ${percent}%. É o que mais explica o mês.`,
     href: "/conversa",
   };
 }

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { loadCategoryLabels } from "../../../lib/categories";
 import { requireTenantCaller } from "../../../lib/tenant";
 import { optionalText } from "../../../lib/schema";
-import { brief, loadLedger } from "../lib/query";
+import { brief, ledgerCoverage, loadLedger } from "../../../lib/ledger-query";
 
 /**
  * Consulta de transações específicas.
@@ -65,7 +65,27 @@ export default defineTool({
       );
     }
 
-    const total = totalSpend(rows);
+    if (rows.length === 0) {
+      return {
+        matched: 0,
+        empty: true as const,
+        // O vazio é ambíguo: razão sem dados, ou recorte que errou o alvo? A
+        // cobertura deixa o modelo distinguir em vez de concluir "não há nada
+        // registrado" e mandar reenviar um documento que já está lá.
+        ledgerCoverage: await ledgerCoverage(tenantId),
+        message:
+          "No transactions matched this slice. Check the dates or batchId against the ledger coverage before concluding nothing is recorded.",
+      };
+    }
+
+    // `totalSpend` soma só GASTO (`countsTowardDeclaredTotal`): pagamento de
+    // fatura fica de fora. Sem dizer isso, "quanto paguei de fatura?" voltava
+    // `total: R$ 0,00` com 3 linhas de pagamento na lista — e o modelo
+    // repassava o zero como fato.
+    const spend = totalSpend(rows);
+    const paymentsCents = rows
+      .filter((row) => row.kind === "payment")
+      .reduce((sum, row) => sum + row.amount, 0);
     const truncated = rows.length > LIMIT;
     const labels = await loadCategoryLabels(tenantId);
 
@@ -75,7 +95,18 @@ export default defineTool({
       // Dizer que truncou importa: sem isso o modelo apresentaria um recorte
       // parcial como se fosse o conjunto inteiro.
       note: truncated ? `Mostrando as ${LIMIT} primeiras de ${rows.length}.` : undefined,
-      total: { cents: total.value, formatted: formatCents(total.value) },
+      totals: {
+        spendCents: spend.value,
+        spendFormatted: formatCents(spend.value),
+        ...(paymentsCents !== 0
+          ? {
+              paymentsCents,
+              paymentsFormatted: formatCents(paymentsCents),
+              sumNote:
+                "spendCents considera apenas gastos; pagamentos de fatura estão em paymentsCents, fora da soma de gasto. Sinal segue o razão: crédito/pagamento é negativo.",
+            }
+          : {}),
+      },
       transactions: rows.slice(0, LIMIT).map((row) => brief(row, labels)),
     };
   },

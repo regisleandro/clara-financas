@@ -150,7 +150,7 @@ export type Recurrence = Provenance & {
   priceChangeRatio: number | null;
   /** Intervalo mediano entre cobranças, em dias. */
   medianIntervalDays: number;
-  /** Projeção anual pelo valor mais recente. */
+  /** Projeção anual: valor mais recente na cadência mediana observada. */
   annualizedCents: number;
   /**
    * `false` quando só há duas cobranças. Duas cobranças a 31 dias são um
@@ -237,7 +237,11 @@ export function detectRecurrences(
       latestAmount: latest.amount,
       priceChangeRatio: first.amount === 0 ? null : (latest.amount - first.amount) / first.amount,
       medianIntervalDays: medianInterval,
-      annualizedCents: latest.amount * 12,
+      // Projeção anual pela cadência mediana OBSERVADA, não por "×12": a
+      // janela aceita intervalos de 21 a 38 dias, e uma cobrança a cada 38
+      // dias tem ~9,6 ocorrências por ano — o multiplicador fixo inflava o
+      // número em até 25%.
+      annualizedCents: Math.round(latest.amount * (365 / medianInterval)),
       confirmed: charges.length >= 3,
     });
   }

@@ -83,10 +83,20 @@ export default defineTool({
         }
 
         const ids = input.changes.map((change) => change.transactionId);
+        // Só transações do razão de verdade: um lote ainda `proposed` se
+        // corrige com `edit_proposed_batch`, não por aqui — reclassificar um
+        // rascunho gravaria trilha de auditoria para algo que a pessoa ainda
+        // nem confirmou.
         const rows = await tx
           .select({ id: transactions.id, category: transactions.category })
           .from(transactions)
-          .where(and(eq(transactions.tenantId, tenantId), inArray(transactions.id, ids)));
+          .where(
+            and(
+              eq(transactions.tenantId, tenantId),
+              inArray(transactions.id, ids),
+              inArray(transactions.status, ["confirmed", "adjustment"]),
+            ),
+          );
 
         const currentById = new Map(rows.map((row) => [row.id, row.category]));
         let changed = 0;
@@ -134,6 +144,11 @@ export default defineTool({
           changed,
           unchanged,
           notFound,
+          ...(notFound.length > 0
+            ? {
+                note: "Ids em notFound não existem OU ainda estão em lote proposto — rascunho se corrige com edit_proposed_batch.",
+              }
+            : {}),
           auditedBy: `human:${userId}`,
         };
       },

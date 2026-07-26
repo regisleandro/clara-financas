@@ -89,6 +89,29 @@ describe("findPresentedView", () => {
     ]);
     assert.equal(found?.title, "Válido");
   });
+
+  it("payload inválido dispara o callback com a descrição da falha", () => {
+    // Antes o painel sumia em silêncio — sem log, sem fallback — e o sintoma
+    // em produção era "o artefato às vezes não abre", indepurável.
+    const invalid: Array<{ issues: string[]; callId?: string }> = [];
+    const found = findPresentedView(
+      [requested({ kind: "metric", title: "Total", metric: { label: "T", amount: 84.21 } })],
+      (issues, callId) => invalid.push({ issues, callId }),
+    );
+
+    assert.equal(found, null);
+    assert.equal(invalid.length, 1);
+    assert.equal(invalid[0]?.callId, "c1");
+    assert.ok(invalid[0]?.issues.some((issue) => issue.includes("metric.amount")));
+  });
+
+  it("payload válido não dispara o callback", () => {
+    let calls = 0;
+    findPresentedView([requested(view("Válido"))], () => {
+      calls += 1;
+    });
+    assert.equal(calls, 0);
+  });
 });
 
 const viewPart = (input: unknown, toolName = "present_view") => ({
@@ -120,6 +143,15 @@ describe("findMessageView", () => {
   it("payload inválido não vira painel", () => {
     const found = findMessageView({ parts: [viewPart({ kind: "metric", title: "" })] });
     assert.equal(found, null);
+  });
+
+  it("payload inválido na mensagem também dispara o callback", () => {
+    const invalid: string[][] = [];
+    findMessageView(
+      { parts: [viewPart({ kind: "metric", title: "" })] },
+      (issues) => invalid.push(issues),
+    );
+    assert.equal(invalid.length, 1);
   });
 
   it("dentro da mensagem, o último painel vence", () => {
