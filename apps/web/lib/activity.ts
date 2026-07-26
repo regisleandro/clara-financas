@@ -9,6 +9,7 @@
  *   subagent.completed → { callId, output }
  *   message.appended   → texto chegando
  *   step.started/completed, turn.started/completed, session.waiting
+ *   turn.cancelled     → { turnId } (cancelamento pedido pela pessoa)
  *
  * Duas particularidades que moldam o que dá para mostrar:
  *
@@ -172,6 +173,48 @@ const asRecord = (value: unknown): UnknownRecord | undefined =>
 const asString = (value: unknown): string | undefined =>
   typeof value === "string" && value.length > 0 ? value : undefined;
 
+/** Eventos que assentam o turno: depois deles não há mais o que cancelar. */
+const TURN_SETTLED = new Set([
+  "turn.completed",
+  "turn.failed",
+  "turn.cancelled",
+  "session.waiting",
+  "session.completed",
+  "session.failed",
+]);
+
+/**
+ * O turno EM VOO, ou null quando nenhum está rodando.
+ *
+ * É o que o botão "Parar" precisa. Cancelar de verdade é uma operação de
+ * sessão + turno (`session.cancel({ turnId })`), e o id só existe depois de
+ * observar o `turn.started` daquele turno — é ele que faz um clique atrasado
+ * ser consumido como no-op no servidor em vez de matar o turno seguinte.
+ *
+ * Não reaproveita o `turnId` de `deriveActivity`: aquele SOBREVIVE ao fim do
+ * turno de propósito (é chave de artefato do painel), e cancelar com ele
+ * mandaria um pedido em nome de um turno que já assentou. Enquanto o status é
+ * `submitted` — turno postado, nenhum evento de volta — isto devolve null, e
+ * é a verdade: ainda não há id observado para cancelar.
+ */
+export function inflightTurnId(events: readonly unknown[]): string | null {
+  let inflight: string | null = null;
+
+  for (const raw of events) {
+    const event = asRecord(raw);
+    const type = asString(event?.type);
+    if (type === undefined) continue;
+
+    if (type === "turn.started") {
+      inflight = asString(asRecord(event?.data)?.turnId) ?? null;
+      continue;
+    }
+    if (TURN_SETTLED.has(type)) inflight = null;
+  }
+
+  return inflight;
+}
+
 export function deriveActivity(events: readonly unknown[]): Activity {
   const steps = new Map<string, ActivityStep>();
   let turnActive = false;
@@ -287,6 +330,26 @@ export function deriveActivity(events: readonly unknown[]): Activity {
               ...step,
               status: "failed",
               cause: step.cause ?? asString(data?.error) ?? "O turno terminou antes desta etapa.",
+            });
+          }
+        }
+        turnActive = false;
+        writing = false;
+        break;
+      }
+
+      case "turn.cancelled": {
+        // Cancelar deixa etapas penduradas: o que estava rodando não volta, e
+        // um subagente cancelado NÃO emite `subagent.completed` no pai. Sem
+        // fechar aqui, a trilha ficava com ícone pulsando para sempre num
+        // turno que a própria pessoa interrompeu. Âmbar, não vermelho: parar
+        // por escolha não é o sistema quebrando.
+        for (const step of steps.values()) {
+          if (step.status === "running") {
+            steps.set(step.id, {
+              ...step,
+              status: "warning",
+              cause: step.cause ?? "Interrompida a seu pedido.",
             });
           }
         }
