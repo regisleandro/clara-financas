@@ -31,7 +31,14 @@ const EYEBROW: Record<View["kind"], string> = {
   checksum: "Conferência",
 };
 
-export function ViewPanel({
+/**
+ * O conteúdo do painel, sem a moldura.
+ *
+ * Vive separado do `<aside>` porque a MESMA composição precisa aparecer em dois
+ * lugares: fixa à direita na web, e dentro de uma modal em tela cheia no
+ * celular. Quem escolhe a moldura é o `Chat`, conforme o tamanho da tela.
+ */
+export function ViewPanelInner({
   view,
   onClose,
   footer,
@@ -42,17 +49,7 @@ export function ViewPanel({
   footer?: React.ReactNode;
 }) {
   return (
-    <aside
-      className="hidden w-[480px] shrink-0 overflow-y-auto border-l bg-[var(--clara-white)] lg:block"
-      style={{
-        height: "calc(100svh - 3rem)",
-        position: "sticky",
-        top: "3rem",
-        animation: "clara-slidein 0.28s ease",
-      }}
-      aria-label={EYEBROW[view.kind]}
-    >
-      <Artifact className="rounded-none border-0 bg-transparent">
+    <Artifact className="h-full rounded-none border-0 bg-transparent">
         <ArtifactHeader className="items-start border-0 px-7 pb-5 pt-7">
           <div className="min-w-0">
             <p className="clara-eyebrow">{EYEBROW[view.kind]}</p>
@@ -94,7 +91,6 @@ export function ViewPanel({
           {footer !== undefined ? <div className="mt-8">{footer}</div> : null}
         </ArtifactContent>
       </Artifact>
-    </aside>
   );
 }
 

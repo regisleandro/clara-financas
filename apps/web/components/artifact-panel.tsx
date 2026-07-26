@@ -33,7 +33,14 @@ export type ArtifactData = {
   secondaryAction?: { label: string; onClick: () => void };
 };
 
-export function ArtifactPanel({
+/**
+ * O conteúdo do artefato, sem a moldura.
+ *
+ * Separado do `<aside>` de propósito: a mesma composição é fixada à direita na
+ * web e aberta como modal em tela cheia no celular. A moldura é escolhida por
+ * quem renderiza (`Chat`), conforme o tamanho da tela.
+ */
+export function ArtifactPanelInner({
   data,
   onClose,
 }: {
@@ -41,17 +48,7 @@ export function ArtifactPanel({
   onClose: () => void;
 }) {
   return (
-    <aside
-      className="hidden w-[480px] shrink-0 overflow-y-auto border-l bg-[var(--clara-white)] lg:block"
-      style={{
-        height: "calc(100svh - 3rem)",
-        position: "sticky",
-        top: "3rem",
-        animation: "clara-slidein 0.28s ease",
-      }}
-      aria-label="Artefato"
-    >
-      <Artifact className="rounded-none border-0 bg-transparent">
+    <Artifact className="h-full rounded-none border-0 bg-transparent">
         <ArtifactHeader className="items-start border-0 px-7 pb-5 pt-7">
           <div>
             <p className="clara-eyebrow">Artefato</p>
@@ -129,6 +126,5 @@ export function ArtifactPanel({
           ) : null}
         </ArtifactContent>
       </Artifact>
-    </aside>
   );
 }

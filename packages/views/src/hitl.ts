@@ -111,11 +111,26 @@ export function findCommittedBatchIds(messages: unknown): Set<string> {
  * na conversa para sempre — daí o filtro pelos lotes já confirmados.
  */
 export function findOpenBatchProposal(messages: unknown): UnknownRecord | null {
+  return findOpenBatchProposalLocation(messages)?.output ?? null;
+}
+
+/**
+ * Como `findOpenBatchProposal`, mas diz TAMBÉM em qual mensagem o lote nasceu.
+ *
+ * O `messageId` é o que permite pendurar o link "Ver artefato" na resposta
+ * certa — a que trouxe a conferência — em vez de num cartão solto no fim da
+ * conversa. Fica `null` quando a mensagem não carrega id (nada quebra: o link
+ * simplesmente não aparece).
+ */
+export function findOpenBatchProposalLocation(
+  messages: unknown,
+): { messageId: string | null; output: UnknownRecord } | null {
   const committed = findCommittedBatchIds(messages);
   const list = Array.isArray(messages) ? messages : [];
 
   for (let index = list.length - 1; index >= 0; index -= 1) {
-    const parts = asRecord(list[index])?.parts;
+    const message = asRecord(list[index]);
+    const parts = message?.parts;
     if (!Array.isArray(parts)) continue;
 
     for (let partIndex = parts.length - 1; partIndex >= 0; partIndex -= 1) {
@@ -129,7 +144,7 @@ export function findOpenBatchProposal(messages: unknown): UnknownRecord | null {
       if (!output || typeof output.batchId !== "string" || !asRecord(output.checksum)) continue;
       if (committed.has(output.batchId)) return null;
 
-      return output;
+      return { messageId: typeof message?.id === "string" ? message.id : null, output };
     }
   }
 

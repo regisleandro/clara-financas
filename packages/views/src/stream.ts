@@ -64,3 +64,34 @@ export function findPresentedView(events: readonly unknown[]): View | null {
 
   return latest;
 }
+
+/**
+ * O painel que UMA mensagem específica mandou desenhar, ou null.
+ *
+ * `findPresentedView` lê o stream de eventos e responde "qual é o painel de
+ * AGORA". Esta função lê as `parts` de uma mensagem já materializada e responde
+ * "esta mensagem tem um painel associado" — é o que sustenta o link "Ver
+ * artefato" que acompanha cada resposta, no celular e na web.
+ *
+ * O `present_view` fica gravado na mensagem como uma parte `dynamic-tool`, do
+ * mesmo jeito que `propose_batch` (ver `hitl.ts`). Lê o `input` da chamada, não
+ * o resultado: o painel é o que a Clara mandou desenhar, e `present_view` não
+ * devolve saída de conteúdo.
+ */
+export function findMessageView(message: unknown): View | null {
+  const parts = asRecord(message)?.parts;
+  if (!Array.isArray(parts)) return null;
+
+  // Uma resposta pode corrigir o rumo e pedir dois painéis; vale o último.
+  let latest: View | null = null;
+  for (const raw of parts) {
+    const part = asRecord(raw);
+    if (part?.type !== "dynamic-tool" || asString(part.toolName) !== PRESENT_VIEW_TOOL) {
+      continue;
+    }
+    const view = parseView(part.input);
+    if (view !== null) latest = view;
+  }
+
+  return latest;
+}
