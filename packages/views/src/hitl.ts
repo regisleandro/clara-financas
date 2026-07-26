@@ -75,6 +75,52 @@ export function findPendingRequest(messages: unknown): PendingRequest | null {
 }
 
 /**
+ * O `optionId` que corresponde a aprovar ou negar ESTE pedido.
+ *
+ * A interface mandava as strings literais `"approve"` e `"deny"`, sem olhar as
+ * opções do pedido. Enquanto o harness usar esses ids, funciona; no dia em que
+ * usar outros, o `inputResponses` é recusado, o turno não retoma e os botões
+ * ficam desabilitados — a decisão morre na tela, sem erro visível. E hoje são
+ * três escritas dependendo dessa suposição, não uma.
+ *
+ * A resolução é por vocabulário e, em último caso, por posição: a primeira
+ * opção é a afirmativa e a última é a negativa, que é a convenção de todo
+ * pedido de aprovação. Só quando não há opção nenhuma é que a literal volta —
+ * aí ela é a única informação disponível.
+ */
+export type ApprovalIntent = "approve" | "deny";
+
+const APPROVE_WORDS = /^(approve[dr]?|accept|allow|confirm|yes|sim|aprovar?)$/i;
+const DENY_WORDS = /^(deny|denied|reject|refuse|decline|cancel|no|nao|não|negar|recusar)$/i;
+
+export function resolveApprovalOption(
+  pending: Pick<PendingRequest, "options"> | null,
+  intent: ApprovalIntent,
+): string {
+  const options = pending?.options ?? [];
+  const ids = options
+    .map((option) => option.optionId ?? option.id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+  if (ids.length === 0) return intent;
+
+  const words = intent === "approve" ? APPROVE_WORDS : DENY_WORDS;
+  const byWord = ids.find((id) => words.test(id));
+  if (byWord !== undefined) return byWord;
+
+  // Pelo rótulo, quando o id é opaco (`opt_1`) mas o texto não é.
+  const byLabel = options.find((option) => {
+    const label = option.label;
+    return typeof label === "string" && words.test(label.trim());
+  });
+  const labelId = byLabel?.optionId ?? byLabel?.id;
+  if (typeof labelId === "string" && labelId.length > 0) return labelId;
+
+  if (ids.length === 1) return ids[0]!;
+  return intent === "approve" ? ids[0]! : ids[ids.length - 1]!;
+}
+
+/**
  * Lotes já registrados no razão, segundo o resultado de `commit_batch`.
  *
  * Serve para o cartão de conferência SUMIR depois do registro. Sem isto ele

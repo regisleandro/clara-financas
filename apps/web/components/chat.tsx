@@ -159,6 +159,8 @@ function ChatSession({
   const {
     setSelection,
     presented,
+    panelFailed,
+    invalidIssues,
     messageArtifacts,
     active,
     panelOpen,
@@ -168,12 +170,21 @@ function ChatSession({
     events: agent.events,
     artifact,
     proposalMessageId: proposalLocation?.messageId ?? null,
-    // Painel inválido não pode mais sumir em silêncio: este é o ponto único
-    // de telemetria — o sintoma "o artefato às vezes não abre" era
-    // indepurável sem ele.
-    onInvalidView: (issues, callId) =>
-      console.warn("[clara] present_view inválido", { issues, callId }),
+    proposalBatchId: typeof proposal?.batchId === "string" ? proposal.batchId : null,
+    // O turno é o que faz a coluna reabrir a cada pergunta — inclusive quando
+    // a pergunta se repete e o painel sai idêntico.
+    turnId: activity.turnId,
+    // No celular a modal cobre a conversa; lá o artefato abre pelo link.
+    autoOpen: isDesktop,
   });
+
+  // Painel inválido não pode sumir em silêncio. A tela diz que não deu (ver
+  // abaixo, na conversa); aqui fica o rastro para quem for depurar.
+  useEffect(() => {
+    if (invalidIssues.length > 0) {
+      console.warn("[clara] present_view inválido", { issues: invalidIssues });
+    }
+  }, [invalidIssues]);
 
   // Turno novo: a coluna volta a seguir o artefato mais recente.
   clara.onTurnStart(() => setSelection({ type: "latest" }));
@@ -254,6 +265,18 @@ function ChatSession({
             ))}
 
             {!isWelcome ? <ExecutionTrace activity={activity} busy={busy} /> : null}
+
+            {/* O painel foi pedido e recusado pelo contrato. A resposta em
+                texto normalmente aponta para ele ("veja ao lado"), e ficar
+                calado deixa a pessoa procurando o que não existe. Dizer que
+                não deu, e o que dá para fazer, é o mínimo honesto. */}
+            {panelFailed && !busy ? (
+              <p className="clara-small">
+                Não consegui montar o painel desta resposta — os números acima
+                seguem válidos. Se quiser vê-los organizados, peça de novo em
+                outras palavras.
+              </p>
+            ) : null}
 
             {/* A decisão sobre o lote vem PRIMEIRO e dentro da conversa: é o
                 momento em que a pessoa decide. */}

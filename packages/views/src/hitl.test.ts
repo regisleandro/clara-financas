@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   findCommittedBatchIds,
   findRejectedBatchIds,
+  resolveApprovalOption,
   findOpenBatchProposal,
   findOpenBatchProposalLocation,
   findPendingRequest,
@@ -239,5 +240,53 @@ describe("findCommittedBatchIds", () => {
     ];
 
     assert.equal(findOpenBatchProposalLocation(messages)?.output.batchId, "bat_2");
+  });
+
+  /**
+   * A interface mandava as literais `"approve"`/`"deny"` sem olhar o pedido.
+   * Enquanto o harness usar esses ids, funciona; no dia em que usar outros, o
+   * turno não retoma e os botões ficam mortos — sem erro visível.
+   */
+  it("aprova pelo id da opção, quando o pedido traz outro vocabulário", () => {
+    const pending = {
+      options: [
+        { optionId: "confirm", label: "Registrar fatura" },
+        { optionId: "decline", label: "Agora não" },
+      ],
+    };
+
+    assert.equal(resolveApprovalOption(pending, "approve"), "confirm");
+    assert.equal(resolveApprovalOption(pending, "deny"), "decline");
+  });
+
+  it("com id opaco, decide pelo rótulo", () => {
+    const pending = {
+      options: [
+        { optionId: "opt_1", label: "Sim" },
+        { optionId: "opt_2", label: "Não" },
+      ],
+    };
+
+    assert.equal(resolveApprovalOption(pending, "approve"), "opt_1");
+    assert.equal(resolveApprovalOption(pending, "deny"), "opt_2");
+  });
+
+  it("sem vocabulário reconhecível, primeira é aprovar e última é negar", () => {
+    const pending = { options: [{ optionId: "a" }, { optionId: "b" }] };
+
+    assert.equal(resolveApprovalOption(pending, "approve"), "a");
+    assert.equal(resolveApprovalOption(pending, "deny"), "b");
+  });
+
+  it("sem opções, a literal é a única informação que existe", () => {
+    assert.equal(resolveApprovalOption(null, "approve"), "approve");
+    assert.equal(resolveApprovalOption({ options: [] }, "deny"), "deny");
+  });
+
+  it("o formato de hoje continua funcionando", () => {
+    const pending = { options: [{ optionId: "approve" }, { optionId: "deny" }] };
+
+    assert.equal(resolveApprovalOption(pending, "approve"), "approve");
+    assert.equal(resolveApprovalOption(pending, "deny"), "deny");
   });
 });
