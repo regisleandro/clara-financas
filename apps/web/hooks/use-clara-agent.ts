@@ -4,6 +4,7 @@ import { useEveAgent } from "eve/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { uploadDocument } from "@/lib/document-upload";
 import { saveSession, type StoredSession } from "@/lib/session-store";
 import { findPendingRequest } from "@clara-financas/views/hitl";
 
@@ -32,6 +33,8 @@ export function useClaraAgent({
   const tokenRef = useRef<{ value: string; expiresAt: number } | null>(null);
   const [answered, setAnswered] = useState<boolean | null>(null);
   const [uploading, setUploading] = useState(false);
+  /** Porcentagem do upload direto, ou `null` fora dele (hash, parser, registro). */
+  const [progress, setProgress] = useState<number | null>(null);
 
   const bearer = useCallback(async () => {
     const cached = tokenRef.current;
@@ -81,24 +84,32 @@ export function useClaraAgent({
     void agent.send({ message });
   };
 
+  /**
+   * O PDF não passa pela nossa API: o parser roda aqui, o arquivo vai direto
+   * para o armazenamento e a função recebe apenas o registro. `uploadDocument`
+   * guarda essa coreografia; o que interessa nesta camada é o progresso e o
+   * recado quando algo sai do trilho.
+   */
   async function upload(file: File) {
     setUploading(true);
+    setProgress(null);
     try {
-      const body = new FormData();
-      body.append("file", file);
-      const response = await fetch("/api/documents", { method: "POST", body });
-      const data = (await response.json()) as { documentId?: string; error?: string };
+      const result = await uploadDocument(file, (percentage) =>
+        setProgress(Math.round(percentage)),
+      );
 
-      if (!response.ok || !data.documentId) {
-        toast.error(data.error ?? "Não foi possível enviar o arquivo.");
+      if (!result.ok) {
+        toast.error(result.error);
         return;
       }
+      if (result.warning !== null) toast.warning(result.warning);
 
       sendRef.current(
-        `Enviei o documento ${file.name} (documentId: ${data.documentId}). Extraia as transações e me mostre a conferência.`,
+        `Enviei o documento ${result.filename} (documentId: ${result.documentId}). Extraia as transações e me mostre a conferência.`,
       );
     } finally {
       setUploading(false);
+      setProgress(null);
     }
   }
 
@@ -131,6 +142,7 @@ export function useClaraAgent({
     agent,
     busy,
     uploading,
+    progress,
     pending,
     answered,
     isWelcome,

@@ -191,11 +191,19 @@ por tenant e a RLS — não um gate da plataforma.
 
 ## Armadilhas conhecidas
 
-**Sem `BLOB_READ_WRITE_TOKEN`, o upload quebra.** Em desenvolvimento os PDFs
-vão para `.data/documents`. Num runtime serverless o sistema de arquivos é
-somente-leitura fora de `/tmp`, e `/tmp` morre com a invocação. O código falha
-com uma mensagem explícita (`apps/web/lib/storage.ts`) em vez de um `EROFS`
-obscuro, mas o token continua sendo obrigatório.
+**Sem `BLOB_READ_WRITE_TOKEN`, o upload quebra.** Em produção o navegador grava
+direto no Blob, e é este token que assina o token de escrita de curta duração
+(`/api/documents/upload`). Sem ele, `/api/documents/prepare` responde `proxy` e
+o arquivo cai no caminho de desenvolvimento — que grava em `.data/documents`.
+Num runtime serverless o sistema de arquivos é somente-leitura fora de `/tmp`, e
+`/tmp` morre com a invocação. O código falha com uma mensagem explícita
+(`apps/web/lib/storage.ts`) em vez de um `EROFS` obscuro, mas o token continua
+sendo obrigatório.
+
+**O upload direto é o que torna o limite de 20 MB verdadeiro.** Uma Vercel
+Function recusa corpos de requisição acima de 4,5 MB antes de o código rodar. O
+caminho `proxy` continua sujeito a esse teto — ele é de desenvolvimento, e não
+deve ser alcançado em produção.
 
 **O papel do banco não é o que o Neon entrega.** A integração injeta
 `DATABASE_URL` com o papel `neondb_owner`, dono do schema. O runtime tem de usar

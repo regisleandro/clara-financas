@@ -116,7 +116,7 @@ function ChatSession({
   const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   const clara = useClaraAgent({ agentHost, tenantKey, initial });
-  const { agent, busy, uploading, pending, answered, isWelcome } = clara;
+  const { agent, busy, uploading, progress, pending, answered, isWelcome } = clara;
 
   const activity = useMemo(() => deriveActivity(agent.events), [agent.events]);
 
@@ -323,7 +323,18 @@ function ChatSession({
                   aria-label="Anexar fatura em PDF"
                   className="grid size-8 place-items-center rounded-full bg-[var(--clara-fog)] text-base leading-none transition-colors hover:bg-[var(--clara-ash)] disabled:opacity-50"
                 >
-                  {uploading ? "…" : "+"}
+                  {/* Uma fatura de 20 MB agora sobe inteira, então a espera
+                      precisa ter número: "…" cobre o hash, o parser e o
+                      registro; a porcentagem, o trecho que demora. */}
+                  {uploading ? (
+                    progress === null ? (
+                      "…"
+                    ) : (
+                      <span className="text-[10px] font-medium tabular-nums">{progress}</span>
+                    )
+                  ) : (
+                    "+"
+                  )}
                 </button>
               </InputGroupAddon>
               <PromptInputBody>
