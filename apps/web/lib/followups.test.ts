@@ -54,7 +54,12 @@ describe("deriveFollowups", () => {
       difference: -1,
       result: "mismatch",
     });
-    const match = ViewSchema.parse({ ...mismatch, difference: 0, result: "match" });
+    const match = ViewSchema.parse({
+      ...mismatch,
+      extractedTotal: 100,
+      difference: 0,
+      result: "match",
+    });
 
     assert.ok(deriveFollowups(mismatch, []).includes("Onde está a diferença?"));
     assert.ok(!deriveFollowups(match, []).includes("Onde está a diferença?"));

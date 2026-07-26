@@ -16,20 +16,25 @@ const view = (title: string) => ({
   rows: [],
 });
 
-const requested = (input: unknown, toolName = "present_view") => ({
+const requested = (input: unknown, toolName = "present_view", callId = "c1") => ({
   type: "actions.requested",
-  data: { actions: [{ callId: "c1", toolName, input }] },
+  data: { actions: [{ callId, toolName, input }] },
+});
+const succeeded = (callId = "c1") => ({
+  type: "action.result",
+  data: { result: { callId, output: { presented: "metric" } } },
 });
 
 describe("findPresentedView", () => {
   it("encontra o painel que a Clara mandou desenhar", () => {
-    const found = findPresentedView([requested(view("Gastos de junho"))]);
+    const found = findPresentedView([requested(view("Gastos de junho")), succeeded()]);
     assert.equal(found?.title, "Gastos de junho");
   });
 
   it("turno novo apaga o painel do turno anterior", () => {
     const found = findPresentedView([
       requested(view("Pergunta antiga")),
+      succeeded(),
       { type: "turn.started", data: {} },
       { type: "message.appended", data: {} },
     ]);
@@ -39,7 +44,9 @@ describe("findPresentedView", () => {
   it("dentro do mesmo turno, a decisão mais recente vence", () => {
     const found = findPresentedView([
       requested(view("Primeira tentativa")),
-      requested(view("Correção")),
+      succeeded(),
+      requested(view("Correção"), "present_view", "c2"),
+      succeeded("c2"),
     ]);
     assert.equal(found?.title, "Correção");
   });
@@ -48,6 +55,7 @@ describe("findPresentedView", () => {
     const found = findPresentedView([
       { type: "turn.started", data: {} },
       requested(view("Gastos de junho")),
+      succeeded(),
       { type: "message.appended", data: {} },
       { type: "turn.completed", data: {} },
     ]);
@@ -55,14 +63,16 @@ describe("findPresentedView", () => {
   });
 
   it("ignora chamadas de outras ferramentas", () => {
-    const found = findPresentedView([requested(view("x"), "commit_batch")]);
+    const found = findPresentedView([requested(view("x"), "commit_batch"), succeeded()]);
     assert.equal(found, null);
   });
 
   it("payload inválido não vira painel e não quebra a leitura", () => {
     const found = findPresentedView([
       requested({ kind: "metric", title: "" }),
-      requested(view("Válido")),
+      succeeded(),
+      requested(view("Válido"), "present_view", "c2"),
+      succeeded("c2"),
     ]);
     assert.equal(found?.title, "Válido");
   });
@@ -70,7 +80,9 @@ describe("findPresentedView", () => {
   it("um payload inválido não apaga o painel válido anterior", () => {
     const found = findPresentedView([
       requested(view("Válido")),
-      requested({ kind: "inventado", title: "x" }),
+      succeeded(),
+      requested({ kind: "inventado", title: "x" }, "present_view", "c2"),
+      succeeded("c2"),
     ]);
     assert.equal(found?.title, "Válido");
   });
@@ -86,6 +98,7 @@ describe("findPresentedView", () => {
       { type: "actions.requested" },
       { type: "actions.requested", data: { actions: "não é lista" } },
       requested(view("Válido")),
+      succeeded(),
     ]);
     assert.equal(found?.title, "Válido");
   });
@@ -95,7 +108,10 @@ describe("findPresentedView", () => {
     // em produção era "o artefato às vezes não abre", indepurável.
     const invalid: Array<{ issues: string[]; callId?: string }> = [];
     const found = findPresentedView(
-      [requested({ kind: "metric", title: "Total", metric: { label: "T", amount: 84.21 } })],
+      [
+        requested({ kind: "metric", title: "Total", metric: { label: "T", amount: 84.21 } }),
+        succeeded(),
+      ],
       (issues, callId) => invalid.push({ issues, callId }),
     );
 
@@ -107,7 +123,7 @@ describe("findPresentedView", () => {
 
   it("payload válido não dispara o callback", () => {
     let calls = 0;
-    findPresentedView([requested(view("Válido"))], () => {
+    findPresentedView([requested(view("Válido")), succeeded()], () => {
       calls += 1;
     });
     assert.equal(calls, 0);
@@ -118,6 +134,7 @@ const viewPart = (input: unknown, toolName = "present_view") => ({
   type: "dynamic-tool",
   toolName,
   input,
+  output: { presented: "metric" },
 });
 
 describe("findMessageView", () => {
@@ -181,10 +198,12 @@ describe("findMessageView", () => {
         type: "actions.requested",
         data: { actions: [{ callId: "c1", toolName: "present_view", input: panel("Proposta") }] },
       },
+      succeeded("c1"),
       {
         type: "actions.requested",
         data: { actions: [{ callId: "c2", toolName: "present_view", input: panel("Resultado") }] },
       },
+      succeeded("c2"),
     ];
 
     assert.deepEqual(
@@ -203,6 +222,7 @@ describe("findMessageView", () => {
         title,
         metric: { label: "Total", amount: 100, transactionIds: ["txn_1"] },
       },
+      output: { presented: "metric" },
     });
     const message = { parts: [part("Um"), part("Dois")] };
 

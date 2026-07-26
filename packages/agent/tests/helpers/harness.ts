@@ -83,6 +83,7 @@ export async function dropTenant(tenantId: string): Promise<void> {
   try {
     for (const table of [
       "transaction_reclassifications",
+      "financial_action_proposals",
       "transactions",
       "batches",
       "extraction_stagings",

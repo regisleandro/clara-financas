@@ -93,6 +93,12 @@ export function useClaraAgent({
   const pending = findPendingRequest(agent.data.messages);
   const answered = resolveAnswered(pending, answeredRequest);
   const isWelcome = agent.data.messages.length === 0;
+  const answeringRequestRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (pending?.requestId !== answeringRequestRef.current) {
+      answeringRequestRef.current = null;
+    }
+  }, [pending?.requestId]);
 
   // Reatribuídos a cada render: um `useMemo` no chamador guardaria a versão
   // antiga de `agent` se chamasse as funções direto, e o clique dispararia
@@ -101,12 +107,14 @@ export function useClaraAgent({
   const answerRef = useRef<(optionId: string) => void>(() => {});
   answerRef.current = (optionId: string) => {
     if (!pending) return;
+    if (answeringRequestRef.current === pending.requestId) return;
     // "approve" e "deny" são INTENÇÕES vindas dos cartões, não ids: quem sabe
     // o id de verdade é o pedido. As respostas de `ask_question` já chegam com
     // o id da opção e passam direto.
     const intent = optionId === "approve" || optionId === "deny" ? optionId : null;
     const resolved = intent === null ? optionId : resolveApprovalOption(pending, intent);
     const { requestId } = pending;
+    answeringRequestRef.current = requestId;
     setAnsweredRequest({ requestId, approved: intent === null ? true : intent === "approve" });
     // Se o envio falhar (token vencido, ACL da sessão), o cartão precisa
     // VOLTAR: antes o estado ficava marcado como respondido e a única pista
@@ -116,6 +124,7 @@ export function useClaraAgent({
         inputResponses: [{ requestId, optionId: resolved }],
       }),
     ).catch((error: unknown) => {
+      if (answeringRequestRef.current === requestId) answeringRequestRef.current = null;
       setAnsweredRequest((current) => (current?.requestId === requestId ? null : current));
       toast.error(
         error instanceof Error && error.message !== ""
@@ -130,6 +139,7 @@ export function useClaraAgent({
   );
   answerTextRef.current = async (text: string, sensitive = false) => {
     if (!pending) return;
+    if (answeringRequestRef.current === pending.requestId) return;
     try {
       let protectedInput: { requestId: string; token: string } | undefined;
       if (sensitive) {
@@ -144,6 +154,7 @@ export function useClaraAgent({
       }
 
       const { requestId } = pending;
+      answeringRequestRef.current = requestId;
       setAnsweredRequest({ requestId, approved: true });
       // Mesmo cuidado do `answer`: o `try` de fora só cobre o selamento da
       // senha; o envio em si falhando precisa devolver o campo de resposta.
@@ -168,6 +179,7 @@ export function useClaraAgent({
             : {}),
         }),
       ).catch((error: unknown) => {
+        if (answeringRequestRef.current === requestId) answeringRequestRef.current = null;
         setAnsweredRequest((current) => (current?.requestId === requestId ? null : current));
         toast.error(
           error instanceof Error && error.message !== ""
@@ -176,6 +188,7 @@ export function useClaraAgent({
         );
       });
     } catch (error) {
+      answeringRequestRef.current = null;
       toast.error(error instanceof Error ? error.message : "Não foi possível enviar a resposta.");
     }
   };
@@ -222,9 +235,16 @@ export function useClaraAgent({
 
   const onTurnStartRef = useRef<() => void>(() => {});
   sendRef.current = (message: string) => {
+    if (pending !== null || busy) return;
     setAnsweredRequest(null);
     onTurnStartRef.current();
-    void agent.send({ message });
+    void Promise.resolve(agent.send({ message })).catch((error: unknown) => {
+      toast.error(
+        error instanceof Error && error.message !== ""
+          ? error.message
+          : "Não consegui enviar sua mensagem. Tente de novo.",
+      );
+    });
   };
 
   /**
@@ -255,7 +275,7 @@ export function useClaraAgent({
 
       setAnsweredRequest(null);
       onTurnStartRef.current();
-      void agent.send({
+      await agent.send({
         message: `Enviei ${result.filename}.`,
         clientContext: {
           event: "document_uploaded",
@@ -311,6 +331,18 @@ export function useClaraAgent({
     if (events.length === 0) return;
     saveSession(tenantKey, cursor, events, title);
   }, [agent.status, tenantKey]);
+
+  // Um reload durante streaming não deve apagar o turno visual. A gravação é
+  // atrasada e coalescida: preserva a retomada sem escrever no storage a cada
+  // token recebido.
+  useEffect(() => {
+    if (agent.events.length === 0) return;
+    const timeout = window.setTimeout(() => {
+      const { session: cursor, events, firstUserText: title } = snapshotRef.current;
+      saveSession(tenantKey, cursor, events, title);
+    }, 400);
+    return () => window.clearTimeout(timeout);
+  }, [agent.events, tenantKey]);
 
   return {
     agent,

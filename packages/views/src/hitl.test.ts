@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 
 import {
   findCommittedBatchIds,
+  findActionProposalForPending,
+  findBatchProposalForPending,
   findRejectedBatchIds,
   findBatchProposals,
   resolveApprovalOption,
@@ -357,5 +359,70 @@ describe("findCommittedBatchIds", () => {
     assert.equal(proposals.length, 1);
     assert.equal(proposals[0]?.messageId, "m2");
     assert.equal(proposals[0]?.outcome, "open");
+  });
+
+  it("enxerga proposta criada pelo fluxo normal de extração", () => {
+    const messages = [
+      msg({
+        type: "dynamic-tool",
+        toolName: "propose_batch_from_extraction",
+        output: { batchId: "bat_pdf", transactionCount: 2, checksum: { result: "match" } },
+      }),
+    ];
+    assert.equal(findOpenBatchProposal(messages)?.batchId, "bat_pdf");
+  });
+
+  it("não deixa um lote decidido esconder outro lote aberto mais antigo", () => {
+    const messages = [
+      msg({
+        type: "dynamic-tool",
+        toolName: "propose_batch",
+        output: { batchId: "bat_aberto", checksum: { result: "match" } },
+      }),
+      msg({
+        type: "dynamic-tool",
+        toolName: "propose_batch",
+        output: { batchId: "bat_decidido", checksum: { result: "match" } },
+      }),
+      msg({
+        type: "dynamic-tool",
+        toolName: "commit_batch",
+        output: { batchId: "bat_decidido", status: "confirmed" },
+      }),
+    ];
+    assert.equal(findOpenBatchProposalLocation(messages)?.output.batchId, "bat_aberto");
+  });
+
+  it("correlaciona o cartão ao batchId do pedido, não à última proposta", () => {
+    const messages = [
+      msg({
+        type: "dynamic-tool",
+        toolName: "propose_batch",
+        output: { batchId: "bat_a", checksum: { result: "match" } },
+      }),
+      msg({
+        type: "dynamic-tool",
+        toolName: "propose_batch",
+        output: { batchId: "bat_b", checksum: { result: "match" } },
+      }),
+    ];
+    const pending = { toolName: "commit_batch", toolInput: { batchId: "bat_a" } };
+    assert.equal(findBatchProposalForPending(messages, pending)?.batchId, "bat_a");
+  });
+
+  it("resolve proposalId do gate para a saída canônica da preparação", () => {
+    const messages = [
+      msg({
+        type: "dynamic-tool",
+        toolName: "prepare_invoice_resolution",
+        output: { proposalId: "act_1", batchId: "bat_1", adjustmentCents: 353 },
+      }),
+    ];
+    assert.equal(
+      findActionProposalForPending(messages, {
+        toolInput: { proposalId: "act_1" },
+      })?.adjustmentCents,
+      353,
+    );
   });
 });

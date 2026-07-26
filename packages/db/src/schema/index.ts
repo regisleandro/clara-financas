@@ -8,3 +8,4 @@ export * from "./extraction-staging";
 export * from "./reclassification";
 export * from "./commitment";
 export * from "./notification";
+export * from "./financial-action";

@@ -35,8 +35,8 @@ export type OnInvalidView = (issues: string[], callId?: string) => void;
 /**
  * O último painel do turno corrente, ou null.
  *
- * Lê o INPUT da chamada, não o resultado: o painel aparece no instante em que
- * a Clara decide mostrá-lo, sem esperar a execução terminar.
+ * A chamada só vira painel depois de um `action.result` bem-sucedido. Input
+ * solicitado não é confirmação de que a tool executou.
  *
  * "Último" porque ela pode corrigir o rumo dentro do mesmo turno. "Do turno
  * corrente" porque painel de pergunta antiga ao lado de resposta nova sugere
@@ -66,6 +66,7 @@ export function findPresentedViews(
   onInvalid?: OnInvalidView,
 ): View[] {
   let views: View[] = [];
+  let requested = new Map<string, unknown>();
 
   for (const raw of events) {
     const event = asRecord(raw);
@@ -75,23 +76,37 @@ export function findPresentedViews(
     // fica limpa em vez de manter o desenho anterior.
     if (type === "turn.started") {
       views = [];
+      requested = new Map();
       continue;
     }
 
-    if (type !== "actions.requested") continue;
+    if (type === "actions.requested") {
+      const actions = asRecord(event?.data)?.actions;
+      if (!Array.isArray(actions)) continue;
+      for (const rawAction of actions) {
+        const action = asRecord(rawAction);
+        const callId = asString(action?.callId);
+        if (asString(action?.toolName) === PRESENT_VIEW_TOOL && callId !== undefined) {
+          requested.set(callId, action?.input);
+        }
+      }
+      continue;
+    }
 
-    const actions = asRecord(event?.data)?.actions;
-    if (!Array.isArray(actions)) continue;
-
-    for (const rawAction of actions) {
-      const action = asRecord(rawAction);
-      if (asString(action?.toolName) !== PRESENT_VIEW_TOOL) continue;
-
-      // Payload inválido não vira painel — e não derruba a conversa. O modelo
-      // erra campo, e um erro de render custaria a resposta inteira.
-      const parsed = parseViewResult(action?.input);
+    if (type === "action.result") {
+      const data = asRecord(event?.data);
+      const result = asRecord(data?.result);
+      const callId = asString(result?.callId);
+      if (callId === undefined || !requested.has(callId)) continue;
+      const output = asRecord(result?.output);
+      if (data?.status === "failed" || output?.error !== undefined) {
+        requested.delete(callId);
+        continue;
+      }
+      const parsed = parseViewResult(requested.get(callId));
       if (parsed.ok) views.push(parsed.view);
-      else onInvalid?.(parsed.issues, asString(action?.callId));
+      else onInvalid?.(parsed.issues, callId);
+      requested.delete(callId);
     }
   }
 
@@ -106,10 +121,8 @@ export function findPresentedViews(
  * "esta mensagem tem um painel associado" — é o que sustenta o link "Ver
  * artefato" que acompanha cada resposta, no celular e na web.
  *
- * O `present_view` fica gravado na mensagem como uma parte `dynamic-tool`, do
- * mesmo jeito que `propose_batch` (ver `hitl.ts`). Lê o `input` da chamada, não
- * o resultado: o painel é o que a Clara mandou desenhar, e `present_view` não
- * devolve saída de conteúdo.
+ * O `present_view` fica gravado na mensagem como uma parte `dynamic-tool`.
+ * Só projetamos a parte depois de uma saída bem-sucedida.
  */
 export function findMessageView(message: unknown, onInvalid?: OnInvalidView): View | null {
   return findMessageViews(message, onInvalid).at(-1) ?? null;
@@ -124,6 +137,10 @@ export function findMessageViews(message: unknown, onInvalid?: OnInvalidView): V
   for (const raw of parts) {
     const part = asRecord(raw);
     if (part?.type !== "dynamic-tool" || asString(part.toolName) !== PRESENT_VIEW_TOOL) {
+      continue;
+    }
+    const output = asRecord(part.output);
+    if (output === undefined || output.error !== undefined || output.presented === undefined) {
       continue;
     }
     // Parte materializada já tem o input completo — aqui falha de schema é

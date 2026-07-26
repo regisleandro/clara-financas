@@ -189,8 +189,10 @@ export function findOpenBatchProposal(messages: unknown): UnknownRecord | null {
 export function findOpenBatchProposalLocation(
   messages: unknown,
 ): { messageId: string | null; output: UnknownRecord } | null {
-  const latest = findBatchProposals(messages).at(-1);
-  if (latest === undefined || latest.outcome !== "open") return null;
+  const latest = findBatchProposals(messages)
+    .filter((proposal) => proposal.outcome === "open")
+    .at(-1);
+  if (latest === undefined) return null;
   return { messageId: latest.messageId, output: latest.output };
 }
 
@@ -231,7 +233,11 @@ export function findBatchProposals(messages: unknown): BatchProposalLocation[] {
     for (const part of parts) {
       const record = asRecord(part);
       if (record?.type !== "dynamic-tool") continue;
-      if (record.toolName !== "propose_batch" && record.toolName !== "edit_proposed_batch") {
+      if (
+        record.toolName !== "propose_batch" &&
+        record.toolName !== "propose_batch_from_extraction" &&
+        record.toolName !== "edit_proposed_batch"
+      ) {
         continue;
       }
 
@@ -254,4 +260,63 @@ export function findBatchProposals(messages: unknown): BatchProposalLocation[] {
   }
 
   return [...byBatch.values()];
+}
+
+/** Proposta de fatura que pertence exatamente ao gate pendente. */
+export function findBatchProposalForPending(
+  messages: unknown,
+  pending: Pick<PendingRequest, "toolName" | "toolInput"> | null,
+): BatchProposalLocation | null {
+  if (pending?.toolName !== "commit_batch") return null;
+  const input = asRecord(pending.toolInput);
+  let batchId = typeof input?.batchId === "string" ? input.batchId : null;
+
+  if (batchId === null && typeof input?.proposalId === "string") {
+    const prepared = findActionProposal(messages, input.proposalId);
+    batchId = typeof prepared?.batchId === "string" ? prepared.batchId : null;
+  }
+  if (batchId === null) return null;
+
+  return (
+    findBatchProposals(messages)
+      .filter((proposal) => proposal.batchId === batchId && proposal.outcome === "open")
+      .at(-1) ?? null
+  );
+}
+
+/**
+ * Saída canônica de uma preparação financeira, correlacionada por proposalId.
+ * A UI usa esta saída — nunca aritmética ou prosa do modelo — para explicar o
+ * que o gate vai aplicar.
+ */
+export function findActionProposal(
+  messages: unknown,
+  proposalId: string,
+): UnknownRecord | null {
+  const list = Array.isArray(messages) ? messages : [];
+  for (let messageIndex = list.length - 1; messageIndex >= 0; messageIndex -= 1) {
+    const parts = asRecord(list[messageIndex])?.parts;
+    if (!Array.isArray(parts)) continue;
+    for (let partIndex = parts.length - 1; partIndex >= 0; partIndex -= 1) {
+      const record = asRecord(parts[partIndex]);
+      if (
+        record?.type !== "dynamic-tool" ||
+        (record.toolName !== "prepare_invoice_resolution" &&
+          record.toolName !== "prepare_batch_registration")
+      ) {
+        continue;
+      }
+      const output = asRecord(record.output);
+      if (output?.proposalId === proposalId) return output;
+    }
+  }
+  return null;
+}
+
+export function findActionProposalForPending(
+  messages: unknown,
+  pending: Pick<PendingRequest, "toolInput"> | null,
+): UnknownRecord | null {
+  const proposalId = asRecord(pending?.toolInput)?.proposalId;
+  return typeof proposalId === "string" ? findActionProposal(messages, proposalId) : null;
 }

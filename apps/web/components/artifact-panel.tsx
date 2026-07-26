@@ -30,7 +30,7 @@ export type ArtifactData = {
   rows: ArtifactRow[];
   footnote?: string;
   primaryAction?: { label: string; onClick: () => void; disabled?: boolean };
-  secondaryAction?: { label: string; onClick: () => void };
+  secondaryAction?: { label: string; onClick: () => void; disabled?: boolean };
 };
 
 /**
@@ -113,7 +113,8 @@ export function ArtifactPanelInner({
                 <button
                   type="button"
                   onClick={data.secondaryAction.onClick}
-                  className="clara-link"
+                  disabled={data.secondaryAction.disabled}
+                  className="clara-link disabled:opacity-40"
                 >
                   {data.secondaryAction.label}
                 </button>

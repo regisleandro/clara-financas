@@ -142,7 +142,11 @@ export function batchArtifact(
       onClick: actions.onApprove,
       disabled: actions.disabled,
     },
-    secondaryAction: { label: "Rejeitar lote", onClick: actions.onReject },
+    secondaryAction: {
+      label: actions.pendingGate ? "Manter como rascunho" : "Rejeitar lote",
+      onClick: actions.onReject,
+      disabled: actions.disabled,
+    },
     footnote: actions.pendingGate
       ? "A Clara está aguardando sua decisão."
       : "Ao registrar, a Clara pedirá sua confirmação antes de gravar no razão.",

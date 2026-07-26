@@ -143,6 +143,12 @@ export const transactions = pgTable(
 
     /** Preenchido só em linhas de ajuste: a transação que está sendo corrigida. */
     adjustsTransactionId: text("adjusts_transaction_id"),
+    /**
+     * Escritas retomadas pelo Eve podem ser entregues novamente. A chave liga
+     * a linha à proposta financeira e transforma replay em leitura do recibo,
+     * não em um segundo lançamento.
+     */
+    actionId: text("action_id"),
 
     /**
      * Atestado de revisão humana — uma terceira natureza, ao lado de FATO e
@@ -173,6 +179,7 @@ export const transactions = pgTable(
     index("transactions_batch_idx").on(table.batchId),
     index("transactions_tenant_date_idx").on(table.tenantId, table.date),
     index("transactions_adjusts_idx").on(table.adjustsTransactionId),
+    uniqueIndex("transactions_tenant_action_idx").on(table.tenantId, table.actionId),
     index("transactions_tenant_merchant_idx").on(table.tenantId, table.merchantKey),
     // A fila de revisão pergunta sempre a mesma coisa: o que deste tenant
     // ainda não foi conferido.

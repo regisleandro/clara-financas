@@ -28,6 +28,7 @@ type DecisionCopy = {
   approveLabel: string;
   denyLabel: string;
   details: string[];
+  blocked?: boolean;
 };
 
 const dateLabel = (value: string) =>
@@ -38,28 +39,35 @@ const dateLabel = (value: string) =>
     timeZone: "UTC",
   }).format(new Date(`${value}T12:00:00Z`));
 
-function decisionCopy(pending: PendingRequest, proposal: BatchProposal | null): DecisionCopy {
+function decisionCopy(
+  pending: PendingRequest,
+  proposal: BatchProposal | null,
+  actionProposal: UnknownRecord | null,
+): DecisionCopy {
   const input = asRecord(pending.toolInput);
 
   if (pending.toolName === "commit_batch") {
-    const count = proposal?.transactionCount;
-    const total = proposal?.checksum.extractedTotal;
-    const matched = proposal?.checksum.result === "match";
+    const count = proposal?.transactionCount ?? asNumber(actionProposal?.transactionCount);
+    const total = proposal?.checksum.extractedTotal ?? asNumber(actionProposal?.extractedTotalCents);
+    const checksumResult =
+      proposal?.checksum.result ?? asString(actionProposal?.checksumResult);
+    const matched = checksumResult === "match";
     return {
       title:
-        count === undefined
+        count == null
           ? "Registrar esta fatura no razão?"
           : `Registrar ${count} lançamentos no razão?`,
       consequence: "Depois do registro, valor, data e origem não mudam mais.",
       approveLabel: "Registrar fatura",
       denyLabel: "Manter como rascunho",
       details:
-        total === undefined
+        total == null
           ? []
           : [
               formatCents(total),
               matched ? "O total confere com a fatura" : "A soma não confere com a fatura",
             ],
+      blocked: proposal === null && actionProposal === null,
     };
   }
 
@@ -182,6 +190,32 @@ function decisionCopy(pending: PendingRequest, proposal: BatchProposal | null): 
     };
   }
 
+  if (pending.toolName === "apply_invoice_resolution") {
+    const adjustment = asNumber(actionProposal?.adjustmentCents);
+    const difference = asNumber(actionProposal?.differenceBeforeCents);
+    const issuer = asString(actionProposal?.issuer);
+    const target = asString(actionProposal?.targetDescription);
+    const reason = asString(actionProposal?.reason);
+    return {
+      title:
+        adjustment === null
+          ? "Aplicar o ajuste calculado nesta fatura?"
+          : `Registrar um ajuste de ${formatCents(adjustment)}?`,
+      consequence:
+        "A diferença será recalculada no momento do registro. Se a fatura mudou, nada será aplicado.",
+      approveLabel: "Aplicar ajuste e reconferir",
+      denyLabel: "Manter divergência aberta",
+      details: [
+        issuer === null ? null : `Fatura: ${issuer}`,
+        difference === null ? null : `Diferença atual: ${formatCents(difference)}`,
+        target === null ? "Escopo: ajuste da fatura" : `Relacionado a: ${target}`,
+        reason,
+        "Resultado esperado: diferença zerada",
+      ].filter((value): value is string => value !== null),
+      blocked: actionProposal === null,
+    };
+  }
+
   if (pending.toolName === "reject_batch") {
     const reason = asString(input?.reason);
     return {
@@ -211,11 +245,13 @@ function decisionCopy(pending: PendingRequest, proposal: BatchProposal | null): 
   }
 
   return {
-    title: pending.prompt ?? "Confirmar esta alteração?",
-    consequence: "A alteração só acontece depois da sua confirmação.",
-    approveLabel: "Confirmar alteração",
+    title: "Esta ação precisa de uma apresentação própria",
+    consequence:
+      "A Clara não mostrou objeto, alcance e consequência suficientes para uma decisão segura.",
+    approveLabel: "Ação indisponível",
     denyLabel: "Não alterar",
     details: [],
+    blocked: true,
   };
 }
 
@@ -235,21 +271,23 @@ function decisionCopy(pending: PendingRequest, proposal: BatchProposal | null): 
 export function DecisionCard({
   pending,
   proposal,
+  actionProposal,
   disabled,
   onAnswer,
 }: {
   pending: PendingRequest;
   proposal: BatchProposal | null;
+  actionProposal: UnknownRecord | null;
   disabled: boolean;
   onAnswer: (optionId: string) => void;
 }) {
-  const copy = decisionCopy(pending, proposal);
+  const copy = decisionCopy(pending, proposal, actionProposal);
 
   return (
     <Confirmation
       approval={{ id: pending.requestId }}
       state="approval-requested"
-      className="clara-card border-0 p-7"
+      className="clara-card min-w-0 border-0 p-5 sm:p-7"
     >
       <ConfirmationTitle className="clara-display-xs block text-foreground">
         {copy.title}
@@ -264,11 +302,11 @@ export function DecisionCard({
       ) : null}
       <p className="clara-small mt-2">{copy.consequence}</p>
 
-      <ConfirmationActions className="mt-5 justify-start self-start">
+      <ConfirmationActions className="mt-5 w-full flex-col items-stretch justify-start self-start sm:w-auto sm:flex-row sm:items-center">
         <ConfirmationAction
           onClick={() => onAnswer("approve")}
-          disabled={disabled}
-          className="clara-pill clara-pill-primary h-10 px-5"
+          disabled={disabled || copy.blocked === true}
+          className="clara-pill clara-pill-primary h-10 w-full justify-center px-5 sm:w-auto"
         >
           {copy.approveLabel}
         </ConfirmationAction>
@@ -276,7 +314,7 @@ export function DecisionCard({
           onClick={() => onAnswer("deny")}
           disabled={disabled}
           variant="ghost"
-          className="clara-link h-10 px-2"
+          className="clara-link h-10 w-full justify-center px-2 sm:w-auto"
         >
           {copy.denyLabel}
         </ConfirmationAction>

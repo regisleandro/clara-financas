@@ -206,6 +206,21 @@ describe("parseViewResult", () => {
     });
     assert.ok(result.ok);
   });
+
+  it("recusa checksum aritmeticamente contraditório", () => {
+    const result = parseViewResult({
+      kind: "checksum",
+      title: "Conferência",
+      batchId: "bat_1",
+      declaredTotal: 84_392,
+      extractedTotal: 0,
+      difference: 0,
+      result: "match",
+      rows: [],
+    });
+    assert.equal(result.ok, false);
+    assert.ok(!result.ok && result.issues.some((issue) => issue.includes("difference")));
+  });
 });
 
 describe("viewTransactionIds", () => {

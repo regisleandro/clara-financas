@@ -115,7 +115,11 @@ export default defineTool({
               extractedTotalCents: report.extractedTotal,
               differenceCents: report.difference,
               differenceFormatted:
-                report.difference === null ? null : formatCents(Math.abs(report.difference)),
+                report.difference === null ? null : formatCents(report.difference),
+              requiredAdjustmentCents:
+                report.difference === null ? null : -report.difference,
+              requiredAdjustmentFormatted:
+                report.difference === null ? null : formatCents(-report.difference),
               suspectItems: report.suspectItems,
             },
       transactionCount: rows.length,

@@ -37,7 +37,12 @@ export type ToolErrorCode =
   | "nenhuma_alteracao"
   | "operacao_nao_permitida"
   | "credencial_invalida"
-  | "senha_necessaria";
+  | "senha_necessaria"
+  | "proposta_nao_encontrada"
+  | "proposta_ja_decidida"
+  | "proposta_expirada"
+  | "proposta_desatualizada"
+  | "fatura_sem_divergencia";
 
 export type ToolError = {
   error: {
