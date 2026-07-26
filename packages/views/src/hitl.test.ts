@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   findCommittedBatchIds,
+  findRejectedBatchIds,
   findOpenBatchProposal,
   findOpenBatchProposalLocation,
   findPendingRequest,
@@ -176,5 +177,67 @@ describe("findCommittedBatchIds", () => {
 
   it("sem registro, o conjunto é vazio", () => {
     assert.equal(findCommittedBatchIds([]).size, 0);
+  });
+
+  it("o cartão fecha quando a fatura é DESCARTADA, não só quando é registrada", () => {
+    // Enquanto descartar era uma frase no chat, isto não aparecia. Com a tool
+    // escrevendo `rejected` de verdade, o cartão sobrevivia ao próprio lote e
+    // seguia oferecendo "Registrar fatura" sobre linhas já apagadas.
+    const messages = [
+      {
+        id: "m1",
+        role: "assistant",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolName: "propose_batch",
+            output: { batchId: "bat_1", transactionCount: 4, checksum: { result: "mismatch" } },
+          },
+        ],
+      },
+      {
+        id: "m2",
+        role: "assistant",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolName: "reject_batch",
+            output: { batchId: "bat_1", status: "rejected", discardedTransactions: 4 },
+          },
+        ],
+      },
+    ];
+
+    assert.equal(findOpenBatchProposalLocation(messages), null);
+    assert.deepEqual([...findRejectedBatchIds(messages)], ["bat_1"]);
+  });
+
+  it("descartar UMA fatura não fecha o cartão de outra", () => {
+    const messages = [
+      {
+        id: "m1",
+        role: "assistant",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolName: "reject_batch",
+            output: { batchId: "bat_1", status: "rejected" },
+          },
+        ],
+      },
+      {
+        id: "m2",
+        role: "assistant",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolName: "propose_batch",
+            output: { batchId: "bat_2", transactionCount: 2, checksum: { result: "match" } },
+          },
+        ],
+      },
+    ];
+
+    assert.equal(findOpenBatchProposalLocation(messages)?.output.batchId, "bat_2");
   });
 });

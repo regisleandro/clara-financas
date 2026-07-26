@@ -83,7 +83,25 @@ export function findPendingRequest(messages: unknown): PendingRequest | null {
  * sugere que nada aconteceu.
  */
 export function findCommittedBatchIds(messages: unknown): Set<string> {
-  const committed = new Set<string>();
+  return findDecidedBatchIds(messages, "commit_batch", "confirmed");
+}
+
+/**
+ * Lotes descartados, segundo o resultado de `reject_batch`.
+ *
+ * Registrar e descartar fecham a decisão do mesmo jeito, e o cartão precisa
+ * sumir nos DOIS casos. Enquanto descartar era só uma frase no chat, isso não
+ * aparecia; com a tool escrevendo `status: rejected` de verdade, o cartão
+ * sobrevivia ao próprio lote — oferecendo "Registrar fatura" sobre um lote
+ * cujas linhas já foram apagadas. Clicar levava a um erro, e o pior é que a
+ * pessoa tinha acabado de ver a Clara confirmar que descartou.
+ */
+export function findRejectedBatchIds(messages: unknown): Set<string> {
+  return findDecidedBatchIds(messages, "reject_batch", "rejected");
+}
+
+function findDecidedBatchIds(messages: unknown, toolName: string, status: string): Set<string> {
+  const decided = new Set<string>();
   const list = Array.isArray(messages) ? messages : [];
 
   for (const message of list) {
@@ -92,15 +110,15 @@ export function findCommittedBatchIds(messages: unknown): Set<string> {
 
     for (const part of parts) {
       const record = asRecord(part);
-      if (record?.type !== "dynamic-tool" || record.toolName !== "commit_batch") continue;
+      if (record?.type !== "dynamic-tool" || record.toolName !== toolName) continue;
 
       const output = asRecord(record.output);
-      if (output?.status !== "confirmed") continue;
-      if (typeof output.batchId === "string") committed.add(output.batchId);
+      if (output?.status !== status) continue;
+      if (typeof output.batchId === "string") decided.add(output.batchId);
     }
   }
 
-  return committed;
+  return decided;
 }
 
 /**
@@ -126,6 +144,7 @@ export function findOpenBatchProposalLocation(
   messages: unknown,
 ): { messageId: string | null; output: UnknownRecord } | null {
   const committed = findCommittedBatchIds(messages);
+  const rejected = findRejectedBatchIds(messages);
   const list = Array.isArray(messages) ? messages : [];
 
   for (let index = list.length - 1; index >= 0; index -= 1) {
@@ -142,7 +161,8 @@ export function findOpenBatchProposalLocation(
 
       const output = asRecord(record.output);
       if (!output || typeof output.batchId !== "string" || !asRecord(output.checksum)) continue;
-      if (committed.has(output.batchId)) return null;
+      // Decidido é decidido: registrado ou descartado, o cartão fecha.
+      if (committed.has(output.batchId) || rejected.has(output.batchId)) return null;
 
       return { messageId: typeof message?.id === "string" ? message.id : null, output };
     }
