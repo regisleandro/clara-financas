@@ -1,0 +1,50 @@
+# Aplica as migrações do banco de produção.
+#
+# A Vercel NÃO roda migração — e não pode: a `DATABASE_ADMIN_URL` (dono do
+# schema) nunca é sincronizada para lá (`scripts/sync-vercel-env.ts`, lista
+# NEVER_SYNC). Os deployments só recebem o papel de aplicação `clara_app`,
+# sem BYPASSRLS, e é isso que faz a RLS valer em runtime. A credencial de
+# dono vive apenas aqui, como secret do repositório, usada por este job.
+#
+# Dispara quando uma migração nova chega à main — antes disso o merge do PR
+# não toca o banco — e manualmente via workflow_dispatch quando for preciso
+# reaplicar. O `drizzle-kit migrate` é idempotente: migrações já aplicadas
+# são puladas pelo journal.
+name: db-migrate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/db/src/migrations/**"
+  workflow_dispatch:
+
+concurrency:
+  # Duas migrações concorrentes disputariam locks de DDL; uma por vez, sem
+  # cancelar a que está no meio.
+  group: db-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Lê a versão do pnpm do campo `packageManager` do package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # Só o pacote do banco e suas dependências — o drizzle-kit não precisa
+      # do resto do monorepo.
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile --filter @clara-financas/db...
+
+      - name: Aplicar migrações
+        env:
+          DATABASE_ADMIN_URL: ${{ secrets.DATABASE_ADMIN_URL }}
+        run: pnpm --filter @clara-financas/db db:migrate
