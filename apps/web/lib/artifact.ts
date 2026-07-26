@@ -40,6 +40,36 @@ const CAUSE_NOTE: Record<string, string> = {
   unknown: "Vale conferir os itens antes de aprovar.",
 };
 
+/**
+ * A conferência de uma fatura JÁ DECIDIDA, sem botões.
+ *
+ * Mesmo conteúdo, sem ação: registrar de novo o que já entrou, ou descartar o
+ * que já foi descartado, são ofertas falsas. O que fica é o registro do que a
+ * pessoa conferiu e do que ela decidiu — que é exatamente o que ela procura ao
+ * rolar a conversa para cima.
+ */
+export function batchHistoryArtifact(
+  proposal: BatchProposal,
+  outcome: "confirmed" | "rejected",
+): ArtifactData {
+  const base = batchArtifact(proposal, {
+    onApprove: () => {},
+    onReject: () => {},
+    disabled: true,
+    pendingGate: false,
+  });
+
+  return {
+    ...base,
+    primaryAction: undefined,
+    secondaryAction: undefined,
+    footnote:
+      outcome === "confirmed"
+        ? "Esta fatura já está registrada no razão."
+        : "Esta fatura foi descartada; nada dela entrou no razão.",
+  };
+}
+
 /** Artefato da conferência de um lote. */
 export function batchArtifact(
   proposal: BatchProposal,

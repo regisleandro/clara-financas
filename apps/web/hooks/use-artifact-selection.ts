@@ -10,8 +10,10 @@ import {
   type ArtifactSelection,
   type MessageArtifact,
 } from "@/lib/artifact-selection";
+import { batchHistoryArtifact, type BatchProposal } from "@/lib/artifact";
 import type { View } from "@clara-financas/views";
-import { findMessageView, findPresentedView } from "@clara-financas/views/stream";
+import type { BatchProposalLocation } from "@clara-financas/views/hitl";
+import { findMessageViews, findPresentedViews } from "@clara-financas/views/stream";
 
 /**
  * Qual artefato está aberto na tela, e o que ele mostra.
@@ -33,6 +35,7 @@ export function useArtifactSelection({
   artifact,
   proposalMessageId,
   proposalBatchId,
+  proposals,
   turnId,
   autoOpen,
 }: {
@@ -42,6 +45,8 @@ export function useArtifactSelection({
   artifact: ArtifactData | null;
   proposalMessageId: string | null;
   proposalBatchId: string | null;
+  /** Todas as conferências da conversa, para o histórico das já decididas. */
+  proposals: readonly BatchProposalLocation[];
   /** Turno corrente: é o que faz a coluna reabrir a cada pergunta. */
   turnId: string;
   /**
@@ -56,6 +61,11 @@ export function useArtifactSelection({
 }) {
   const [selection, setSelection] = useState<ArtifactSelection>(null);
 
+  const decidedProposals = useMemo(
+    () => proposals.filter((proposal) => proposal.outcome !== "open"),
+    [proposals],
+  );
+
   /**
    * O painel que a CLARA mandou desenhar, lido do stream. Substitui a
    * inferência antiga — o frontend olhava o retorno das ferramentas e
@@ -68,8 +78,8 @@ export function useArtifactSelection({
    */
   const { presented, invalidIssues } = useMemo(() => {
     const issues: string[] = [];
-    const view = findPresentedView(events, (found) => issues.push(...found));
-    return { presented: view, invalidIssues: issues };
+    const views = findPresentedViews(events, (found) => issues.push(...found));
+    return { presented: views, invalidIssues: issues };
   }, [events]);
 
   /** O artefato de CADA resposta, indexado pela mensagem que o produziu. */
@@ -77,14 +87,28 @@ export function useArtifactSelection({
     const map = new Map<string, MessageArtifact>();
     for (const message of messages) {
       if (message.role === "user") continue;
-      const view = findMessageView(message);
-      if (view !== null) map.set(message.id, { kind: "view", view });
+      const views = findMessageViews(message);
+      if (views.length > 0) map.set(message.id, { kind: "view", views });
+    }
+    // Conferências já decididas continuam alcançáveis pelo link da resposta
+    // que as trouxe — sem botões, porque a decisão já foi tomada. Sem isto o
+    // link sumia da mensagem antiga no instante da decisão, e a conversa
+    // passava a falar de uma conferência sem lugar nenhum.
+    for (const proposal of decidedProposals) {
+      if (proposal.messageId === null) continue;
+      map.set(proposal.messageId, {
+        kind: "batchHistory",
+        data: batchHistoryArtifact(
+          proposal.output as unknown as BatchProposal,
+          proposal.outcome === "confirmed" ? "confirmed" : "rejected",
+        ),
+      });
     }
     if (proposalMessageId !== null && artifact !== null) {
       map.set(proposalMessageId, { kind: "batch" });
     }
     return map;
-  }, [messages, proposalMessageId, artifact]);
+  }, [messages, proposalMessageId, artifact, decidedProposals]);
 
   /**
    * O que a seleção aponta, resolvido para o conteúdo a desenhar — ou `null`,
@@ -106,7 +130,7 @@ export function useArtifactSelection({
   const openKey = artifactKey({
     batchId: proposalBatchId,
     batchTitle: artifact?.title ?? null,
-    hasPresented: presented !== null,
+    hasPresented: presented.length > 0,
     turnId,
   });
   useEffect(() => {
@@ -116,6 +140,8 @@ export function useArtifactSelection({
   const openArtifact = (messageId: string) => {
     const found = messageArtifacts.get(messageId);
     if (found === undefined) return;
+    // Histórico e painel abrem pelo id da mensagem; só a conferência ABERTA
+    // usa o alvo "batch", que é o que segue o lote enquanto ele muda.
     setSelection(found.kind === "batch" ? { type: "batch" } : { type: "view", id: messageId });
   };
 
@@ -128,7 +154,7 @@ export function useArtifactSelection({
      * texto costuma dizer "veja o painel ao lado", e sem isto o lado fica
      * vazio sem explicação — o sintoma indepurável era exatamente esse.
      */
-    panelFailed: presented === null && invalidIssues.length > 0,
+    panelFailed: presented.length === 0 && invalidIssues.length > 0,
     invalidIssues,
     messageArtifacts,
     active,

@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   findCommittedBatchIds,
   findRejectedBatchIds,
+  findBatchProposals,
   resolveApprovalOption,
   findOpenBatchProposal,
   findOpenBatchProposalLocation,
@@ -288,5 +289,73 @@ describe("findCommittedBatchIds", () => {
 
     assert.equal(resolveApprovalOption(pending, "approve"), "approve");
     assert.equal(resolveApprovalOption(pending, "deny"), "deny");
+  });
+
+  it("a conferência decidida continua no histórico, com o desfecho", () => {
+    // O link "Ver artefato" sumia da mensagem antiga no instante da decisão,
+    // e a conversa passava a falar de uma conferência sem lugar nenhum.
+    const messages = [
+      {
+        id: "m1",
+        role: "assistant",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolName: "propose_batch",
+            output: { batchId: "bat_1", transactionCount: 4, checksum: { result: "match" } },
+          },
+        ],
+      },
+      {
+        id: "m2",
+        role: "assistant",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolName: "commit_batch",
+            output: { batchId: "bat_1", status: "confirmed" },
+          },
+        ],
+      },
+    ];
+
+    const proposals = findBatchProposals(messages);
+    assert.equal(proposals.length, 1);
+    assert.equal(proposals[0]?.outcome, "confirmed");
+    assert.equal(proposals[0]?.messageId, "m1");
+    // E segue sem decisão pendente.
+    assert.equal(findOpenBatchProposalLocation(messages), null);
+  });
+
+  it("uma fatura corrigida vale pela última leitura, não pela primeira", () => {
+    const messages = [
+      {
+        id: "m1",
+        role: "assistant",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolName: "propose_batch",
+            output: { batchId: "bat_1", transactionCount: 5, checksum: { result: "mismatch" } },
+          },
+        ],
+      },
+      {
+        id: "m2",
+        role: "assistant",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolName: "edit_proposed_batch",
+            output: { batchId: "bat_1", transactionCount: 4, checksum: { result: "match" } },
+          },
+        ],
+      },
+    ];
+
+    const proposals = findBatchProposals(messages);
+    assert.equal(proposals.length, 1);
+    assert.equal(proposals[0]?.messageId, "m2");
+    assert.equal(proposals[0]?.outcome, "open");
   });
 });

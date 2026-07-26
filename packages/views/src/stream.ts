@@ -46,7 +46,26 @@ export function findPresentedView(
   events: readonly unknown[],
   onInvalid?: OnInvalidView,
 ): View | null {
-  let latest: View | null = null;
+  return findPresentedViews(events, onInvalid).at(-1) ?? null;
+}
+
+/**
+ * TODOS os painéis do turno corrente, na ordem em que foram pedidos.
+ *
+ * A leitura antiga guardava só o último, e o anterior sumia sem sinal. Duas
+ * respostas legítimas do produto caem nesse caso: a proposta do que vai mudar
+ * seguida do resultado, e a conferência seguida da composição. O texto da
+ * Clara falava dos dois painéis e só um existia — a pessoa procurava o outro
+ * e concluía que a interface tinha engolido a resposta.
+ *
+ * Continua valendo "um painel por resposta" como orientação ao modelo; o que
+ * muda é que desobedecer deixa de custar informação.
+ */
+export function findPresentedViews(
+  events: readonly unknown[],
+  onInvalid?: OnInvalidView,
+): View[] {
+  let views: View[] = [];
 
   for (const raw of events) {
     const event = asRecord(raw);
@@ -55,7 +74,7 @@ export function findPresentedView(
     // Turno novo zera: se a Clara não mandar desenhar nada desta vez, a tela
     // fica limpa em vez de manter o desenho anterior.
     if (type === "turn.started") {
-      latest = null;
+      views = [];
       continue;
     }
 
@@ -71,12 +90,12 @@ export function findPresentedView(
       // Payload inválido não vira painel — e não derruba a conversa. O modelo
       // erra campo, e um erro de render custaria a resposta inteira.
       const parsed = parseViewResult(action?.input);
-      if (parsed.ok) latest = parsed.view;
+      if (parsed.ok) views.push(parsed.view);
       else onInvalid?.(parsed.issues, asString(action?.callId));
     }
   }
 
-  return latest;
+  return views;
 }
 
 /**
@@ -93,11 +112,15 @@ export function findPresentedView(
  * devolve saída de conteúdo.
  */
 export function findMessageView(message: unknown, onInvalid?: OnInvalidView): View | null {
-  const parts = asRecord(message)?.parts;
-  if (!Array.isArray(parts)) return null;
+  return findMessageViews(message, onInvalid).at(-1) ?? null;
+}
 
-  // Uma resposta pode corrigir o rumo e pedir dois painéis; vale o último.
-  let latest: View | null = null;
+/** Todos os painéis de UMA mensagem, na ordem em que ela os pediu. */
+export function findMessageViews(message: unknown, onInvalid?: OnInvalidView): View[] {
+  const parts = asRecord(message)?.parts;
+  if (!Array.isArray(parts)) return [];
+
+  const views: View[] = [];
   for (const raw of parts) {
     const part = asRecord(raw);
     if (part?.type !== "dynamic-tool" || asString(part.toolName) !== PRESENT_VIEW_TOOL) {
@@ -106,9 +129,9 @@ export function findMessageView(message: unknown, onInvalid?: OnInvalidView): Vi
     // Parte materializada já tem o input completo — aqui falha de schema é
     // definitiva, nunca efeito de streaming pela metade.
     const parsed = parseViewResult(part.input);
-    if (parsed.ok) latest = parsed.view;
+    if (parsed.ok) views.push(parsed.view);
     else onInvalid?.(parsed.issues, asString(part.toolCallId));
   }
 
-  return latest;
+  return views;
 }

@@ -32,7 +32,11 @@ import {
   type StoredSession,
 } from "@/lib/session-store";
 import { useMediaQuery } from "@/lib/use-media-query";
-import { findOpenBatchProposalLocation, findPendingRequest } from "@clara-financas/views/hitl";
+import {
+  findBatchProposals,
+  findOpenBatchProposalLocation,
+  findPendingRequest,
+} from "@clara-financas/views/hitl";
 
 /**
  * A conversa, em duas colunas.
@@ -126,6 +130,13 @@ function ChatSession({
     () => findOpenBatchProposalLocation(agent.data.messages),
     [agent.data.messages],
   );
+
+  // Todas as conferências da conversa, para que as já decididas continuem
+  // alcançáveis pelo link da resposta que as trouxe.
+  const proposals = useMemo(
+    () => findBatchProposals(agent.data.messages),
+    [agent.data.messages],
+  );
   const proposal = (proposalLocation?.output ?? null) as BatchProposal | null;
   const canApprove = pending?.toolName === "commit_batch" && answered === null;
 
@@ -171,6 +182,7 @@ function ChatSession({
     artifact,
     proposalMessageId: proposalLocation?.messageId ?? null,
     proposalBatchId: typeof proposal?.batchId === "string" ? proposal.batchId : null,
+    proposals,
     // O turno é o que faz a coluna reabrir a cada pergunta — inclusive quando
     // a pergunta se repete e o painel sai idêntico.
     turnId: activity.turnId,
@@ -192,7 +204,12 @@ function ChatSession({
   // Follow-ups do turno (derivados do painel) na frente dos do servidor
   // (derivados do razão).
   const turnFollowups = useMemo(
-    () => deriveFollowups(presented, followups.length > 0 ? followups : FALLBACK_FOLLOWUPS),
+    () =>
+      deriveFollowups(
+        // O follow-up acompanha o painel que está À VISTA, que é o último.
+        presented.at(-1) ?? null,
+        followups.length > 0 ? followups : FALLBACK_FOLLOWUPS,
+      ),
     [presented, followups],
   );
 

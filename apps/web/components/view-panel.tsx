@@ -2,7 +2,10 @@
 
 import { formatCents } from "@clara-financas/ledger";
 import type { View, ViewMetric, ViewRow } from "@clara-financas/views";
-import { ArrowDownRight, ArrowUpRight, Check, Minus, TriangleAlert } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Check, ChevronDown, Minus, TriangleAlert } from "lucide-react";
+import { useState } from "react";
+
+import { Provenance } from "@/components/provenance";
 
 import {
   Artifact,
@@ -48,15 +51,24 @@ const ACCENT_COLOR: Record<NonNullable<ViewRow["accent"]>, string> = {
  * celular. Quem escolhe a moldura é o `Chat`, conforme o tamanho da tela.
  */
 export function ViewPanelInner({
-  view,
+  views,
   onClose,
   footer,
 }: {
-  view: View;
+  /** Os painéis do turno, em ordem. O último é o que abre. */
+  views: readonly View[];
   onClose: () => void;
   /** Ações do gate (aprovar/rejeitar) quando há decisão pendente. */
   footer?: React.ReactNode;
 }) {
+  // Abre no último e permite voltar. A Clara pode desenhar dois painéis numa
+  // resposta — a proposta e o resultado —, e o anterior sumia sem sinal: o
+  // texto falava de dois e só um existia.
+  const [index, setIndex] = useState(Math.max(0, views.length - 1));
+  const safeIndex = Math.min(index, views.length - 1);
+  const view = views[safeIndex];
+  if (view === undefined) return null;
+
   return (
     <Artifact className="h-full rounded-none border-0 bg-transparent">
         <ArtifactHeader className="items-start border-0 px-7 pb-5 pt-7">
@@ -67,6 +79,29 @@ export function ViewPanelInner({
             </ArtifactTitle>
             {view.summary !== undefined ? (
               <p className="clara-small mt-2">{view.summary}</p>
+            ) : null}
+            {views.length > 1 ? (
+              <nav className="mt-3 flex items-center gap-3" aria-label="Painéis desta resposta">
+                <button
+                  type="button"
+                  onClick={() => setIndex(Math.max(0, safeIndex - 1))}
+                  disabled={safeIndex === 0}
+                  className="clara-link text-sm disabled:opacity-40"
+                >
+                  Anterior
+                </button>
+                <span className="clara-small tabular-nums">
+                  {safeIndex + 1} de {views.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIndex(Math.min(views.length - 1, safeIndex + 1))}
+                  disabled={safeIndex === views.length - 1}
+                  className="clara-link text-sm disabled:opacity-40"
+                >
+                  Próximo
+                </button>
+              </nav>
             ) : null}
           </div>
           <ArtifactActions>
@@ -140,10 +175,30 @@ function Rows({
 
       <ul className={columns === undefined ? "mt-10" : "mt-3"}>
         {rows.map((row, index) => (
-          <li
-            key={`${row.label}-${index}`}
-            className="border-b border-[var(--clara-fog)] py-4 last:border-0"
-          >
+          <Row key={`${row.label}-${index}`} row={row} showBars={showBars} />
+        ))}
+      </ul>
+    </>
+  );
+}
+
+/**
+ * Uma linha do painel — e, quando ela tem proveniência, o caminho até os
+ * lançamentos que a compõem.
+ *
+ * Os `transactionIds` sempre estiveram aqui: o contrato os exige e recusa a
+ * linha financeira que não os traga. O que faltava era a interface fazer algo
+ * com eles. "Todo número deve poder ser conferido" era verdade no dado e
+ * mentira na tela — a pessoa via R$ 1.240,00 em Restaurantes e não tinha como
+ * perguntar quais almoços eram aqueles sem gastar um turno da conversa.
+ */
+function Row({ row, showBars }: { row: ViewRow; showBars: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ids = row.transactionIds ?? [];
+  const traceable = ids.length > 0;
+
+  return (
+          <li className="border-b border-[var(--clara-fog)] py-4 last:border-0">
             <div className="grid grid-cols-[1fr_auto] items-baseline gap-4">
               <span className="min-w-0">
                 <strong className="flex items-baseline gap-2 font-semibold">
@@ -160,6 +215,20 @@ function Rows({
                 </strong>
                 {row.detail !== undefined && row.detail !== "" ? (
                   <small className="clara-small mt-[3px] block">{row.detail}</small>
+                ) : null}
+                {traceable ? (
+                  <button
+                    type="button"
+                    onClick={() => setOpen(!open)}
+                    aria-expanded={open}
+                    className="clara-link mt-1 inline-flex items-center gap-1 text-sm"
+                  >
+                    <ChevronDown
+                      className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`}
+                      aria-hidden="true"
+                    />
+                    {ids.length === 1 ? "Ver o lançamento" : `Ver os ${ids.length} lançamentos`}
+                  </button>
                 ) : null}
               </span>
               <span className="flex items-center gap-1.5 tabular-nums">
@@ -181,10 +250,9 @@ function Rows({
                 />
               </div>
             ) : null}
+
+            {open ? <Provenance ids={ids} /> : null}
           </li>
-        ))}
-      </ul>
-    </>
   );
 }
 

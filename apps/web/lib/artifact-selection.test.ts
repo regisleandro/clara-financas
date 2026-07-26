@@ -36,7 +36,7 @@ describe("resolveActive", () => {
     // alcançável pelo link da mensagem.
     const active = resolveActive({ type: "latest" }, {
       batch,
-      presented: breakdown,
+      presented: [breakdown],
       messageArtifacts: empty,
       batchId: "bat_1",
     });
@@ -47,7 +47,7 @@ describe("resolveActive", () => {
   it("a conferência DAQUELA fatura mantém o cartão, que é quem tem os botões", () => {
     const active = resolveActive({ type: "latest" }, {
       batch,
-      presented: conference,
+      presented: [conference],
       messageArtifacts: empty,
       batchId: "bat_1",
     });
@@ -59,7 +59,7 @@ describe("resolveActive", () => {
     const other = { ...conference, batchId: "bat_9" } as unknown as View;
     const active = resolveActive({ type: "latest" }, {
       batch,
-      presented: other,
+      presented: [other],
       messageArtifacts: empty,
       batchId: "bat_1",
     });
@@ -70,7 +70,7 @@ describe("resolveActive", () => {
   it("sem painel no turno, a fatura pendente continua na coluna", () => {
     const active = resolveActive({ type: "latest" }, {
       batch,
-      presented: null,
+      presented: [],
       messageArtifacts: empty,
       batchId: "bat_1",
     });
@@ -79,23 +79,66 @@ describe("resolveActive", () => {
   });
 
   it("o link de uma resposta antiga abre o painel daquela resposta", () => {
-    const map = new Map<string, MessageArtifact>([["m1", { kind: "view", view: breakdown }]]);
+    const map = new Map<string, MessageArtifact>([["m1", { kind: "view", views: [breakdown] }]]);
     const active = resolveActive({ type: "view", id: "m1" }, {
       batch,
-      presented: conference,
+      presented: [conference],
       messageArtifacts: map,
       batchId: "bat_1",
     });
 
     assert.equal(active?.kind, "view");
-    assert.equal(active?.kind === "view" ? active.view.title : null, "Onde foi o dinheiro");
+    assert.equal(active?.kind === "view" ? active.views.at(-1)?.title : null, "Onde foi o dinheiro");
+  });
+
+  it("dois painéis na mesma resposta chegam os dois à coluna", () => {
+    // O primeiro sumia sem sinal: o texto da Clara falava de dois painéis e
+    // só um existia.
+    const active = resolveActive({ type: "latest" }, {
+      batch: null,
+      presented: [conference, breakdown],
+      messageArtifacts: empty,
+      batchId: null,
+    });
+
+    assert.equal(active?.kind, "view");
+    assert.equal(active?.kind === "view" ? active.views.length : 0, 2);
+  });
+
+  it("a conferência com OUTRO painel junto não segura o cartão", () => {
+    // Só a conferência sozinha significa "estou te mostrando a fatura". Com
+    // mais alguma coisa, a pessoa pediu outra coisa — e é isso que ela espera.
+    const active = resolveActive({ type: "latest" }, {
+      batch,
+      presented: [conference, breakdown],
+      messageArtifacts: empty,
+      batchId: "bat_1",
+    });
+
+    assert.equal(active?.kind, "view");
+  });
+
+  it("a conferência de uma fatura decidida abre pelo link, sem botões", () => {
+    const history = { title: "Nubank", primaryAction: undefined } as unknown;
+    const map = new Map<string, MessageArtifact>([
+      ["m1", { kind: "batchHistory", data: history }],
+    ]);
+    const active = resolveActive({ type: "view", id: "m1" }, {
+      batch: null,
+      presented: [],
+      messageArtifacts: map,
+      batchId: null,
+    });
+
+    assert.equal(active?.kind, "batch");
+    assert.equal(active?.kind === "batch" ? active.data : null, history);
   });
 
   it("alvo que sumiu fecha a coluna em vez de mostrar outra coisa", () => {
     assert.equal(
       resolveActive({ type: "view", id: "sumiu" }, {
         batch,
-        presented: null,
+        presented: [],
         messageArtifacts: empty,
         batchId: null,
       }),
@@ -104,7 +147,7 @@ describe("resolveActive", () => {
     assert.equal(
       resolveActive({ type: "batch" }, {
         batch: null,
-        presented: breakdown,
+        presented: [breakdown],
         messageArtifacts: empty,
         batchId: null,
       }),

@@ -20,7 +20,13 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 export type ActiveArtifact =
   | { kind: "batch"; data: ArtifactData }
-  | { kind: "view"; view: View };
+  /**
+   * Os painéis do turno, em ordem. É lista, e não um só, porque a Clara pode
+   * desenhar mais de um na mesma resposta — a proposta e o resultado, a
+   * conferência e a composição. O último é o que aparece; os anteriores
+   * continuam alcançáveis em vez de sumirem sem sinal.
+   */
+  | { kind: "view"; views: View[] };
 
 function ArtifactBody({
   active,
@@ -32,12 +38,12 @@ function ArtifactBody({
   return active.kind === "batch" ? (
     <ArtifactPanelInner data={active.data} onClose={onClose} />
   ) : (
-    <ViewPanelInner view={active.view} onClose={onClose} />
+    <ViewPanelInner views={active.views} onClose={onClose} />
   );
 }
 
 const titleOf = (active: ActiveArtifact) =>
-  active.kind === "batch" ? active.data.title : active.view.title;
+  active.kind === "batch" ? active.data.title : (active.views.at(-1)?.title ?? "Artefato");
 
 /** Coluna fixa à direita — só a partir de `lg`. */
 export function ArtifactAside({
