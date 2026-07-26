@@ -9,9 +9,10 @@ import {
   verifyChecksum,
   type ChecksumReport,
 } from "@clara-financas/ledger";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { notFound, refused, toolError, type ToolError } from "./errors";
+import { canonicalIssuer } from "./issuer-canonical";
 
 /**
  * A escrita do lote proposto, compartilhada.
@@ -64,6 +65,14 @@ export type ProposedBatchWriteInput = {
   overwriteEditedDraft?: boolean;
 };
 
+export type DuplicateSuspect = {
+  date: string;
+  amountCents: number;
+  merchant: string | null;
+  existingTransactionId: string;
+  existingBatchId: string;
+};
+
 export type ProposedBatchWriteResult =
   | (ToolError & { batchId?: string })
   | {
@@ -71,6 +80,7 @@ export type ProposedBatchWriteResult =
       issuer: string | null;
       transactionCount: number;
       checksum: ChecksumReport;
+      duplicateSuspects?: { count: number; sample: DuplicateSuspect[] };
     };
 
 const id = (prefix: string) => `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
@@ -250,11 +260,12 @@ export async function writeProposedBatch(
       });
 
       // O emissor mora no documento, não no lote — é propriedade do papel,
-      // não da tentativa de leitura.
+      // não da tentativa de leitura. E a grafia converge: se a mesma operadora
+      // já existe com outra caixa/acento, a grafia registrada vence.
       if (batch.issuer !== null && document.issuer === null) {
         await tx
           .update(documents)
-          .set({ issuer: batch.issuer })
+          .set({ issuer: await canonicalIssuer(tx, tenantId, batch.issuer) })
           .where(and(eq(documents.id, document.id), eq(documents.tenantId, tenantId)));
       }
 
@@ -281,7 +292,67 @@ export async function writeProposedBatch(
         );
       }
 
-      return { ok: true as const };
+      /**
+       * A suspeita de DUPLA CONTAGEM — o caso documentado no README que as
+       * duas conferências deixam passar: a fatura parcial aprovada e a fatura
+       * fechada do mesmo ciclo chegam como DOCUMENTOS diferentes (hashes
+       * diferentes), cada uma fecha contra o próprio total declarado, e o
+       * gasto entra duas vezes no razão. Aqui, cada linha proposta é comparada
+       * com o que JÁ ESTÁ CONFIRMADO vindo de outros documentos: mesma data,
+       * mesmo valor, mesma identidade de comerciante. É AVISO, não bloqueio —
+       * duas compras idênticas no mesmo dia existem de verdade, e quem decide
+       * é a pessoa, com os ids na mão para conferir.
+       */
+      const dates = [...new Set(batch.transactions.map((transaction) => transaction.date))];
+      let suspects: DuplicateSuspect[] = [];
+      if (dates.length > 0) {
+        const candidates = await tx
+          .select({
+            id: transactions.id,
+            batchId: transactions.batchId,
+            date: transactions.date,
+            amount: transactions.amount,
+            merchant: transactions.merchant,
+            merchantKey: transactions.merchantKey,
+            sourceDocumentId: transactions.sourceDocumentId,
+          })
+          .from(transactions)
+          .where(
+            and(
+              eq(transactions.tenantId, tenantId),
+              eq(transactions.status, "confirmed"),
+              inArray(transactions.date, dates),
+            ),
+          );
+
+        const byFingerprint = new Map<string, (typeof candidates)[number]>();
+        for (const candidate of candidates) {
+          if (candidate.sourceDocumentId === document.id) continue;
+          byFingerprint.set(
+            `${candidate.date}|${candidate.amount}|${candidate.merchantKey}`,
+            candidate,
+          );
+        }
+
+        suspects = batch.transactions.flatMap((transaction) => {
+          const match = byFingerprint.get(
+            `${transaction.date}|${transaction.amount}|${transaction.merchantKey}`,
+          );
+          return match === undefined
+            ? []
+            : [
+                {
+                  date: transaction.date,
+                  amountCents: transaction.amount,
+                  merchant: transaction.merchant,
+                  existingTransactionId: match.id,
+                  existingBatchId: match.batchId,
+                },
+              ];
+        });
+      }
+
+      return { ok: true as const, suspects };
     },
     db,
   );
@@ -293,5 +364,13 @@ export async function writeProposedBatch(
     issuer: batch.issuer,
     transactionCount: batch.transactions.length,
     checksum,
+    ...(written.suspects.length > 0
+      ? {
+          duplicateSuspects: {
+            count: written.suspects.length,
+            sample: written.suspects.slice(0, 10),
+          },
+        }
+      : {}),
   };
 }

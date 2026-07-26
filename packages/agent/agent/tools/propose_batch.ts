@@ -91,6 +91,13 @@ export default defineTool({
       issuer: result.issuer,
       transactionCount: result.transactionCount,
       checksum: result.checksum,
+      ...(result.duplicateSuspects !== undefined
+        ? {
+            duplicateSuspects: result.duplicateSuspects,
+            duplicateNote:
+              "Linhas com mesma data, valor e comerciante já CONFIRMADAS vindas de outro documento — possível dupla contagem (fatura parcial + fechada). AVISE a pessoa antes de abrir o commit; ela decide com os ids em mãos.",
+          }
+        : {}),
       next: "If the verification looks good, call `commit_batch` to open the decision. Do not ask in prose whether you may record it.",
     };
   },
