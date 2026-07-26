@@ -9,6 +9,7 @@ import { formatCents } from "@clara-financas/ledger";
 import { and, eq } from "drizzle-orm";
 
 import { daysUntil, nextOccurrence, todayInSaoPaulo } from "./dates";
+import { proactivityEnabled } from "./proactivity";
 
 /**
  * O varredor de vencimentos.
@@ -46,6 +47,12 @@ export async function sweepDueDates(now: Date = new Date()): Promise<ReminderRes
     await forTenant(
       tenant.id,
       async (tx) => {
+        // A metade consentimento: quem desligou os avisos automáticos
+        // (`set_proactivity`) não recebe nada, por mais relevante que o
+        // vencimento seja. Lido DENTRO do escopo do tenant — é dado da pessoa,
+        // não do registry.
+        if (!(await proactivityEnabled(tx, tenant.id))) return;
+
         const rows = await tx
           .select()
           .from(commitments)
