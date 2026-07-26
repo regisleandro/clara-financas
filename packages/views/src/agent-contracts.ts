@@ -3,6 +3,38 @@ import { z } from "zod";
 const cents = z.number().int();
 const transactionIds = z.array(z.string().min(1)).min(1);
 
+/**
+ * O que o extrator DEVOLVE ao coordenador: um recibo, não a fatura inteira.
+ *
+ * A extração completa (`ExtractionResultSchema`, abaixo) não atravessa mais o
+ * contexto do pai: o extrator a persiste via `save_extraction` e devolve este
+ * recibo com o `extractionId`. O coordenador propõe o lote com
+ * `propose_batch_from_extraction` — por referência, sem retranscrever as 100+
+ * linhas token a token. Os metadados do documento viajam no recibo porque são
+ * o que a conversa precisa citar antes de propor (emissor, ciclo, total).
+ */
+export const ExtractionReceiptSchema = z.object({
+  extractionId: z.string().min(1),
+  documentId: z.string().min(1),
+  issuer: z.string().nullable(),
+  periodStart: z.string().nullable(),
+  periodEnd: z.string().nullable(),
+  dueDate: z.string().nullable(),
+  declaredTotal: cents.nullable(),
+  declaredSubtotals: z
+    .object({
+      fees: cents.nullable(),
+      purchases: cents.nullable(),
+    })
+    .nullable(),
+  transactionCount: z.number().int().nonnegative(),
+  warnings: z.array(z.string()).default([]),
+});
+
+/**
+ * A extração completa — hoje o contrato do input de `save_extraction` e do
+ * payload da staging (`extraction_stagings`), não mais a saída do subagente.
+ */
 export const ExtractionResultSchema = z.object({
   documentId: z.string().min(1),
   issuer: z.string().nullable(),
@@ -173,6 +205,7 @@ export const CategorizationResultSchema = z.object({
   warnings: z.array(z.string()).default([]),
 });
 
+export type ExtractionReceipt = z.infer<typeof ExtractionReceiptSchema>;
 export type ExtractionResult = z.infer<typeof ExtractionResultSchema>;
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;
 export type CategorizationResult = z.infer<typeof CategorizationResultSchema>;

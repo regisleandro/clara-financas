@@ -9,6 +9,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { loadValidCategories, unknownCategory } from "../lib/category-scope";
+import { toolError } from "../lib/errors";
 import { optionalText } from "../lib/schema";
 import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
 
@@ -123,6 +124,30 @@ export default defineTool({
           });
 
           changed += 1;
+        }
+
+        // Zero mudanças depois de um SIM no cartão não é sucesso: a pessoa
+        // aprovou algo e nada aconteceu. Na forma antiga isto voltava como
+        // `{changed: 0}` sem erro — check verde no trace, indistinguível de uma
+        // aprovação que mudou tudo. Erro estruturado obriga o modelo a explicar
+        // e dá à interface o aviso amarelo em vez do falso verde.
+        if (changed === 0) {
+          return {
+            ...toolError(
+              "nenhuma_alteracao",
+              "Nenhuma categoria foi alterada — a aprovação não teve efeito.",
+              {
+                hint:
+                  notFound.length > 0
+                    ? "Ids em notFound não existem ou ainda estão em lote proposto. Rascunho se corrige com edit_proposed_batch; confira os ids com read_batch ou com o analista."
+                    : "Todas as linhas já estavam na categoria pedida. Diga isso à pessoa em vez de anunciar uma mudança.",
+                retryable: true,
+              },
+            ),
+            changed,
+            unchanged,
+            notFound,
+          };
         }
 
         return {

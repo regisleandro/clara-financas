@@ -18,6 +18,22 @@ export function todayInSaoPaulo(now: Date = new Date()): string {
   }).format(now);
 }
 
+/**
+ * Um mês do calendário como intervalo de datas inclusivo.
+ *
+ * Existe para as ferramentas do analista aceitarem "junho" sem obrigar o
+ * modelo a calcular o último dia do mês — fevereiro e os meses de 30 dias
+ * eram exatamente onde a conta de cabeça errava.
+ */
+export function monthRange(month: string): { from: string; to: string } {
+  const [year, monthNumber] = month.split("-").map(Number) as [number, number];
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  return {
+    from: `${month}-01`,
+    to: `${month}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
 /** Dias de `from` até `to`. Negativo quando `to` já passou. */
 export function daysUntil(from: string, to: string): number {
   const ms = Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`);

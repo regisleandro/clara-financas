@@ -85,6 +85,7 @@ export async function dropTenant(tenantId: string): Promise<void> {
       "transaction_reclassifications",
       "transactions",
       "batches",
+      "extraction_stagings",
       "documents",
       "concept_revisions",
       "concepts",

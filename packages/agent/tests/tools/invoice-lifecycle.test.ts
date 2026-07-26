@@ -282,9 +282,20 @@ describe("ciclo de vida de uma fatura", () => {
         reason: "O cupom de R$ 5,00 não foi descontado na leitura.",
       },
       ctx,
-    )) as { adjustmentId: string; resultingAmountCents: number };
+    )) as {
+      adjustmentId: string;
+      resultingAmountCents: number;
+      checksum: { result: string; difference: number | null };
+    };
 
     assert.equal(adjustment.resultingAmountCents, 12_000);
+    // O ajuste reconfere o LOTE, e o relatório conta a história verdadeira:
+    // este razão agora soma R$ 5,00 a menos do que o documento declarou. Antes
+    // o lote nem era tocado — nem para fechar uma divergência, nem para
+    // registrar que uma decisão humana o afastou do documento.
+    assert.equal(adjustment.checksum.result, "mismatch");
+    assert.equal(adjustment.checksum.difference, -500);
+    assert.equal((await batchOf(batchId))?.checksumResult, "mismatch");
 
     const rows = await rowsOf(batchId);
     const created = rows.find((row) => row.id === adjustment.adjustmentId);

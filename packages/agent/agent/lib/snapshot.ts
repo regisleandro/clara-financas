@@ -3,7 +3,7 @@ import { batches, documents, transactions } from "@clara-financas/db/schema/ledg
 import { commitments } from "@clara-financas/db/schema/commitment";
 import { concepts } from "@clara-financas/db/schema/knowledge";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
 import { todayInSaoPaulo } from "./dates";
 
@@ -53,6 +53,14 @@ export type LedgerSnapshot = {
    * reais, 4 dos 9 "sem categoria" eram pagamento ou ajuste de saldo.
    */
   uncategorized: { count: number; totalCents: number };
+  /**
+   * Nomes de operadora que existem nos documentos, como estão gravados.
+   *
+   * É o que permite ao modelo mapear "no Nubank" para o filtro `issuer` do
+   * analista sem adivinhar grafia — e perceber quando a pessoa cita uma
+   * operadora que nenhum documento tem.
+   */
+  issuers: string[];
   learnedRuleCount: number;
   openCommitmentCount: number;
 };
@@ -117,6 +125,11 @@ export async function loadSnapshot(tenantId: string): Promise<LedgerSnapshot> {
           ),
         );
 
+      const issuerRows = await tx
+        .selectDistinct({ issuer: documents.issuer })
+        .from(documents)
+        .where(isNotNull(documents.issuer));
+
       const [rules] = await tx
         .select({ count: sql<number>`count(*)::int` })
         .from(concepts)
@@ -145,6 +158,10 @@ export async function loadSnapshot(tenantId: string): Promise<LedgerSnapshot> {
         invoicesOmitted: Math.max(0, (invoiceCount?.count ?? invoiceRows.length) - invoiceRows.length),
         coverage: coverage ?? { count: 0, firstDate: null, lastDate: null },
         uncategorized: uncategorized ?? { count: 0, totalCents: 0 },
+        issuers: issuerRows
+          .map((row) => row.issuer)
+          .filter((issuer): issuer is string => issuer !== null)
+          .sort(),
         learnedRuleCount: rules?.count ?? 0,
         openCommitmentCount: open?.count ?? 0,
       };
@@ -189,6 +206,10 @@ export function renderSnapshot(snapshot: LedgerSnapshot): string {
     "  mês do calendário. Para responder sobre uma fatura específica, passe o",
     "  `batchId` às ferramentas do analista — é mais exato que adivinhar datas.",
     "- `checksumResult: mismatch` é uma divergência ainda aberta naquela fatura.",
+    "- `issuers` são as operadoras que existem nos documentos. Para 'quanto",
+    "  gastei no <cartão>', passe o nome ao filtro `issuer` das ferramentas do",
+    "  analista — a comparação ignora acento e caixa. Uma operadora que não",
+    "  está aqui não tem documento nenhum.",
     "- `uncategorized.count` já exclui pagamentos e ajustes: é gasto real sem",
     "  categoria, e cada um deles enfraquece toda análise por categoria.",
   ].join("\n");

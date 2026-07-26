@@ -3,6 +3,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { categoryLabel, loadCategoryLabels } from "../../../lib/categories";
+import { monthRange } from "../../../lib/dates";
 import { requireTenantCaller } from "../../../lib/tenant";
 import { optionalText } from "../../../lib/schema";
 import { ledgerCoverage, loadLedger } from "../../../lib/ledger-query";
@@ -19,15 +20,23 @@ export default defineTool({
   inputSchema: z.object({
     from: optionalText().describe("Start date, YYYY-MM-DD. Omit for the whole ledger."),
     to: optionalText().describe("End date, YYYY-MM-DD, inclusive."),
+    month: optionalText().describe(
+      "Calendar month, YYYY-MM. Shorthand for from/to covering the whole month. Remember an invoice CYCLE is not a calendar month — for 'nesta fatura' questions prefer batchId.",
+    ),
+    issuer: optionalText().describe(
+      "Card issuer/operator name as the person says it (e.g. 'Nubank'). Accent- and case-insensitive; matches the issuer of the document each transaction came from. Use for 'quanto gastei no <cartão>'.",
+    ),
     batchId: optionalText().describe(
       "Restrict to ONE invoice, by the batchId shown in the ledger state. Prefer this over guessing dates whenever the question is about a specific invoice or 'nesta fatura'.",
     ),
   }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);
+    const monthDates = input.month !== undefined ? monthRange(input.month) : undefined;
     const ledger = await loadLedger(tenantId, {
-      from: input.from,
-      to: input.to,
+      from: input.from ?? monthDates?.from,
+      to: input.to ?? monthDates?.to,
+      issuer: input.issuer,
       batchId: input.batchId,
     });
 
@@ -51,7 +60,13 @@ export default defineTool({
     const labels = await loadCategoryLabels(tenantId);
 
     return {
-      period: { from: input.from ?? null, to: input.to ?? null, batchId: input.batchId ?? null },
+      // O recorte de FATO usado, para a resposta dizer em relação a quê soma.
+      period: {
+        from: input.from ?? monthDates?.from ?? null,
+        to: input.to ?? monthDates?.to ?? null,
+        batchId: input.batchId ?? null,
+        issuer: input.issuer ?? null,
+      },
       total: {
         cents: total.value,
         formatted: formatCents(total.value),

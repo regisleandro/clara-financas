@@ -6,6 +6,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { notFound, refused } from "../lib/errors";
+import { canonicalIssuer } from "../lib/issuer-canonical";
 import { requireTenantCaller } from "../lib/tenant";
 
 /**
@@ -57,16 +58,24 @@ export default defineTool({
           );
         }
 
+        // "NUBANK" dito agora e "Nubank" gravado antes são a mesma operadora:
+        // a grafia existente vence, para a matriz por operadora não ganhar
+        // duas linhas da mesma casa.
+        const canonical = await canonicalIssuer(tx, tenantId, issuer);
+
         await tx
           .update(documents)
-          .set({ issuer })
+          .set({ issuer: canonical })
           .where(and(eq(documents.id, before.id), eq(documents.tenantId, tenantId)));
 
         return {
           documentId: before.id,
           filename: before.filename,
           previousIssuer: before.issuer,
-          issuer,
+          issuer: canonical,
+          ...(canonical !== issuer
+            ? { note: `Grafia unificada com a operadora já registrada: "${canonical}".` }
+            : {}),
           // Só há o que desfazer se havia nome antes: um documento que nunca
           // teve operadora não volta a "sem operadora" por esta porta, e
           // prometer isso ao modelo seria oferecer uma chamada que o schema

@@ -21,6 +21,7 @@ export {
   type IssuerMonthMatrix,
 } from "./analysis";
 export { categoryLabel, categorySlug, type CategoryLabels } from "./categories";
+export { issuerKey, UNKNOWN_ISSUER } from "./issuer";
 export {
   merchantKey,
   isTruncationOf,

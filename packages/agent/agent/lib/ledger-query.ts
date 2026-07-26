@@ -1,7 +1,7 @@
 import { getDb } from "@clara-financas/db";
-import { transactions } from "@clara-financas/db/schema/ledger";
+import { documents, transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import type { Confidence, EntryKind, Transaction } from "@clara-financas/ledger";
+import { issuerKey, type Confidence, type EntryKind, type Transaction } from "@clara-financas/ledger";
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 
@@ -60,6 +60,15 @@ export type LedgerRange = {
   category?: string;
   /** Restringe a um conjunto de ids — a resposta de "de onde veio este número". */
   ids?: readonly string[];
+  /**
+   * Nome da operadora/cartão, como a pessoa fala ("Nubank", "Itaú").
+   *
+   * Não existia, e "quanto gastei no Nubank" era irrespondível por construção:
+   * `documents.issuer` só saía como campo de resposta, nunca entrava como
+   * filtro. A comparação usa `issuerKey` — a MESMA chave da visão por operadora
+   * da web — então "Nubank" e "nu bank" são a mesma operadora aqui e lá.
+   */
+  issuer?: string;
 };
 
 /**
@@ -160,16 +169,38 @@ export async function loadLedger(
 
   const rows = await forTenant(
     tenantId,
-    // Ordem estável (data recente primeiro, id como desempate): quem trunca o
-    // resultado com slice precisa que duas chamadas iguais mostrem as MESMAS
-    // linhas — sem ORDER BY, as 100 exibidas eram arbitrárias e mudavam entre
-    // consultas idênticas.
-    async (tx) =>
-      tx
+    async (tx) => {
+      if (range.issuer !== undefined) {
+        // A grafia do banco não é a grafia da pergunta: resolve-se por
+        // `issuerKey`, comparando em JS sobre os documentos do tenant (poucos,
+        // por construção — um por fatura). Nenhum match vira `sql\`false\``:
+        // devolver o razão inteiro como se fosse a operadora pedida é pior que
+        // devolver vazio, porque parece uma resposta.
+        const wanted = issuerKey(range.issuer);
+        const docs = await tx
+          .select({ id: documents.id, issuer: documents.issuer })
+          .from(documents)
+          .where(eq(documents.tenantId, tenantId));
+        const matching = docs
+          .filter((doc) => issuerKey(doc.issuer) === wanted)
+          .map((doc) => doc.id);
+        filters.push(
+          matching.length > 0
+            ? inArray(transactions.sourceDocumentId, matching)
+            : sql`false`,
+        );
+      }
+
+      // Ordem estável (data recente primeiro, id como desempate): quem trunca o
+      // resultado com slice precisa que duas chamadas iguais mostrem as MESMAS
+      // linhas — sem ORDER BY, as 100 exibidas eram arbitrárias e mudavam entre
+      // consultas idênticas.
+      return tx
         .select()
         .from(transactions)
         .where(and(...filters))
-        .orderBy(desc(transactions.date), desc(transactions.id)),
+        .orderBy(desc(transactions.date), desc(transactions.id));
+    },
     getDb(),
   );
 

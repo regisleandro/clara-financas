@@ -1,7 +1,7 @@
 import "server-only";
 
 import { loadCategoryLabels } from "@clara-financas/db/category-labels";
-import { aggregateByIssuerMonth, categoryLabel } from "@clara-financas/ledger";
+import { aggregateByIssuerMonth, categoryLabel, issuerKey, UNKNOWN_ISSUER } from "@clara-financas/ledger";
 
 import { loadLedgerView, type LedgerRow } from "@/lib/ledger";
 
@@ -19,8 +19,10 @@ import { loadLedgerView, type LedgerRow } from "@/lib/ledger";
  * um filtro parecido, que é onde tela e total começam a divergir.
  */
 
-/** Operadora não identificada: o documento não dizia quem emitiu. */
-export const UNKNOWN_ISSUER = "sem-operadora";
+// A identidade da operadora vive em `@clara-financas/ledger` — o filtro por
+// operadora do analista usa a MESMA chave, então tela e conversa concordam
+// sobre o que agrupa com o quê.
+export { issuerKey, UNKNOWN_ISSUER };
 
 export type IssuerMonthCell = { value: number; count: number } | null;
 
@@ -69,26 +71,6 @@ const shortMonthLabel = (yearMonth: string) =>
   new Intl.DateTimeFormat("pt-BR", { month: "short", year: "2-digit", timeZone: "UTC" }).format(
     new Date(`${yearMonth}-01T12:00:00Z`),
   );
-
-/** Chave estável para URL e `key` de React, derivada do nome da operadora. */
-export function issuerKey(issuer: string | null): string {
-  if (issuer === null) return UNKNOWN_ISSUER;
-  const slug = issuer
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  // Uma operadora escrita só com caracteres que o slug descarta não pode
-  // colidir com "sem operadora" — isso a faria desaparecer no filtro.
-  return slug === "" || slug === UNKNOWN_ISSUER ? `operadora-${hash(issuer)}` : slug;
-}
-
-function hash(value: string): string {
-  let acc = 0;
-  for (const char of value) acc = (acc * 31 + char.codePointAt(0)!) % 0xffffff;
-  return acc.toString(36);
-}
 
 export async function loadIssuerMonthView(tenantId: string): Promise<IssuerMonthView> {
   const [{ rows }, labels] = await Promise.all([
