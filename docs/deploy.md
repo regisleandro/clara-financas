@@ -70,8 +70,17 @@ DATABASE_ADMIN_URL='postgres://…' pnpm db:migrate
 Depois do primeiro deploy, o CI assume: o workflow
 `.github/workflows/db-migrate.yml` aplica as migrações quando um arquivo novo
 em `packages/db/src/migrations/` chega à `main` (e pode ser disparado à mão
-pelo `workflow_dispatch`). Ele usa o secret `DATABASE_ADMIN_URL` do
-repositório — a credencial de dono continua fora da Vercel.
+pelo `workflow_dispatch`). Ele lê o secret `DATABASE_ADMIN_URL` do environment
+`production` — a credencial de dono continua fora da Vercel.
+
+**Banco que nasceu de `db:push`** (tabelas existem, journal vazio): o
+`db:migrate` morre em "relation already exists" na migração 0000. O caminho é
+o baseline — `pnpm -F @clara-financas/db db:baseline` imprime um relatório do
+estado real (RLS, políticas, triggers) e, com
+`--apply --through <última-tag-já-refletida>`, registra as migrações antigas
+como aplicadas sem executá-las. Atenção: `db:push` não cria o que só existe
+nas migrações manuais (políticas de RLS, triggers de imutabilidade) — se o
+relatório mostrar isso faltando, aplique antes de declarar o baseline.
 
 Dois papéis distintos, e a diferença é de segurança, não de estilo:
 
