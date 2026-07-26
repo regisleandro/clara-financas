@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
-  activeConversation,
+  armResume,
+  clearResume,
   latestConversation,
   listConversations,
   loadSession,
   removeConversation,
+  resumeTarget,
   saveSession,
-  setActiveConversation,
 } from "./session-store";
 
 /**
@@ -122,52 +123,73 @@ describe("session-store", () => {
     );
   });
 
-  it("retoma a conversa ABERTA, não a mais recente por data", () => {
+  it("chegar à tela sem bilhete começa limpo, mesmo com histórico", () => {
     const storage = memoryStorage();
-    saveSession("t1", cursor("s1"), [], "Antiga", storage);
-    saveSession("t1", cursor("s2"), [], "Recente", storage);
+    const tab = memoryStorage();
+    saveSession("t1", cursor("s1"), [{ type: "turn.started" }], "Antiga", storage);
+    saveSession("t1", cursor("s2"), [{ type: "turn.started" }], "Recente", storage);
 
-    // Abrir a antiga pelo menu não a promove no registro — mas é ela que a
-    // próxima visita deve retomar.
-    setActiveConversation("t1", "s1", storage);
-    assert.equal(activeConversation("t1", storage), "s1");
+    // O histórico continua lá, alcançável pelo menu — o que não acontece mais
+    // é ele decidir sozinho onde a próxima visita abre.
+    assert.equal(resumeTarget("t1", tab, storage), null);
     assert.equal(latestConversation("t1", storage)?.sessionId, "s2");
   });
 
-  it("conversa nova em aberto não traz a anterior de volta", () => {
+  it("sair com um turno no ar é o que faz voltar para a conversa", () => {
     const storage = memoryStorage();
-    saveSession("t1", cursor("s1"), [], "Antiga", storage);
-    setActiveConversation("t1", null, storage);
-    assert.equal(activeConversation("t1", storage), null);
+    const tab = memoryStorage();
+    saveSession("t1", cursor("s1"), [{ type: "turn.started" }], "Em andamento", storage);
+
+    armResume("t1", "s1", tab);
+    assert.equal(resumeTarget("t1", tab, storage), "s1");
   });
 
-  it("o primeiro turno de uma conversa nova a torna a conversa aberta", () => {
+  it("o turno assentado desarma a retomada", () => {
     const storage = memoryStorage();
-    setActiveConversation("t1", null, storage);
-    saveSession("t1", cursor("s9"), [{ type: "turn.started" }], "Nova", storage);
-    assert.equal(activeConversation("t1", storage), "s9");
+    const tab = memoryStorage();
+    saveSession("t1", cursor("s1"), [{ type: "turn.started" }], "Terminada", storage);
+
+    armResume("t1", "s1", tab);
+    clearResume("t1", tab);
+    assert.equal(resumeTarget("t1", tab, storage), null);
   });
 
-  it("sem ponteiro (primeiro acesso) cai na mais recente", () => {
+  it("o bilhete vive na aba: navegador novo chega sem ele", () => {
     const storage = memoryStorage();
-    saveSession("t1", cursor("s1"), [], "A", storage);
-    saveSession("t1", cursor("s2"), [], "B", storage);
-    storage.removeItem("clara:active:t1");
-    assert.equal(activeConversation("t1", storage), "s2");
+    const tab = memoryStorage();
+    saveSession("t1", cursor("s1"), [{ type: "turn.started" }], "Em andamento", storage);
+    armResume("t1", "s1", tab);
+
+    // Uma aba nova é um `sessionStorage` novo; o `localStorage` é o mesmo.
+    const outraAba = memoryStorage();
+    assert.equal(resumeTarget("t1", outraAba, storage), null);
   });
 
-  it("ponteiro para conversa que já não existe cai na mais recente", () => {
+  it("bilhete para conversa que já não existe começa limpo", () => {
     const storage = memoryStorage();
-    saveSession("t1", cursor("s1"), [], "A", storage);
-    setActiveConversation("t1", "fantasma", storage);
-    assert.equal(activeConversation("t1", storage), "s1");
+    const tab = memoryStorage();
+    saveSession("t1", cursor("s1"), [{ type: "turn.started" }], "A", storage);
+    armResume("t1", "fantasma", tab);
+    assert.equal(resumeTarget("t1", tab, storage), null);
   });
 
-  it("remover a conversa aberta abre em branco", () => {
+  it("remover a conversa retomável apaga o bilhete", () => {
     const storage = memoryStorage();
-    saveSession("t1", cursor("s1"), [], "A", storage);
-    removeConversation("t1", "s1", storage);
-    assert.equal(activeConversation("t1", storage), null);
+    const tab = memoryStorage();
+    saveSession("t1", cursor("s1"), [{ type: "turn.started" }], "A", storage);
+    armResume("t1", "s1", tab);
+
+    removeConversation("t1", "s1", storage, tab);
+    assert.equal(tab.getItem("clara:resume:t1"), null);
+    assert.equal(resumeTarget("t1", tab, storage), null);
+  });
+
+  it("bilhete de outro tenant não atravessa", () => {
+    const storage = memoryStorage();
+    const tab = memoryStorage();
+    saveSession("t1", cursor("s1"), [{ type: "turn.started" }], "A", storage);
+    armResume("t1", "s1", tab);
+    assert.equal(resumeTarget("t2", tab, storage), null);
   });
 
   it("registro corrompido devolve vazio em vez de quebrar", () => {
