@@ -1,14 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { formatCents } from "@clara-financas/ledger";
 
 import { MarkAlertsRead } from "@/components/mark-alerts-read";
 import { loadAgenda } from "@/lib/agenda";
 import { getTenantContext } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
-
-const brl = (cents: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
 
 const dayOf = (iso: string) =>
   new Intl.DateTimeFormat("pt-BR", { day: "2-digit", timeZone: "UTC" }).format(
@@ -89,7 +87,7 @@ export default async function AgendaPage() {
               Vencimento em {longDay(next.dueDate)}
             </p>
             {next.expectedAmount !== null ? (
-              <p className="clara-metric mt-6">{brl(next.expectedAmount)}</p>
+              <p className="clara-metric mt-6">{formatCents(next.expectedAmount)}</p>
             ) : null}
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link href="/conversa" className="clara-pill clara-pill-outline">
@@ -132,7 +130,7 @@ export default async function AgendaPage() {
                   <span className="tabular-nums">
                     {commitment.expectedAmount === null
                       ? "—"
-                      : brl(commitment.expectedAmount)}
+                      : formatCents(commitment.expectedAmount)}
                   </span>
                 </li>
               ))}

@@ -86,6 +86,7 @@ export function ChatHeader({
   conversations,
   activeSessionId,
   onSelectConversation,
+  navigationDisabled = false,
 }: {
   onReset: (() => void) | null;
   onToggleArtifact?: (() => void) | null;
@@ -94,6 +95,8 @@ export function ChatHeader({
   conversations?: readonly ConversationEntry[];
   activeSessionId?: string;
   onSelectConversation?: (sessionId: string) => void;
+  /** Evita abandonar uma sessão enquanto um turno ou decisão está em voo. */
+  navigationDisabled?: boolean;
 }) {
   const history = (conversations ?? []).filter(
     (entry) => entry.sessionId !== activeSessionId,
@@ -114,7 +117,10 @@ export function ChatHeader({
       <span className="ml-auto flex items-center gap-2.5">
         {history.length > 0 && onSelectConversation !== undefined ? (
           <DropdownMenu>
-            <DropdownMenuTrigger className="clara-pill clara-pill-outline h-8 px-4 text-xs">
+            <DropdownMenuTrigger
+              disabled={navigationDisabled}
+              className="clara-pill clara-pill-outline h-8 px-4 text-xs disabled:opacity-50"
+            >
               Conversas
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="max-w-72">
@@ -146,7 +152,8 @@ export function ChatHeader({
           <button
             type="button"
             onClick={onReset}
-            className="rounded-[var(--clara-radius-pill)] bg-[var(--clara-ash)] px-4 py-2 text-xs"
+            disabled={navigationDisabled}
+            className="rounded-[var(--clara-radius-pill)] bg-[var(--clara-ash)] px-4 py-2 text-xs disabled:opacity-50"
             style={{ letterSpacing: "-0.022em" }}
           >
             Nova conversa

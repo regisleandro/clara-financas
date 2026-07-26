@@ -207,9 +207,14 @@ describe("aritmética de dinheiro", () => {
 });
 
 describe("formatCents", () => {
-  it("formata em BRL", () => {
-    assert.match(formatCents(123456), /1\.234,56/);
-    assert.match(formatCents(-500), /5,00/);
+  it("formata sempre no padrão R$ #.###,##", () => {
+    assert.equal(formatCents(123456), "R$ 1.234,56");
+    assert.equal(formatCents(5000000), "R$ 50.000,00");
+    assert.equal(formatCents(-500), "-R$ 5,00");
+  });
+
+  it("recusa fração de centavo", () => {
+    assert.throws(() => formatCents(10.5), /inteiro em centavos/);
   });
 });
 

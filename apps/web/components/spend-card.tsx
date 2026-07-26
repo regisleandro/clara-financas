@@ -1,5 +1,6 @@
 "use client";
 
+import { formatCents } from "@clara-financas/ledger";
 import { useState } from "react";
 
 /**
@@ -11,14 +12,21 @@ import { useState } from "react";
  */
 export function SpendCard({
   periodLabel,
-  totalFormatted,
+  originLabel,
+  total,
   comparison,
   spark,
   rangeLabels,
 }: {
   periodLabel: string;
-  totalFormatted: string;
-  comparison: { deltaPercent: number; previousLabel: string } | null;
+  originLabel: string;
+  total: number;
+  comparison: {
+    deltaPercent: number;
+    delta: number;
+    previousTotal: number;
+    previousLabel: string;
+  } | null;
   spark: number[];
   rangeLabels: { from: string; to: string };
 }) {
@@ -27,7 +35,9 @@ export function SpendCard({
   return (
     <article className="clara-card flex flex-col p-7">
       <div className="flex items-center justify-between">
-        <span className="clara-chip">{periodLabel}</span>
+        <span className="clara-chip max-w-[70%] truncate">
+          {periodLabel} · {originLabel}
+        </span>
         <button
           type="button"
           onClick={() => setHidden((value) => !value)}
@@ -38,7 +48,9 @@ export function SpendCard({
       </div>
 
       <p className="mt-8 text-[var(--clara-graphite)]">Gastos no mês</p>
-      <p className="clara-metric mt-1.5">{hidden ? "R$ ••••••" : totalFormatted}</p>
+      <p className="clara-metric mt-1.5 break-words">
+        {hidden ? "R$ ••••••" : formatCents(total)}
+      </p>
 
       {comparison !== null ? (
         <p className="mt-2.5 text-[var(--clara-graphite)]">
@@ -53,6 +65,23 @@ export function SpendCard({
           Sem período anterior para comparar ainda.
         </p>
       )}
+
+      {comparison !== null ? (
+        <dl className="mt-6 grid grid-cols-2 gap-4 border-t border-[var(--clara-fog)] pt-5">
+          <div>
+            <dt className="clara-small">Mês anterior</dt>
+            <dd className="mt-1 font-medium tabular-nums">
+              {hidden ? "R$ ••••••" : formatCents(comparison.previousTotal)}
+            </dd>
+          </div>
+          <div>
+            <dt className="clara-small">Diferença</dt>
+            <dd className="mt-1 font-medium tabular-nums">
+              {hidden ? "R$ ••••••" : formatCents(comparison.delta)}
+            </dd>
+          </div>
+        </dl>
+      ) : null}
 
       {spark.length > 0 ? (
         <>

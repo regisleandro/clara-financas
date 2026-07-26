@@ -1,4 +1,5 @@
 import type { IssuerMonthView } from "@/lib/issuers";
+import { formatCents } from "@clara-financas/ledger";
 
 /**
  * O razão cruzado: operadora nas linhas, mês nas colunas.
@@ -15,9 +16,6 @@ import type { IssuerMonthView } from "@/lib/issuers";
  * É um `<table>` de verdade e um `<details>` nativo — dado tabular tem
  * semântica própria, e o colapso não precisa de JavaScript para funcionar.
  */
-
-const brl = (cents: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
 
 const shortDate = (iso: string) =>
   new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", timeZone: "UTC" }).format(
@@ -77,11 +75,11 @@ export function IssuerMonthView({ view }: { view: IssuerMonthView }) {
                     className="py-[18px] pl-6 text-right tabular-nums"
                     style={cell === null ? { color: "var(--clara-slate)" } : undefined}
                   >
-                    {cell === null ? "—" : brl(cell.value)}
+                    {cell === null ? "—" : formatCents(cell.value)}
                   </td>
                 ))}
                 <td className="py-[18px] pl-6 text-right font-semibold tabular-nums">
-                  {brl(issuer.total)}
+                  {formatCents(issuer.total)}
                 </td>
               </tr>
             ))}
@@ -96,11 +94,11 @@ export function IssuerMonthView({ view }: { view: IssuerMonthView }) {
                   key={view.months[position]!.key}
                   className="pt-[18px] pl-6 text-right font-semibold tabular-nums"
                 >
-                  {brl(total)}
+                  {formatCents(total)}
                 </td>
               ))}
               <td className="pt-[18px] pl-6 text-right font-semibold tabular-nums">
-                {brl(view.total)}
+                {formatCents(view.total)}
               </td>
             </tr>
           </tfoot>
@@ -125,7 +123,7 @@ export function IssuerMonthView({ view }: { view: IssuerMonthView }) {
                     {group.rows.length === 1 ? "lançamento" : "lançamentos"}
                   </small>
                 </span>
-                <span className="tabular-nums">{brl(group.total)}</span>
+                <span className="tabular-nums">{formatCents(group.total)}</span>
                 <span aria-hidden="true" className="text-[var(--clara-slate)]">
                   ›
                 </span>
@@ -161,7 +159,7 @@ export function IssuerMonthView({ view }: { view: IssuerMonthView }) {
                       {CONFIDENCE_LABEL[row.confidence]}
                     </span>
 
-                    <span className="text-right tabular-nums">{brl(row.amount)}</span>
+                    <span className="text-right tabular-nums">{formatCents(row.amount)}</span>
                   </li>
                 ))}
               </ul>

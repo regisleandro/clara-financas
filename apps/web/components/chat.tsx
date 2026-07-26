@@ -34,6 +34,8 @@ import {
 } from "@/lib/session-store";
 import { useMediaQuery } from "@/lib/use-media-query";
 import {
+  findActionProposalForPending,
+  findBatchProposalForPending,
   findBatchProposals,
   findOpenBatchProposalLocation,
   findPendingRequest,
@@ -151,7 +153,20 @@ function ChatSession({
     [agent.data.messages],
   );
   const proposal = (proposalLocation?.output ?? null) as BatchProposal | null;
-  const canApprove = pending?.toolName === "commit_batch" && answered === null;
+  const pendingProposalLocation = useMemo(
+    () => findBatchProposalForPending(agent.data.messages, pending),
+    [agent.data.messages, pending],
+  );
+  const pendingProposal = (pendingProposalLocation?.output ?? null) as BatchProposal | null;
+  const pendingActionProposal = useMemo(
+    () => findActionProposalForPending(agent.data.messages, pending),
+    [agent.data.messages, pending],
+  );
+  const canApprove =
+    pending?.toolName === "commit_batch" &&
+    answered === null &&
+    pendingProposal?.batchId === proposal?.batchId;
+  const interactionLocked = busy || uploading || pending !== null || answered !== null;
 
   /**
    * A conferência de um lote é a exceção que continua sendo derivada no
@@ -260,6 +275,7 @@ function ChatSession({
               conversations={conversations}
               activeSessionId={agent.session.sessionId}
               onSelectConversation={(sessionId) => onSwitchConversation(sessionId)}
+              navigationDisabled={interactionLocked}
             />
           </div>
         </div>
@@ -288,14 +304,26 @@ function ChatSession({
               </p>
             ) : null}
 
-            {agent.data.messages.map((message) => (
-              <ChatMessage
-                key={message.id}
-                message={message}
-                hasArtifact={message.role !== "user" && messageArtifacts.has(message.id)}
-                onOpenArtifact={() => openArtifact(message.id)}
-              />
-            ))}
+            {agent.data.messages.map((message) => {
+              const linked = messageArtifacts.get(message.id);
+              const artifactLabel =
+                linked?.kind === "batch" || linked?.kind === "batchHistory"
+                  ? "Ver conferência da fatura"
+                  : linked?.kind === "view" && linked.views.at(-1)?.kind === "proposal"
+                    ? "Ver proposta"
+                    : linked?.kind === "view" && linked.views.at(-1)?.kind === "checksum"
+                      ? "Ver conferência"
+                      : "Ver detalhes";
+              return (
+                <ChatMessage
+                  key={message.id}
+                  message={message}
+                  hasArtifact={message.role !== "user" && linked !== undefined}
+                  artifactLabel={artifactLabel}
+                  onOpenArtifact={() => openArtifact(message.id)}
+                />
+              );
+            })}
 
             {!isWelcome ? <ExecutionTrace activity={activity} busy={busy} /> : null}
 
@@ -316,7 +344,8 @@ function ChatSession({
             {pending !== null && pending.toolName !== "ask_question" && answered === null ? (
               <DecisionCard
                 pending={pending}
-                proposal={proposal}
+                proposal={pendingProposal}
+                actionProposal={pendingActionProposal}
                 disabled={busy}
                 onAnswer={clara.answer}
               />
@@ -375,12 +404,20 @@ function ChatSession({
                 de 360px os três itens lado a lado não caberiam — o texto do
                 placeholder quebrava e sobrava tarja azul por cima da borda. A
                 ordem visual é dada por `order-*`, não pela ordem no DOM. */}
+            {pending !== null && answered === null ? (
+              <div
+                role="status"
+                className="clara-card px-5 py-4 text-sm text-[var(--clara-graphite)]"
+              >
+                Responda à decisão acima para continuar esta conversa.
+              </div>
+            ) : (
             <PromptInput
               className="flex-wrap items-end justify-between gap-y-1 rounded-[var(--clara-radius-card)] p-1.5 sm:flex-nowrap sm:justify-start sm:py-1.5 sm:pl-2 sm:pr-1.5"
               onSubmit={(message, event) => {
                 event.preventDefault();
                 const text = message.text?.trim();
-                if (text === undefined || text === "" || busy) return;
+                if (text === undefined || text === "" || interactionLocked) return;
                 clara.send(text);
               }}
             >
@@ -388,7 +425,7 @@ function ChatSession({
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
-                  disabled={uploading || busy}
+                  disabled={interactionLocked}
                   aria-label="Anexar fatura em PDF"
                   className="mb-1 grid size-8 place-items-center rounded-full bg-[var(--clara-fog)] text-base leading-none transition-colors hover:bg-[var(--clara-ash)] disabled:opacity-50"
                 >
@@ -409,7 +446,7 @@ function ChatSession({
               <PromptInputBody>
                 <PromptInputTextarea
                   placeholder="Pergunte sobre seu dinheiro…"
-                  disabled={busy}
+                  disabled={interactionLocked}
                   rows={1}
                   className="order-1 min-h-11 basis-full px-3 py-2.5 sm:order-none sm:basis-0"
                 />
@@ -427,7 +464,7 @@ function ChatSession({
                 <PromptInputSubmit
                   status={agent.status === "error" ? "ready" : agent.status}
                   onStop={() => clara.cancel()}
-                  disabled={busy && !canCancel}
+                  disabled={interactionLocked && !busy ? true : busy && !canCancel}
                   size="sm"
                   className="clara-pill clara-pill-primary mb-0.5 h-10 w-auto px-4 text-sm sm:px-5"
                 >
@@ -435,6 +472,7 @@ function ChatSession({
                 </PromptInputSubmit>
               </InputGroupAddon>
             </PromptInput>
+            )}
           </div>
         </div>
       </div>

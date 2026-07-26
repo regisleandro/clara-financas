@@ -25,7 +25,7 @@ export type TenantCaller = { tenantId: string; userId: string };
  * que uma hora diverge.
  */
 export type AuthenticatedContext = {
-  session: { auth: SessionContext["session"]["auth"] };
+  session: { id?: string; auth: SessionContext["session"]["auth"] };
 };
 
 /**
@@ -53,6 +53,18 @@ export function requireTenantCaller(ctx: AuthenticatedContext): TenantCaller {
   }
 
   return { tenantId, userId: caller.principalId };
+}
+
+export type SessionCaller = TenantCaller & { sessionId: string };
+
+/** Uma referência conversacional só é segura quando pertence a uma sessão. */
+export function requireSessionCaller(ctx: AuthenticatedContext): SessionCaller {
+  const caller = requireTenantCaller(ctx);
+  const sessionId = ctx.session.id;
+  if (typeof sessionId !== "string" || sessionId.length === 0) {
+    throw new Error("An Eve session id is required.");
+  }
+  return { ...caller, sessionId };
 }
 
 /** Extrai o tenantId de um principal, tolerando ausência e tipo inesperado. */

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { formatCents } from "@clara-financas/ledger";
 
 /**
  * O razão, com filtro e busca.
@@ -26,9 +27,6 @@ export type TableRow = {
   page: number | null;
   isAdjustment: boolean;
 };
-
-const brl = (cents: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
 
 const shortDate = (iso: string) =>
   new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", timeZone: "UTC" }).format(
@@ -149,7 +147,7 @@ export function TransactionTable({
                   {CONFIDENCE_LABEL[row.confidence]}
                 </span>
 
-                <span className="text-right tabular-nums">{brl(row.amount)}</span>
+                <span className="text-right tabular-nums">{formatCents(row.amount)}</span>
               </li>
             ))}
           </ul>

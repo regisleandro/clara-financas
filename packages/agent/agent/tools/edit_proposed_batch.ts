@@ -111,6 +111,10 @@ export default defineTool({
           );
         }
 
+        let edited = 0;
+        let removed = 0;
+        let added = 0;
+
         for (const edit of input.edits ?? []) {
           const { transactionId, ...fields } = edit;
           const changes: Record<string, unknown> = Object.fromEntries(
@@ -140,7 +144,7 @@ export default defineTool({
             }
           }
 
-          await tx
+          const changed = await tx
             .update(transactions)
             .set(changes)
             .where(
@@ -150,11 +154,13 @@ export default defineTool({
                 eq(transactions.tenantId, tenantId),
                 eq(transactions.status, "proposed"),
               ),
-            );
+            )
+            .returning({ id: transactions.id });
+          edited += changed.length;
         }
 
         for (const transactionId of input.removeTransactionIds ?? []) {
-          await tx
+          const deleted = await tx
             .delete(transactions)
             .where(
               and(
@@ -163,7 +169,9 @@ export default defineTool({
                 eq(transactions.tenantId, tenantId),
                 eq(transactions.status, "proposed"),
               ),
-            );
+            )
+            .returning({ id: transactions.id });
+          removed += deleted.length;
         }
 
         for (const entry of input.add ?? []) {
@@ -189,6 +197,7 @@ export default defineTool({
             extractionConfidence: "media",
             page: entry.page ?? null,
           });
+          added += 1;
         }
 
         const { checksum, transactionCount } = await recomputeBatchChecksum(tx, tenantId, batch);
@@ -200,9 +209,9 @@ export default defineTool({
           // O que mudou é o que a Clara vai contar para a pessoa; deduzir do
           // input daria número errado quando um id não casa com o lote.
           applied: {
-            edited: input.edits?.length ?? 0,
-            removed: input.removeTransactionIds?.length ?? 0,
-            added: input.add?.length ?? 0,
+            edited,
+            removed,
+            added,
           },
         };
       },

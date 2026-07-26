@@ -57,14 +57,30 @@ const RowSchema = z.object({
 });
 
 /** Um número em destaque, com legenda. É o topo de quase toda resposta. */
-const MetricSchema = z.object({
-  label: z.string().min(1),
-  amount: cents.optional(),
-  /** Usado quando o destaque não é dinheiro — "6 assinaturas", "62%". */
-  text: z.string().optional(),
-  detail: z.string().optional(),
-  transactionIds: z.array(z.string().min(1)).default([]),
-});
+const MetricSchema = z
+  .object({
+    label: z.string().min(1),
+    amount: cents.optional(),
+    /** Usado quando o destaque não é dinheiro — "6 assinaturas", "62%". */
+    text: z.string().optional(),
+    detail: z.string().optional(),
+    transactionIds: z.array(z.string().min(1)).default([]),
+  })
+  .superRefine((metric, ctx) => {
+    const moneyLabel =
+      /\b(valor|total|gasto|gastos|saldo|diferença|ajuste|custo|preço|pagamento|fatura|economia)\b/i;
+    if (
+      metric.text !== undefined &&
+      moneyLabel.test(metric.label) &&
+      /^-?\d+$/.test(metric.text.trim())
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["text"],
+        message: "centavos devem usar amount; text é apenas para conteúdo não monetário",
+      });
+    }
+  });
 
 const base = {
   title: z.string().min(1).describe("Short panel title, in Brazilian Portuguese."),
@@ -185,6 +201,31 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
  * financeiras sem origem são recusadas antes de alcançar a interface.
  */
 export const ViewSchema = ViewShapeSchema.superRefine((view, ctx) => {
+  if (view.kind === "checksum") {
+    const expectedDifference =
+      view.declaredTotal === null ? null : view.extractedTotal - view.declaredTotal;
+    if (view.difference !== expectedDifference) {
+      ctx.addIssue({
+        code: "custom",
+        message: "difference deve ser extractedTotal - declaredTotal",
+        path: ["difference"],
+      });
+    }
+    if (
+      (view.result === "match" && view.difference !== 0) ||
+      (view.result === "mismatch" &&
+        (view.declaredTotal === null || view.difference === null || view.difference === 0)) ||
+      (view.result === "no_declared_total" &&
+        (view.declaredTotal !== null || view.difference !== null))
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "result não corresponde aos totais da conferência",
+        path: ["result"],
+      });
+    }
+  }
+
   // `commitments` fica de fora, e não por indulgência: um compromisso é um
   // lembrete agendado — não saiu de lançamento nenhum, então não HÁ id para
   // pedir. Exigir proveniência aqui reprovaria todo painel de vencimentos na

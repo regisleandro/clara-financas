@@ -11,6 +11,7 @@ import {
 
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import { ArtifactLink } from "@/components/artifact-surface";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 /**
  * Uma mensagem da conversa, renderizada POR PARTE.
@@ -44,13 +45,16 @@ const asRecord = (value: unknown): UnknownRecord | undefined =>
 export function ChatMessage({
   message,
   hasArtifact,
+  artifactLabel,
   onOpenArtifact,
 }: {
   message: MessageLike;
   hasArtifact: boolean;
+  artifactLabel?: string;
   onOpenArtifact: () => void;
 }) {
   const rendered: React.ReactNode[] = [];
+  const toolFallbacks: React.ReactNode[] = [];
   // Texto contíguo é juntado num bloco só de markdown: o modelo emite várias
   // partes `text` no mesmo passo, e renderizá-las separadas quebraria
   // parágrafos no meio.
@@ -85,13 +89,43 @@ export function ChatMessage({
 
       case "dynamic-tool": {
         flushText();
-        // Aprovações têm cartões próprios; as demais tools ficam no trace.
+        const output = asRecord(part.output);
+        const error = asRecord(output?.error);
+        const errorMessage =
+          typeof error?.message === "string"
+            ? error.message
+            : typeof output?.error === "string"
+              ? output.error
+              : null;
+        if (errorMessage !== null) {
+          toolFallbacks.push(
+            <Alert key={`tool-error-${index}`} variant="destructive">
+              <AlertTitle>Não consegui concluir esta etapa</AlertTitle>
+              <AlertDescription>
+                <p>{errorMessage}</p>
+                {typeof error?.hint === "string" ? <p>{error.hint}</p> : null}
+              </AlertDescription>
+            </Alert>,
+          );
+        } else if (
+          output?.status === "applied" ||
+          output?.status === "confirmed" ||
+          output?.alreadyApplied === true
+        ) {
+          toolFallbacks.push(
+            <Alert key={`tool-receipt-${index}`}>
+              <AlertTitle>Alteração concluída</AlertTitle>
+              <AlertDescription>
+                A operação foi registrada e tem recibo na trilha de auditoria.
+              </AlertDescription>
+            </Alert>,
+          );
+        }
         break;
       }
 
       case "file": {
         flushText();
-        const filename = typeof part.filename === "string" ? part.filename : "documento";
         rendered.push(
           <Attachment
             key={`file-${index}`}
@@ -102,7 +136,7 @@ export function ChatMessage({
               <FileTextIcon aria-hidden="true" />
             </AttachmentMedia>
             <AttachmentContent>
-              <AttachmentTitle>{filename}</AttachmentTitle>
+              <AttachmentTitle>Fatura enviada</AttachmentTitle>
               <AttachmentDescription>Documento PDF</AttachmentDescription>
             </AttachmentContent>
           </Attachment>,
@@ -117,6 +151,7 @@ export function ChatMessage({
     }
   }
   flushText();
+  if (rendered.length === 0 && toolFallbacks.length > 0) rendered.push(...toolFallbacks);
 
   if (rendered.length === 0 && !hasArtifact) return null;
 
@@ -127,7 +162,7 @@ export function ChatMessage({
         {/* O link ACOMPANHA o artefato: só as respostas que têm um aparecem
             com "Ver artefato" — e uma resposta que só desenhou um painel, sem
             texto, ainda precisa do link para alcançá-lo. */}
-        {hasArtifact ? <ArtifactLink onOpen={onOpenArtifact} /> : null}
+        {hasArtifact ? <ArtifactLink onOpen={onOpenArtifact} label={artifactLabel} /> : null}
       </MessageContent>
     </Message>
   );

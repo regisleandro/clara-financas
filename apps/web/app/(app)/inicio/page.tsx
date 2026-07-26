@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { formatCents } from "@clara-financas/ledger";
+
+import { OverviewFilters } from "@/components/overview-filters";
 import { SpendCard } from "@/components/spend-card";
 import { loadOverview } from "@/lib/overview";
 import { getTenantContext } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
-
-const brl = (cents: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
 
 function greeting(): string {
   const hour = Number(
@@ -30,11 +30,19 @@ const longDate = new Intl.DateTimeFormat("pt-BR", {
   timeZone: "America/Sao_Paulo",
 });
 
-export default async function InicioPage() {
+export default async function InicioPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ mes?: string; origem?: string }>;
+}) {
   const context = await getTenantContext();
   if (!context) redirect("/entrar");
 
-  const overview = await loadOverview(context.tenantId);
+  const query = await searchParams;
+  const overview = await loadOverview(context.tenantId, {
+    month: query.mes,
+    issuer: query.origem,
+  });
   const firstName = context.name?.split(" ")[0] ?? "";
 
   return (
@@ -58,10 +66,18 @@ export default async function InicioPage() {
         </div>
       </header>
 
+      <OverviewFilters
+        months={overview.months}
+        issuers={overview.issuers}
+        selectedMonth={overview.selectedMonth}
+        selectedIssuer={overview.selectedIssuer}
+      />
+
       <div className="grid gap-5 lg:grid-cols-[1.35fr_1fr]">
         <SpendCard
           periodLabel={overview.periodLabel}
-          totalFormatted={brl(overview.total)}
+          originLabel={overview.originLabel}
+          total={overview.total}
           comparison={overview.comparison}
           spark={overview.spark}
           rangeLabels={overview.rangeLabels}
@@ -80,7 +96,7 @@ export default async function InicioPage() {
         <div className="clara-card p-7">
           {overview.categories.length === 0 ? (
             <p className="py-10 text-center text-[var(--clara-slate)]">
-              Ainda não há nada categorizado. Envie uma fatura pela conversa.
+              Não há gastos categorizados neste recorte.
             </p>
           ) : (
             <ul>
@@ -96,7 +112,7 @@ export default async function InicioPage() {
                       style={{ width: `${Math.round(category.share * 100)}%` }}
                     />
                   </span>
-                  <span className="text-right tabular-nums">{brl(category.value)}</span>
+                  <span className="text-right tabular-nums">{formatCents(category.value)}</span>
                   <span className="clara-small hidden text-right sm:block">
                     {category.countLabel}
                   </span>

@@ -8,6 +8,7 @@ import {
   ArtifactHeader,
   ArtifactTitle,
 } from "@/components/ai-elements/artifact";
+import { displayArtifactValue } from "@/lib/money";
 
 /**
  * Painel lateral de artefato.
@@ -30,7 +31,7 @@ export type ArtifactData = {
   rows: ArtifactRow[];
   footnote?: string;
   primaryAction?: { label: string; onClick: () => void; disabled?: boolean };
-  secondaryAction?: { label: string; onClick: () => void };
+  secondaryAction?: { label: string; onClick: () => void; disabled?: boolean };
 };
 
 /**
@@ -49,23 +50,25 @@ export function ArtifactPanelInner({
 }) {
   return (
     <Artifact className="h-full rounded-none border-0 bg-transparent">
-        <ArtifactHeader className="items-start border-0 px-7 pb-5 pt-7">
-          <div>
+        <ArtifactHeader className="min-w-0 items-start gap-3 border-0 px-7 pb-5 pt-7">
+          <div className="min-w-0 flex-1">
             <p className="clara-eyebrow">Artefato</p>
-            <ArtifactTitle className="clara-display-sm mt-1.5 text-foreground">
+            <ArtifactTitle className="clara-display-sm mt-1.5 break-words text-foreground [overflow-wrap:anywhere]">
               {data.title}
             </ArtifactTitle>
           </div>
-          <ArtifactActions>
+          <ArtifactActions className="shrink-0">
             <ArtifactClose onClick={onClose} />
           </ArtifactActions>
         </ArtifactHeader>
 
         <ArtifactContent className="px-7 pb-14">
           {/* O número é o herói do painel: cartão próprio, tipografia grande. */}
-          <div className="rounded-[var(--clara-radius-card)] bg-[var(--clara-fog)] p-7">
+          <div className="min-w-0 rounded-[var(--clara-radius-card)] bg-[var(--clara-fog)] p-7 [container-type:inline-size]">
             <p className="clara-eyebrow">{data.metricLabel}</p>
-            <p className="clara-metric mt-3.5">{data.metric}</p>
+            <p className="clara-metric mt-3.5 max-w-full break-words [font-size:clamp(2rem,15cqi,4.5rem)] [overflow-wrap:anywhere]">
+              {displayArtifactValue(data.metricLabel, data.metric)}
+            </p>
             {data.note !== undefined ? (
               <p className="mt-1.5 text-[var(--clara-graphite)]">{data.note}</p>
             ) : null}
@@ -76,7 +79,7 @@ export function ArtifactPanelInner({
             {data.rows.map((row) => (
               <li
                 key={row.label}
-                className="grid grid-cols-[1fr_auto] items-center gap-4 border-b border-[var(--clara-fog)] py-4 last:border-0"
+                className="grid grid-cols-[minmax(0,11fr)_minmax(0,9fr)] items-center gap-4 border-b border-[var(--clara-fog)] py-4 last:border-0"
               >
                 <span className="min-w-0">
                   <strong className="block truncate font-semibold">{row.label}</strong>
@@ -87,11 +90,11 @@ export function ArtifactPanelInner({
                 <span
                   className={
                     row.emphasis
-                      ? "tabular-nums text-[var(--clara-amber)]"
-                      : "tabular-nums"
+                      ? "break-all text-right tabular-nums text-[var(--clara-amber)]"
+                      : "break-all text-right tabular-nums"
                   }
                 >
-                  {row.value}
+                  {displayArtifactValue(row.label, row.value)}
                 </span>
               </li>
             ))}
@@ -113,7 +116,8 @@ export function ArtifactPanelInner({
                 <button
                   type="button"
                   onClick={data.secondaryAction.onClick}
-                  className="clara-link"
+                  disabled={data.secondaryAction.disabled}
+                  className="clara-link disabled:opacity-40"
                 >
                   {data.secondaryAction.label}
                 </button>

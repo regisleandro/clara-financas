@@ -1,4 +1,5 @@
 import { getDb } from "@clara-financas/db";
+import { financialActionProposals } from "@clara-financas/db/schema/financial-action";
 import { batches, transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import { and, eq } from "drizzle-orm";
@@ -27,9 +28,22 @@ import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
 export default defineTool({
   description:
     "Requests approval to record a verified draft batch in the ledger. Call when the verification is ready for the person's decision: the call opens the approval card, pauses, and executes only after approval. Do not ask for a prose confirmation first.",
-  inputSchema: z.object({
-    batchId: z.string().min(1).describe("Id of the proposed batch, as returned by propose_batch."),
-  }),
+  inputSchema: z
+    .object({
+      batchId: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Legacy direct path. Prefer proposalId from prepare_batch_registration."),
+      proposalId: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Canonical proposal returned by prepare_batch_registration."),
+    })
+    .refine((input) => input.batchId !== undefined || input.proposalId !== undefined, {
+      message: "informe proposalId ou batchId",
+    }),
 
   approval: (ctx) => {
     const current = tenantIdOf(ctx.session.auth.current);
@@ -56,16 +70,64 @@ export default defineTool({
     return forTenant(
       tenantId,
       async (tx) => {
+        const proposal =
+          input.proposalId === undefined
+            ? undefined
+            : (
+                await tx
+                  .select()
+                  .from(financialActionProposals)
+                  .where(
+                    and(
+                      eq(financialActionProposals.id, input.proposalId),
+                      eq(financialActionProposals.tenantId, tenantId),
+                    ),
+                  )
+                  .limit(1)
+              )[0];
+
+        if (input.proposalId !== undefined) {
+          if (proposal === undefined || proposal.operation !== "register_invoice") {
+            return notFound(
+              "proposta_nao_encontrada",
+              "Esta proposta de registro não existe.",
+              { hint: "Prepare outra com prepare_batch_registration." },
+            );
+          }
+          if (proposal.status === "applied" && proposal.receipt !== null) {
+            return { ...proposal.receipt, alreadyConfirmed: true };
+          }
+          if (proposal.status !== "prepared" || proposal.expiresAt.getTime() <= Date.now()) {
+            return refused(
+              "proposta_expirada",
+              "Esta proposta de registro não está mais disponível.",
+              { hint: "Prepare outra para usar o estado atual da fatura." },
+            );
+          }
+        }
+
+        const batchId = proposal?.batchId ?? input.batchId!;
         const [batch] = await tx
           .select()
           .from(batches)
-          .where(and(eq(batches.id, input.batchId), eq(batches.tenantId, tenantId)))
+          .where(and(eq(batches.id, batchId), eq(batches.tenantId, tenantId)))
           .limit(1);
 
         if (!batch) {
-          return notFound("lote_nao_encontrado", `Nenhuma fatura com o id ${input.batchId}.`, {
+          return notFound("lote_nao_encontrado", `Nenhuma fatura com o id ${batchId}.`, {
             hint: "Confira os batchId do estado do razão, ou chame list_invoices.",
           });
+        }
+
+        if (
+          proposal !== undefined &&
+          batch.updatedAt.getTime() !== proposal.entityRevision.getTime()
+        ) {
+          return refused(
+            "proposta_desatualizada",
+            "A fatura mudou depois que o registro foi preparado; nada foi gravado.",
+            { hint: "Prepare uma nova proposta e confira os valores atuais." },
+          );
         }
 
         // Idempotência: um replay do passo durável não pode confirmar duas
@@ -82,6 +144,37 @@ export default defineTool({
               hint: "Para registrar este documento, proponha um lote novo com propose_batch a partir da extração.",
             },
           );
+        }
+
+        if (proposal !== undefined) {
+          const claimed = await tx
+            .update(financialActionProposals)
+            .set({
+              status: "applied",
+              appliedBy: `human:${userId}`,
+              appliedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(financialActionProposals.id, proposal.id),
+                eq(financialActionProposals.status, "prepared"),
+              ),
+            )
+            .returning({ id: financialActionProposals.id });
+          if (claimed.length === 0) {
+            const [settled] = await tx
+              .select({ receipt: financialActionProposals.receipt })
+              .from(financialActionProposals)
+              .where(eq(financialActionProposals.id, proposal.id))
+              .limit(1);
+            if (settled?.receipt !== null && settled?.receipt !== undefined) {
+              return { ...settled.receipt, alreadyConfirmed: true };
+            }
+            return refused(
+              "proposta_ja_decidida",
+              "Esta proposta já está sendo aplicada ou foi encerrada.",
+            );
+          }
         }
 
         const updated = await tx
@@ -105,12 +198,27 @@ export default defineTool({
           })
           .where(eq(batches.id, batch.id));
 
-        return {
+        const receipt = {
+          actionId: proposal?.id ?? null,
+          mutationId: `batch:${batch.id}:confirmed`,
           batchId: batch.id,
           status: "confirmed" as const,
           confirmedTransactions: updated.length,
           checksumResult: batch.checksumResult,
+          revisionBefore: batch.updatedAt.toISOString(),
+          canUndo: false,
         };
+
+        if (proposal !== undefined) {
+          await tx
+            .update(financialActionProposals)
+            .set({
+              receipt,
+            })
+            .where(eq(financialActionProposals.id, proposal.id));
+        }
+
+        return receipt;
       },
       db,
     );

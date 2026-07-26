@@ -107,7 +107,13 @@ export function ArtifactModal({
  * associado, e é o único caminho para o artefato no celular. Abre a coluna à
  * direita na web e a modal no telefone — a decisão de qual é do `Chat`.
  */
-export function ArtifactLink({ onOpen }: { onOpen: () => void }) {
+export function ArtifactLink({
+  onOpen,
+  label = "Ver detalhes",
+}: {
+  onOpen: () => void;
+  label?: string;
+}) {
   return (
     <button
       type="button"
@@ -115,7 +121,7 @@ export function ArtifactLink({ onOpen }: { onOpen: () => void }) {
       className="clara-link mt-3 inline-flex items-center gap-1.5 text-sm"
     >
       <PanelRightOpen className="size-4" aria-hidden="true" />
-      Ver artefato
+      {label}
     </button>
   );
 }

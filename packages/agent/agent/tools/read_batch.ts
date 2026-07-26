@@ -1,14 +1,19 @@
 import { getDb } from "@clara-financas/db";
 import { batches, documents, transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import { formatCents, type ChecksumReport } from "@clara-financas/ledger";
+import {
+  formatCents,
+  formatInvoiceLabel,
+  type ChecksumReport,
+} from "@clara-financas/ledger";
 import { and, asc, eq } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { categoryLabel, loadCategoryLabels } from "../lib/categories";
 import { notFound } from "../lib/errors";
-import { requireTenantCaller } from "../lib/tenant";
+import { setInvoiceFocus } from "../lib/invoice-focus";
+import { requireSessionCaller } from "../lib/tenant";
 
 /**
  * Abrir uma fatura e ver o que está dentro dela.
@@ -38,7 +43,7 @@ export default defineTool({
       ),
   }),
   async execute(input, ctx) {
-    const { tenantId } = requireTenantCaller(ctx);
+    const { tenantId, sessionId } = requireSessionCaller(ctx);
 
     const found = await forTenant(
       tenantId,
@@ -56,7 +61,6 @@ export default defineTool({
             extractedTotal: batches.extractedTotal,
             checksumResult: batches.checksumResult,
             checksumReport: batches.checksumReport,
-            filename: documents.filename,
             issuer: documents.issuer,
           })
           .from(batches)
@@ -84,6 +88,10 @@ export default defineTool({
     }
 
     const { batch, rows } = found;
+    const focused = await setInvoiceFocus(tenantId, sessionId, batch.batchId);
+    if (!focused) {
+      throw new Error("A sessão Eve não estava persistida para guardar o foco da fatura.");
+    }
     const report = batch.checksumReport as ChecksumReport | null;
     const suspects = new Set((report?.suspectItems ?? []).map((item) => item.transactionId));
     const labels = await loadCategoryLabels(tenantId);
@@ -93,7 +101,7 @@ export default defineTool({
     return {
       batchId: batch.batchId,
       documentId: batch.documentId,
-      filename: batch.filename,
+      invoiceLabel: formatInvoiceLabel(batch),
       issuer: batch.issuer,
       // O estado decide o que é possível fazer, então ele vem primeiro e
       // explicado: rascunho se corrige com edit_proposed_batch; registrado
@@ -115,7 +123,11 @@ export default defineTool({
               extractedTotalCents: report.extractedTotal,
               differenceCents: report.difference,
               differenceFormatted:
-                report.difference === null ? null : formatCents(Math.abs(report.difference)),
+                report.difference === null ? null : formatCents(report.difference),
+              requiredAdjustmentCents:
+                report.difference === null ? null : -report.difference,
+              requiredAdjustmentFormatted:
+                report.difference === null ? null : formatCents(-report.difference),
               suspectItems: report.suspectItems,
             },
       transactionCount: rows.length,

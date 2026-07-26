@@ -36,6 +36,24 @@ describe("parseView", () => {
     assert.equal(view, null);
   });
 
+  it("recusa centavos crus no texto de uma métrica financeira", () => {
+    const view = parseView({
+      kind: "metric",
+      title: "Total da fatura",
+      metric: { label: "Total", text: "5000000" },
+    });
+    assert.equal(view, null);
+  });
+
+  it("aceita contagem inteira no texto de uma métrica não financeira", () => {
+    const view = parseView({
+      kind: "metric",
+      title: "Assinaturas",
+      metric: { label: "Assinaturas", text: "6" },
+    });
+    assert.equal(view?.kind, "metric");
+  });
+
   it("recusa breakdown sem linha alguma", () => {
     assert.equal(parseView({ kind: "breakdown", title: "Composição", rows: [] }), null);
   });
@@ -205,6 +223,21 @@ describe("parseViewResult", () => {
       metric: { label: "Total", amount: 8421, transactionIds: ["t1"] },
     });
     assert.ok(result.ok);
+  });
+
+  it("recusa checksum aritmeticamente contraditório", () => {
+    const result = parseViewResult({
+      kind: "checksum",
+      title: "Conferência",
+      batchId: "bat_1",
+      declaredTotal: 84_392,
+      extractedTotal: 0,
+      difference: 0,
+      result: "match",
+      rows: [],
+    });
+    assert.equal(result.ok, false);
+    assert.ok(!result.ok && result.issues.some((issue) => issue.includes("difference")));
   });
 });
 
