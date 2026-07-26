@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { MarkAlertsRead } from "@/components/mark-alerts-read";
 import { loadAgenda } from "@/lib/agenda";
 import { getTenantContext } from "@/lib/tenant";
 
@@ -55,6 +56,8 @@ export default async function AgendaPage() {
           acordou sozinha e deixou dito. */}
       {notifications.length > 0 ? (
         <section className="mb-10">
+          {/* Ver é ler: os avisos exibidos são marcados, e o badge apaga. */}
+          <MarkAlertsRead ids={notifications.map((notification) => notification.id)} />
           <p className="clara-eyebrow mb-4">A Clara te avisou</p>
           <ul className="space-y-3">
             {notifications.map((notification) => (
