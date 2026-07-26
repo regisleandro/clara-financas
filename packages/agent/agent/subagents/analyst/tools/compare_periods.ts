@@ -3,6 +3,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { categoryLabel, loadCategoryLabels } from "../../../lib/categories";
+import { toolError } from "../../../lib/errors";
 import { optionalText } from "../../../lib/schema";
 import { requireTenantCaller } from "../../../lib/tenant";
 import { ledgerCoverage, loadLedger } from "../../../lib/ledger-query";
@@ -43,11 +44,14 @@ export default defineTool({
     if (!currentIsSet || !previousIsSet) {
       // Falhar com instrução é melhor que comparar contra um recorte vazio e
       // devolver uma variação de 100% que o modelo apresentaria como fato.
-      return {
-        error: "recorte_incompleto" as const,
-        message:
-          "Comparison needs BOTH sides. Pass currentBatchId + previousBatchId (preferred), or currentFrom/currentTo + previousFrom/previousTo. The invoices available are in the ledger state.",
-      };
+      return toolError(
+        "recorte_incompleto",
+        "A comparação precisa dos DOIS lados do recorte — nada foi comparado.",
+        {
+          hint: "Passe currentBatchId + previousBatchId (preferido), ou currentFrom/currentTo + previousFrom/previousTo. As faturas disponíveis estão no estado do razão.",
+          retryable: true,
+        },
+      );
     }
 
     const [current, previous] = await Promise.all([

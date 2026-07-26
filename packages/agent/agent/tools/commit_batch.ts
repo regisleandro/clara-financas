@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
+import { notFound, refused } from "../lib/errors";
 import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
 
 /**
@@ -61,7 +62,11 @@ export default defineTool({
           .where(and(eq(batches.id, input.batchId), eq(batches.tenantId, tenantId)))
           .limit(1);
 
-        if (!batch) return { error: "lote não encontrado" as const };
+        if (!batch) {
+          return notFound("lote_nao_encontrado", `Nenhuma fatura com o id ${input.batchId}.`, {
+            hint: "Confira os batchId do estado do razão, ou chame list_invoices.",
+          });
+        }
 
         // Idempotência: um replay do passo durável não pode confirmar duas
         // vezes. O trigger do banco também barraria, mas falhar aqui dá uma
@@ -70,7 +75,13 @@ export default defineTool({
           return { batchId: batch.id, status: "confirmed" as const, alreadyConfirmed: true };
         }
         if (batch.status === "rejected") {
-          return { error: "este lote foi rejeitado e não pode ser registrado" as const };
+          return refused(
+            "lote_ja_decidido",
+            "Esta fatura foi descartada e não pode ser registrada.",
+            {
+              hint: "Para registrar este documento, proponha um lote novo com propose_batch a partir da extração.",
+            },
+          );
         }
 
         const updated = await tx

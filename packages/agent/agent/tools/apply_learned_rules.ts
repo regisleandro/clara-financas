@@ -10,6 +10,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
+import { toolError } from "../lib/errors";
 import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
 
 /**
@@ -122,10 +123,18 @@ export default defineTool({
           expected.length !== actual.length ||
           expected.some((id, index) => id !== actual[index])
         ) {
+          // Recuperável POR DESENHO: o guard recusando é o sistema funcionando.
+          // Na forma plana antiga, a interface pintava este retorno de vermelho
+          // — a pessoa via "falhou" no exato momento em que a proteção agiu.
           return {
-            error: "alcance_alterado" as const,
-            message:
-              "O alcance mudou desde a simulação. Rode dryRun novamente e abra uma nova decisão.",
+            ...toolError(
+              "alcance_alterado",
+              "O alcance da regra mudou desde a simulação — nada foi aplicado.",
+              {
+                hint: "Rode apply_learned_rules com dryRun=true de novo e abra uma nova decisão com os ids atuais.",
+                retryable: true,
+              },
+            ),
             expectedCount: expected.length,
             actualCount: actual.length,
           };

@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
+import { notFound, refused, toolError } from "../../../lib/errors";
 import { requireTenantCaller } from "../../../lib/tenant";
 import { extractPdfText, PdfPasswordRequiredError } from "../../../lib/pdf";
 
@@ -40,14 +41,19 @@ export default defineTool({
       const secret = process.env.AGENT_TOKEN_SECRET;
       if (!secret) throw new Error("AGENT_TOKEN_SECRET não configurado");
 
+      const invalidCredential = () =>
+        refused("credencial_invalida", "O token de senha não é válido para este documento.", {
+          hint: "Peça a senha de novo com ask_question e allowFreeform — o token expira em minutos e não se reaproveita.",
+        });
+
       try {
         const sealed = await openSealedInput(input.passwordToken, secret);
         if (sealed.tenantId !== tenantId || sealed.purpose !== "pdf_password") {
-          return { error: "credencial_invalida" as const };
+          return invalidCredential();
         }
         password = sealed.value;
       } catch {
-        return { error: "credencial_invalida" as const };
+        return invalidCredential();
       }
     }
 
@@ -67,7 +73,9 @@ export default defineTool({
     if (!document) {
       // Não distinguimos "não existe" de "é de outro tenant": a diferença
       // vazaria a existência de documentos alheios.
-      return { error: "documento não encontrado" as const };
+      return notFound("documento_nao_encontrado", "Nenhum documento com esse id.", {
+        hint: "Use o documentId exatamente como veio na requisição do coordenador.",
+      });
     }
 
     try {
@@ -86,11 +94,10 @@ export default defineTool({
       };
     } catch (error) {
       if (error instanceof PdfPasswordRequiredError) {
-        return {
-          error: "senha_necessaria" as const,
-          message:
-            "This PDF is password-protected. Ask the person for the password before retrying — do not guess.",
-        };
+        return toolError("senha_necessaria", "Este PDF é protegido por senha.", {
+          hint: "Devolva o aviso ao coordenador: a senha chega por ask_question protegida, nunca em texto puro. Não adivinhe.",
+          retryable: true,
+        });
       }
       throw error;
     }
