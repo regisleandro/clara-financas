@@ -64,6 +64,26 @@ describe("propostas financeiras persistidas", () => {
     assert.equal(registrationReplay.alreadyConfirmed, true);
     assert.equal(registrationReplay.actionId, registration.proposalId);
 
+    // O caso do laço em produção: o modelo não tinha um transactionId à mão e
+    // ofereceu o id da fatura. Isso é metadado — descartá-lo é a resposta, e
+    // recusar a proposta inteira deixava a divergência aberta para sempre.
+    const withBogusTarget = (await prepareInvoiceResolution.execute(
+      {
+        batchId: draft.batchId,
+        targetTransactionId: draft.batchId,
+        reason: "Arredondamento sem lançamento culpado.",
+      },
+      ctx,
+    )) as {
+      proposalId: string;
+      adjustmentCents: number;
+      targetTransactionId: null;
+      targetIgnored: { requestedId: string; reason: string } | null;
+    };
+    assert.equal(withBogusTarget.adjustmentCents, -500);
+    assert.equal(withBogusTarget.targetTransactionId, null);
+    assert.equal(withBogusTarget.targetIgnored?.requestedId, draft.batchId);
+
     const proposal = (await prepareInvoiceResolution.execute(
       {
         batchId: draft.batchId,

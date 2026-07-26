@@ -45,5 +45,41 @@ describe("contratos de interação dos prompts", () => {
     assert.match(prompt, /resolve_invoice_reference\(latest\)/);
     assert.match(prompt, /resolve_invoice_reference\(next_with_divergence\)/);
     assert.match(prompt, /Never choose a batch.+transcript/is);
+    assert.match(prompt, /idempotent/i);
+    assert.match(prompt, /skipActive/);
+  });
+
+  it("o resultado de ferramenta vence o estado lido no início do turno", async () => {
+    const prompt = await read("../agent/instructions.md");
+    assert.match(prompt, /tool result from this turn always beats/i);
+    assert.match(prompt, /activeInvoiceAtTurnStart/);
+
+    const snapshot = await read("../agent/lib/snapshot.ts");
+    assert.match(snapshot, /PRECEDÊNCIA/);
+    assert.match(snapshot, /activeInvoiceAtTurnStart/);
+  });
+
+  it("o estado do razão não oferece id de lançamento", async () => {
+    const prompt = await read("../agent/instructions.md");
+    assert.match(prompt, /No id in that block is an entry id/i);
+
+    const snapshot = await read("../agent/lib/snapshot.ts");
+    assert.match(snapshot, /TIPO DOS IDS/);
+    assert.match(snapshot, /só existe no retorno de `read_batch`/);
+  });
+
+  it("alvo inválido não cancela o fechamento da divergência", async () => {
+    const prepare = await read("../agent/tools/prepare_invoice_resolution.ts");
+    assert.match(prepare, /is IGNORED and reported back in targetIgnored/);
+    assert.doesNotMatch(prepare, /lancamento_nao_encontrado/);
+
+    const prompt = await read("../agent/instructions.md");
+    assert.match(prompt, /the tool\s+ignores it and returns `targetIgnored`/is);
+  });
+
+  it("identificador técnico não aparece para a pessoa", async () => {
+    const prompt = await read("../agent/instructions.md");
+    assert.match(prompt, /Identifiers are never shown to the person/i);
+    assert.match(prompt, /`batchId`, `documentId`,\s+`transactionId` nor `proposalId`/is);
   });
 });

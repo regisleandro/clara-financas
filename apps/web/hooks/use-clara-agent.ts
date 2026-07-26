@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { inflightTurnId } from "@/lib/activity";
 import { resolveAnswered, type AnsweredRequest } from "@/lib/answered-state";
 import { uploadDocument } from "@/lib/document-upload";
-import { saveSession, type StoredSession } from "@/lib/session-store";
+import { armResume, clearResume, saveSession, type StoredSession } from "@/lib/session-store";
 import { findPendingRequest, resolveApprovalOption } from "@clara-financas/views/hitl";
 
 /**
@@ -331,6 +331,27 @@ export function useClaraAgent({
     if (events.length === 0) return;
     saveSession(tenantKey, cursor, events, title);
   }, [agent.status, tenantKey]);
+
+  /**
+   * O bilhete de retomada, armado só enquanto o turno está no ar.
+   *
+   * A tela da conversa não é um lugar onde se "fica": ir a /transacoes desmonta
+   * este componente, e voltar remonta do zero. Sair com a Clara trabalhando é a
+   * única situação em que voltar precisa cair onde estava — em qualquer outra,
+   * chegar aqui começa limpo (ver `resumeTarget`).
+   *
+   * Sem função de limpeza no efeito, de propósito: a limpeza roda na
+   * desmontagem, que é exatamente a saída que precisamos registrar. Quem
+   * desarma é o turno assentando com a tela ainda montada.
+   */
+  const sessionId = agent.session.sessionId;
+  useEffect(() => {
+    if (busy) {
+      if (sessionId !== undefined && sessionId !== "") armResume(tenantKey, sessionId);
+      return;
+    }
+    clearResume(tenantKey);
+  }, [busy, sessionId, tenantKey]);
 
   // Um reload durante streaming não deve apagar o turno visual. A gravação é
   // atrasada e coalescida: preserva a retomada sem escrever no storage a cada
