@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { findPresentedView } from "./stream";
+import { findMessageView, findPresentedView } from "./stream";
 
 /**
  * Estes testes cobrem exatamente os erros que a inferência anterior cometia em
@@ -88,5 +88,50 @@ describe("findPresentedView", () => {
       requested(view("Válido")),
     ]);
     assert.equal(found?.title, "Válido");
+  });
+});
+
+const viewPart = (input: unknown, toolName = "present_view") => ({
+  type: "dynamic-tool",
+  toolName,
+  input,
+});
+
+describe("findMessageView", () => {
+  it("encontra o painel gravado na mensagem", () => {
+    const found = findMessageView({
+      id: "m1",
+      role: "assistant",
+      parts: [{ type: "text", text: "Aqui está" }, viewPart(view("Gastos de junho"))],
+    });
+    assert.equal(found?.title, "Gastos de junho");
+  });
+
+  it("mensagem sem painel não tem artefato", () => {
+    const found = findMessageView({ id: "m1", role: "assistant", parts: [{ type: "text" }] });
+    assert.equal(found, null);
+  });
+
+  it("ignora outras ferramentas gravadas na mensagem", () => {
+    const found = findMessageView({ parts: [viewPart(view("x"), "commit_batch")] });
+    assert.equal(found, null);
+  });
+
+  it("payload inválido não vira painel", () => {
+    const found = findMessageView({ parts: [viewPart({ kind: "metric", title: "" })] });
+    assert.equal(found, null);
+  });
+
+  it("dentro da mensagem, o último painel vence", () => {
+    const found = findMessageView({
+      parts: [viewPart(view("Primeiro")), viewPart(view("Correção"))],
+    });
+    assert.equal(found?.title, "Correção");
+  });
+
+  it("aguenta mensagem malformada sem estourar", () => {
+    assert.equal(findMessageView(null), null);
+    assert.equal(findMessageView({ parts: "não é lista" }), null);
+    assert.equal(findMessageView({}), null);
   });
 });

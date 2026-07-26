@@ -18,15 +18,21 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { InputGroupAddon } from "@/components/ui/input-group";
-import { ArtifactPanel } from "@/components/artifact-panel";
+import {
+  ArtifactAside,
+  ArtifactLink,
+  ArtifactModal,
+  type ActiveArtifact,
+} from "@/components/artifact-surface";
 import { ChatHeader, ChatWelcome, type Starter } from "@/components/chat-welcome";
 import { DecisionCard } from "@/components/decision-card";
 import { ExecutionTrace } from "@/components/execution-trace";
-import { ViewPanel } from "@/components/view-panel";
 import { deriveActivity } from "@/lib/activity";
 import { batchArtifact, type BatchProposal } from "@/lib/artifact";
-import { findOpenBatchProposal, findPendingRequest } from "@clara-financas/views/hitl";
-import { findPresentedView } from "@clara-financas/views/stream";
+import { useMediaQuery } from "@/lib/use-media-query";
+import type { View } from "@clara-financas/views";
+import { findOpenBatchProposalLocation, findPendingRequest } from "@clara-financas/views/hitl";
+import { findMessageView, findPresentedView } from "@clara-financas/views/stream";
 
 /**
  * A conversa, em duas colunas.
@@ -71,7 +77,24 @@ export function Chat({
   const fileRef = useRef<HTMLInputElement>(null);
   const [answered, setAnswered] = useState<boolean | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [artifactOpen, setArtifactOpen] = useState(true);
+
+  /**
+   * Qual artefato está aberto na tela, ou `null` (fechado).
+   *
+   * `latest` = o mais recente (a coluna reabre sozinha quando a Clara produz um
+   * artefato novo). `view`/`batch` = o de UMA resposta específica, aberto pelo
+   * link que a acompanha. Guardar uma referência, e não o conteúdo, mantém o
+   * painel reativo: se o lote é registrado ou a conversa é reiniciada, o alvo
+   * some e o painel fecha sozinho.
+   */
+  const [selection, setSelection] = useState<
+    { type: "latest" } | { type: "batch" } | { type: "view"; id: string } | null
+  >(null);
+
+  // No celular o artefato é uma modal; no desktop, a coluna fixa à direita. O
+  // Radix trava a rolagem de fundo mesmo com o conteúdo escondido por CSS, então
+  // a modal só pode MONTAR aberta abaixo de `lg`.
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   const bearer = useCallback(async () => {
     const cached = tokenRef.current;
@@ -106,7 +129,8 @@ export function Chat({
 
   function send(message: string) {
     setAnswered(null);
-    setArtifactOpen(true);
+    // Turno novo: a coluna volta a seguir o artefato mais recente.
+    setSelection({ type: "latest" });
     void agent.send({ message });
   }
   sendRef.current = send;
@@ -132,11 +156,16 @@ export function Chat({
     }
   }
 
-  // `findOpenBatchProposal` some assim que o lote é registrado. Antes o cartão
-  // sobrevivia ao commit, continuando a oferecer "Registrar fatura" sobre algo
-  // que já entrou no razão — pior que um botão inútil, porque sugere que nada
-  // aconteceu e convida a registrar de novo.
-  const proposal = findOpenBatchProposal(agent.data.messages) as BatchProposal | null;
+  // `findOpenBatchProposalLocation` some assim que o lote é registrado. Antes o
+  // cartão sobrevivia ao commit, continuando a oferecer "Registrar fatura" sobre
+  // algo que já entrou no razão — pior que um botão inútil, porque sugere que
+  // nada aconteceu e convida a registrar de novo. O `messageId` diz em qual
+  // resposta pendurar o link "Ver artefato".
+  const proposalLocation = useMemo(
+    () => findOpenBatchProposalLocation(agent.data.messages),
+    [agent.data.messages],
+  );
+  const proposal = (proposalLocation?.output ?? null) as BatchProposal | null;
   const canApprove = pending?.toolName === "commit_batch" && answered === null;
 
   /**
@@ -185,11 +214,57 @@ export function Chat({
     });
   }, [proposal, busy, canApprove, answered]);
 
-  // Painel novo reabre a coluna: a pessoa acabou de pedir algo que o produz.
+  /**
+   * O artefato de CADA resposta, indexado pela mensagem que o produziu.
+   *
+   * É o que sustenta o link "Ver artefato" só onde há artefato: um painel
+   * (`present_view`, lido das partes da mensagem) ou a conferência de um lote. A
+   * conferência tem precedência quando as duas caem na mesma resposta — é ela
+   * que carrega a decisão.
+   */
+  const messageArtifacts = useMemo(() => {
+    const map = new Map<string, { kind: "view"; view: View } | { kind: "batch" }>();
+    for (const message of agent.data.messages) {
+      if (message.role === "user") continue;
+      const view = findMessageView(message);
+      if (view !== null) map.set(message.id, { kind: "view", view });
+    }
+    if (proposalLocation?.messageId != null && proposal !== null) {
+      map.set(proposalLocation.messageId, { kind: "batch" });
+    }
+    return map;
+  }, [agent.data.messages, proposalLocation?.messageId, proposal]);
+
+  /**
+   * O que a seleção aponta, resolvido para o conteúdo a desenhar — ou `null`,
+   * que fecha painel e modal de uma vez. Reavaliar aqui é o que faz o painel
+   * fechar sozinho quando o alvo deixa de existir (lote registrado, reset).
+   */
+  const active = useMemo<ActiveArtifact | null>(() => {
+    if (selection === null) return null;
+    const batch: ActiveArtifact | null = artifact !== null ? { kind: "batch", data: artifact } : null;
+    if (selection.type === "batch") return batch;
+    if (selection.type === "latest") {
+      return batch ?? (presented !== null ? { kind: "view", view: presented } : null);
+    }
+    const found = messageArtifacts.get(selection.id);
+    if (found === undefined) return null;
+    return found.kind === "batch" ? batch : { kind: "view", view: found.view };
+  }, [selection, artifact, presented, messageArtifacts]);
+
+  // Painel novo reabre a coluna, seguindo o artefato mais recente: a pessoa
+  // acabou de pedir algo que o produz.
   const openKey = artifact?.title ?? presented?.title ?? null;
   useEffect(() => {
-    if (openKey !== null) setArtifactOpen(true);
+    if (openKey !== null) setSelection({ type: "latest" });
   }, [openKey]);
+
+  const panelOpen = active !== null;
+  const openArtifact = (message: { id: string; role: string }) => {
+    const found = messageArtifacts.get(message.id);
+    if (found === undefined) return;
+    setSelection(found.kind === "batch" ? { type: "batch" } : { type: "view", id: message.id });
+  };
 
   return (
     <div className="flex">
@@ -204,11 +279,11 @@ export function Chat({
             <ChatHeader
               onReset={isWelcome ? null : () => agent.reset()}
               onToggleArtifact={
-                artifact === null && presented === null
+                !panelOpen && artifact === null && presented === null
                   ? null
-                  : () => setArtifactOpen((open) => !open)
+                  : () => setSelection(panelOpen ? null : { type: "latest" })
               }
-              artifactOpen={artifactOpen}
+              artifactOpen={panelOpen}
             />
           </div>
         </div>
@@ -234,14 +309,21 @@ export function Chat({
                   .map((part) => (part.type === "text" ? part.text : ""))
                   .join("")
                   .trim();
-                if (text === "") return null;
+                // O link ACOMPANHA o artefato: só as respostas que têm um
+                // aparecem com "Ver artefato" — e uma resposta que só desenhou um
+                // painel, sem texto, ainda precisa do link para alcançá-lo.
+                const hasArtifact = message.role !== "user" && messageArtifacts.has(message.id);
+                if (text === "" && !hasArtifact) return null;
 
                 return (
                   <Message key={message.id} from={message.role}>
                     <MessageContent>
                       {/* MessageResponse é o renderizador de markdown; texto
                           cru em MessageContent deixava `**negrito**` à mostra. */}
-                      <MessageResponse>{text}</MessageResponse>
+                      {text !== "" ? <MessageResponse>{text}</MessageResponse> : null}
+                      {hasArtifact ? (
+                        <ArtifactLink onOpen={() => openArtifact(message)} />
+                      ) : null}
                     </MessageContent>
                   </Message>
                 );
@@ -329,13 +411,18 @@ export function Chat({
         </div>
       </div>
 
-      {/* A conferência tem precedência: quando há decisão pendente sobre um
-          lote, é ela que precisa estar na tela, não a análise anterior. */}
-      {artifactOpen && artifact !== null ? (
-        <ArtifactPanel data={artifact} onClose={() => setArtifactOpen(false)} />
-      ) : artifactOpen && presented !== null ? (
-        <ViewPanel view={presented} onClose={() => setArtifactOpen(false)} />
+      {/* Mesmo artefato, duas molduras: coluna fixa à direita no desktop
+          (escondida por CSS abaixo de `lg`) e modal em tela cheia no celular. */}
+      {active !== null ? (
+        <ArtifactAside active={active} onClose={() => setSelection(null)} />
       ) : null}
+      <ArtifactModal
+        active={active}
+        open={panelOpen && !isDesktop}
+        onOpenChange={(open) => {
+          if (!open) setSelection(null);
+        }}
+      />
 
       <input
         ref={fileRef}

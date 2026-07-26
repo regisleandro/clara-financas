@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { findCommittedBatchIds, findOpenBatchProposal, findPendingRequest } from "./hitl";
+import {
+  findCommittedBatchIds,
+  findOpenBatchProposal,
+  findOpenBatchProposalLocation,
+  findPendingRequest,
+} from "./hitl";
 
 /**
  * O caso que trava a tela e que não era coberto: um pedido de aprovação já
@@ -127,6 +132,33 @@ describe("findOpenBatchProposal", () => {
       msg({ type: "dynamic-tool", toolName: "commit_batch", output: { error: "falhou" } }),
     ]);
     assert.equal(found?.batchId, "bat_1");
+  });
+});
+
+describe("findOpenBatchProposalLocation", () => {
+  const proposal = (batchId: string) => ({
+    type: "dynamic-tool",
+    toolName: "propose_batch",
+    output: { batchId, checksum: { result: "match", extractedTotal: 100 } },
+  });
+  const at = (id: string, ...parts: unknown[]) => ({ id, role: "assistant", parts });
+
+  it("diz em qual mensagem o lote aberto nasceu", () => {
+    const found = findOpenBatchProposalLocation([
+      at("m1", { type: "text" }),
+      at("m2", proposal("bat_1")),
+    ]);
+    assert.equal(found?.messageId, "m2");
+    assert.equal(found?.output.batchId, "bat_1");
+  });
+
+  it("messageId é null quando a mensagem não tem id", () => {
+    const found = findOpenBatchProposalLocation([{ role: "assistant", parts: [proposal("bat_1")] }]);
+    assert.equal(found?.messageId, null);
+  });
+
+  it("sem proposta aberta, não há localização", () => {
+    assert.equal(findOpenBatchProposalLocation([]), null);
   });
 });
 
