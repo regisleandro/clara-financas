@@ -1,7 +1,11 @@
 import { getDb } from "@clara-financas/db";
 import { batches, documents, transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import { formatCents, type ChecksumReport } from "@clara-financas/ledger";
+import {
+  formatCents,
+  formatInvoiceLabel,
+  type ChecksumReport,
+} from "@clara-financas/ledger";
 import { and, asc, eq } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
@@ -57,7 +61,6 @@ export default defineTool({
             extractedTotal: batches.extractedTotal,
             checksumResult: batches.checksumResult,
             checksumReport: batches.checksumReport,
-            filename: documents.filename,
             issuer: documents.issuer,
           })
           .from(batches)
@@ -98,7 +101,7 @@ export default defineTool({
     return {
       batchId: batch.batchId,
       documentId: batch.documentId,
-      filename: batch.filename,
+      invoiceLabel: formatInvoiceLabel(batch),
       issuer: batch.issuer,
       // O estado decide o que é possível fazer, então ele vem primeiro e
       // explicado: rascunho se corrige com edit_proposed_batch; registrado

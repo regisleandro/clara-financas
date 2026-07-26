@@ -225,9 +225,19 @@ function rankSuspects(
     }));
 }
 
-/** Formata centavos em BRL para exibição. Nunca usado em cálculo. */
+const BRL_FORMATTER = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/** Formata centavos em `R$ #.###,##` para exibição. Nunca usado em cálculo. */
 export function formatCents(cents: number): string {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-    cents / 100,
-  );
+  if (!Number.isInteger(cents)) {
+    throw new TypeError("formatCents exige um valor inteiro em centavos.");
+  }
+  // `Intl` usa NBSP entre a moeda e o número. Visualmente é igual, mas
+  // normalizar para espaço deixa cópia, snapshot e testes no mesmo padrão.
+  return BRL_FORMATTER.format(cents / 100).replace(/\u00a0/g, " ");
 }

@@ -126,7 +126,6 @@ export function ChatMessage({
 
       case "file": {
         flushText();
-        const filename = typeof part.filename === "string" ? part.filename : "documento";
         rendered.push(
           <Attachment
             key={`file-${index}`}
@@ -137,7 +136,7 @@ export function ChatMessage({
               <FileTextIcon aria-hidden="true" />
             </AttachmentMedia>
             <AttachmentContent>
-              <AttachmentTitle>{filename}</AttachmentTitle>
+              <AttachmentTitle>Fatura enviada</AttachmentTitle>
               <AttachmentDescription>Documento PDF</AttachmentDescription>
             </AttachmentContent>
           </Attachment>,

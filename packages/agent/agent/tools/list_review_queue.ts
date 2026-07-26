@@ -56,7 +56,6 @@ export default defineTool({
           .select({
             transaction: transactions,
             issuer: documents.issuer,
-            filename: documents.filename,
           })
           .from(transactions)
           .leftJoin(documents, eq(transactions.sourceDocumentId, documents.id))
@@ -73,7 +72,7 @@ export default defineTool({
 
     const wanted = input.reasons;
     const items = found.rows
-      .map(({ transaction, issuer, filename }) => ({
+      .map(({ transaction, issuer }) => ({
         id: transaction.id,
         date: transaction.date,
         // A descrição CRUA, e não o palpite da Clara: é contra ela que a
@@ -89,7 +88,6 @@ export default defineTool({
         confidence: transaction.extractionConfidence,
         batchId: transaction.batchId,
         issuer,
-        filename,
         reasons: reviewReasonsFor(transaction),
       }))
       .filter(

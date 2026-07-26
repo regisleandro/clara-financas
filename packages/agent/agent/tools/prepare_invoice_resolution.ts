@@ -4,7 +4,11 @@ import { getDb } from "@clara-financas/db";
 import { financialActionProposals } from "@clara-financas/db/schema/financial-action";
 import { batches, documents, transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import { formatCents, type ChecksumReport } from "@clara-financas/ledger";
+import {
+  formatCents,
+  formatInvoiceLabel,
+  type ChecksumReport,
+} from "@clara-financas/ledger";
 import { and, eq } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
@@ -51,7 +55,6 @@ export default defineTool({
             updatedAt: batches.updatedAt,
             checksumReport: batches.checksumReport,
             issuer: documents.issuer,
-            filename: documents.filename,
           })
           .from(batches)
           .innerJoin(documents, eq(documents.id, batches.documentId))
@@ -107,6 +110,7 @@ export default defineTool({
         const proposalId = `act_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
         const adjustmentCents = plan.adjustmentCents;
         const expiresAt = new Date(Date.now() + expiresInMinutes * 60_000);
+        const invoiceLabel = formatInvoiceLabel(batch);
         const payload = {
           adjustmentCents,
           differenceBeforeCents: plan.differenceBeforeCents,
@@ -115,7 +119,7 @@ export default defineTool({
           targetDescription: target?.originalDescription ?? null,
           reason: input.reason,
           issuer: batch.issuer,
-          filename: batch.filename,
+          invoiceLabel,
           effectiveDate: target?.date ?? batch.periodEnd ?? batch.dueDate,
         };
 
@@ -138,7 +142,7 @@ export default defineTool({
           entityRevision: batch.updatedAt.toISOString(),
           expiresAt: expiresAt.toISOString(),
           issuer: batch.issuer,
-          filename: batch.filename,
+          invoiceLabel,
           targetTransactionId: target?.id ?? null,
           targetDescription: target?.originalDescription ?? null,
           differenceBeforeCents: plan.differenceBeforeCents,

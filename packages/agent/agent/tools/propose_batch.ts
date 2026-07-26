@@ -94,6 +94,9 @@ export default defineTool({
       // O emissor volta no retorno porque é dele que a tela tira o título do
       // cartão. Calculado aqui e não devolvido é o mesmo que não calculado.
       issuer: result.issuer,
+      invoiceLabel: result.invoiceLabel,
+      periodEnd: result.periodEnd,
+      dueDate: result.dueDate,
       transactionCount: result.transactionCount,
       checksum: result.checksum,
       ...(result.duplicateSuspects !== undefined

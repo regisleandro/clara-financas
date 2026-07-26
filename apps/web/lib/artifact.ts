@@ -1,4 +1,5 @@
 import type { ArtifactData, ArtifactRow } from "@/components/artifact-panel";
+import { formatCents } from "@clara-financas/ledger";
 
 /**
  * Monta o cartão de conferência de um lote.
@@ -9,13 +10,13 @@ import type { ArtifactData, ArtifactRow } from "@/components/artifact-panel";
  * como mandar uma função de callback dentro de um payload.
  */
 
-const brl = (cents: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
-
 export type BatchProposal = {
   batchId: string;
   transactionCount: number;
   issuer?: string | null;
+  invoiceLabel?: string;
+  periodEnd?: string | null;
+  dueDate?: string | null;
   checksum: {
     result: "match" | "mismatch" | "no_declared_total";
     likelyCause?: "rounding" | "item" | "unknown";
@@ -86,16 +87,22 @@ export function batchArtifact(
   const rows: ArtifactRow[] = [
     {
       label: "Total declarado na fatura",
-      value: checksum.declaredTotal === null ? "não declarado" : brl(checksum.declaredTotal),
+      value:
+        checksum.declaredTotal === null
+          ? "não declarado"
+          : formatCents(checksum.declaredTotal),
     },
-    { label: "Total das transações lidas", value: brl(checksum.extractedTotal) },
+    {
+      label: "Total das transações lidas",
+      value: formatCents(checksum.extractedTotal),
+    },
   ];
 
   if (checksum.difference !== null && checksum.difference !== 0) {
     rows.push({
       label: "Diferença",
       note: checksum.likelyCause ? CAUSE_NOTE[checksum.likelyCause] : undefined,
-      value: brl(checksum.difference),
+      value: formatCents(checksum.difference),
       emphasis: true,
     });
   }
@@ -106,8 +113,8 @@ export function batchArtifact(
     const { area, declared, extracted } = checksum.localizedIn;
     rows.push({
       label: area === "fees" ? "Encargos e IOF" : "Compras",
-      note: `a fatura declara ${brl(declared)}; as linhas somam ${brl(extracted)}`,
-      value: brl(extracted - declared),
+      note: `a fatura declara ${formatCents(declared)}; as linhas somam ${formatCents(extracted)}`,
+      value: formatCents(extracted - declared),
       emphasis: true,
     });
   }
@@ -116,7 +123,7 @@ export function batchArtifact(
     rows.push({
       label: item.reason,
       note: item.page === null ? undefined : `página ${item.page}`,
-      value: brl(item.amount),
+      value: formatCents(item.amount),
     });
   }
 
@@ -128,9 +135,9 @@ export function batchArtifact(
         : "Sem total declarado";
 
   return {
-    title: proposal.issuer ?? "Documento",
+    title: proposal.invoiceLabel ?? proposal.issuer ?? "Fatura",
     metricLabel: checksum.result === "match" ? "Total conferido" : "Total lido",
-    metric: brl(checksum.extractedTotal),
+    metric: formatCents(checksum.extractedTotal),
     note: `${proposal.transactionCount} transações lidas · ${status.toLowerCase()}`,
     listTitle: "Conferência",
     rows,

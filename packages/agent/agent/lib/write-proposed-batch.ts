@@ -5,6 +5,7 @@ import { batches, documents, transactions } from "@clara-financas/db/schema/ledg
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import {
   ProposedBatchSchema,
+  formatInvoiceLabel,
   merchantKey,
   verifyChecksum,
   type ChecksumReport,
@@ -78,6 +79,9 @@ export type ProposedBatchWriteResult =
   | {
       batchId: string;
       issuer: string | null;
+      invoiceLabel: string;
+      periodEnd: string | null;
+      dueDate: string | null;
       transactionCount: number;
       checksum: ChecksumReport;
       duplicateSuspects?: { count: number; sample: DuplicateSuspect[] };
@@ -362,6 +366,9 @@ export async function writeProposedBatch(
   return {
     batchId,
     issuer: batch.issuer,
+    invoiceLabel: formatInvoiceLabel(batch),
+    periodEnd: batch.periodEnd,
+    dueDate: batch.dueDate,
     transactionCount: batch.transactions.length,
     checksum,
     ...(written.suspects.length > 0

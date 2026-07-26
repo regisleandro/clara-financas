@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { formatCents } from "@clara-financas/ledger";
 
 import { nameDocumentIssuer, reopenReview, reviewTransaction } from "@/app/(app)/revisar/actions";
 import {
@@ -35,9 +36,6 @@ import {
  *     pendente. A faixa de concluídos guarda o item em estado local para que
  *     desfazer não dependa de a pessoa lembrar qual era.
  */
-
-const brl = (cents: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
 
 const fullDate = (iso: string) =>
   new Intl.DateTimeFormat("pt-BR", {
@@ -121,7 +119,7 @@ export function ReviewQueue({ queue }: { queue: ReviewQueue }) {
                   <span className="tabular-nums">
                     {batch.difference === null
                       ? "diferença não calculada"
-                      : `${batch.difference > 0 ? "+" : ""}${brl(batch.difference)}`}
+                      : `${batch.difference > 0 ? "+" : ""}${formatCents(batch.difference)}`}
                   </span>
                 </li>
               ))}
@@ -162,7 +160,7 @@ export function ReviewQueue({ queue }: { queue: ReviewQueue }) {
                   className="flex flex-wrap items-center justify-between gap-3 border-t border-black/10 py-3"
                 >
                   <span className="min-w-0 flex-1 truncate">{item.originalDescription}</span>
-                  <span className="tabular-nums">{brl(item.amount)}</span>
+                  <span className="tabular-nums">{formatCents(item.amount)}</span>
                   <button
                     type="button"
                     onClick={() =>
@@ -272,7 +270,7 @@ export function ReviewQueue({ queue }: { queue: ReviewQueue }) {
                     </small>
                   </div>
                   <span className="clara-display-xs shrink-0 tabular-nums">
-                    {brl(item.amount)}
+                    {formatCents(item.amount)}
                   </span>
                 </div>
 

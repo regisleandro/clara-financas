@@ -8,6 +8,7 @@ import {
   ArtifactHeader,
   ArtifactTitle,
 } from "@/components/ai-elements/artifact";
+import { displayArtifactValue } from "@/lib/money";
 
 /**
  * Painel lateral de artefato.
@@ -66,7 +67,7 @@ export function ArtifactPanelInner({
           <div className="min-w-0 rounded-[var(--clara-radius-card)] bg-[var(--clara-fog)] p-7 [container-type:inline-size]">
             <p className="clara-eyebrow">{data.metricLabel}</p>
             <p className="clara-metric mt-3.5 max-w-full break-words [font-size:clamp(2rem,15cqi,4.5rem)] [overflow-wrap:anywhere]">
-              {data.metric}
+              {displayArtifactValue(data.metricLabel, data.metric)}
             </p>
             {data.note !== undefined ? (
               <p className="mt-1.5 text-[var(--clara-graphite)]">{data.note}</p>
@@ -93,7 +94,7 @@ export function ArtifactPanelInner({
                       : "break-all text-right tabular-nums"
                   }
                 >
-                  {row.value}
+                  {displayArtifactValue(row.label, row.value)}
                 </span>
               </li>
             ))}

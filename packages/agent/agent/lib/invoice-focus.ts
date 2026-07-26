@@ -2,6 +2,7 @@ import { getDb } from "@clara-financas/db";
 import { agentSessions } from "@clara-financas/db/schema/agent-session";
 import { batches, documents } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
+import { formatInvoiceLabel } from "@clara-financas/ledger";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 export const INVOICE_REFERENCES = ["active", "latest", "next_with_divergence"] as const;
@@ -11,7 +12,7 @@ type InvoiceFocus = {
   batchId: string;
   documentId: string;
   issuer: string | null;
-  filename: string;
+  invoiceLabel: string;
   status: "proposed" | "confirmed";
   periodStart: string | null;
   periodEnd: string | null;
@@ -83,7 +84,6 @@ export async function resolveInvoiceFocus(
           batchId: batches.id,
           documentId: batches.documentId,
           issuer: documents.issuer,
-          filename: documents.filename,
           status: batches.status,
           periodStart: batches.periodStart,
           periodEnd: batches.periodEnd,
@@ -122,6 +122,7 @@ export async function resolveInvoiceFocus(
 
       return {
         ...selected,
+        invoiceLabel: formatInvoiceLabel(selected),
         status: selected.status as InvoiceFocus["status"],
       };
     },

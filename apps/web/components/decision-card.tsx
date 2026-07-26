@@ -52,6 +52,7 @@ function decisionCopy(
     const checksumResult =
       proposal?.checksum.result ?? asString(actionProposal?.checksumResult);
     const matched = checksumResult === "match";
+    const invoiceLabel = proposal?.invoiceLabel ?? asString(actionProposal?.invoiceLabel);
     return {
       title:
         count == null
@@ -60,13 +61,19 @@ function decisionCopy(
       consequence: "Depois do registro, valor, data e origem não mudam mais.",
       approveLabel: "Registrar fatura",
       denyLabel: "Manter como rascunho",
-      details:
-        total == null
+      details: [
+        invoiceLabel === null || invoiceLabel === undefined
+          ? null
+          : `Fatura: ${invoiceLabel}`,
+        ...(total == null
           ? []
           : [
               formatCents(total),
-              matched ? "O total confere com a fatura" : "A soma não confere com a fatura",
-            ],
+              matched
+                ? "O total confere com a fatura"
+                : "A soma não confere com a fatura",
+            ]),
+      ].filter((value): value is string => value !== null),
       blocked: proposal === null && actionProposal === null,
     };
   }
@@ -193,7 +200,7 @@ function decisionCopy(
   if (pending.toolName === "apply_invoice_resolution") {
     const adjustment = asNumber(actionProposal?.adjustmentCents);
     const difference = asNumber(actionProposal?.differenceBeforeCents);
-    const issuer = asString(actionProposal?.issuer);
+    const invoiceLabel = asString(actionProposal?.invoiceLabel);
     const target = asString(actionProposal?.targetDescription);
     const reason = asString(actionProposal?.reason);
     return {
@@ -206,7 +213,7 @@ function decisionCopy(
       approveLabel: "Aplicar ajuste e reconferir",
       denyLabel: "Manter divergência aberta",
       details: [
-        issuer === null ? null : `Fatura: ${issuer}`,
+        invoiceLabel === null ? null : `Fatura: ${invoiceLabel}`,
         difference === null ? null : `Diferença atual: ${formatCents(difference)}`,
         target === null ? "Escopo: ajuste da fatura" : `Relacionado a: ${target}`,
         reason,

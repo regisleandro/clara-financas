@@ -36,6 +36,24 @@ describe("parseView", () => {
     assert.equal(view, null);
   });
 
+  it("recusa centavos crus no texto de uma métrica financeira", () => {
+    const view = parseView({
+      kind: "metric",
+      title: "Total da fatura",
+      metric: { label: "Total", text: "5000000" },
+    });
+    assert.equal(view, null);
+  });
+
+  it("aceita contagem inteira no texto de uma métrica não financeira", () => {
+    const view = parseView({
+      kind: "metric",
+      title: "Assinaturas",
+      metric: { label: "Assinaturas", text: "6" },
+    });
+    assert.equal(view?.kind, "metric");
+  });
+
   it("recusa breakdown sem linha alguma", () => {
     assert.equal(parseView({ kind: "breakdown", title: "Composição", rows: [] }), null);
   });

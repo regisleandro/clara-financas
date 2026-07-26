@@ -43,7 +43,6 @@ export default defineTool({
         const rows = await tx
           .select({
             id: documents.id,
-            filename: documents.filename,
             issuer: documents.issuer,
             kind: documents.kind,
             uploadedAt: documents.uploadedAt,
@@ -94,7 +93,7 @@ export default defineTool({
           const stagedExtractionId = stagedByDocument.get(row.id);
           return {
             documentId: row.id,
-            filename: row.filename,
+            displayLabel: row.issuer ?? "Documento enviado",
             issuer: row.issuer,
             kind: row.kind,
             uploadedAt: row.uploadedAt.toISOString(),

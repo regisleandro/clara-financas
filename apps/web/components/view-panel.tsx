@@ -6,6 +6,7 @@ import { ArrowDownRight, ArrowUpRight, Check, ChevronDown, Minus, TriangleAlert 
 import { useState } from "react";
 
 import { Provenance } from "@/components/provenance";
+import { displayMetricValue } from "@/lib/money";
 
 import {
   Artifact,
@@ -140,8 +141,7 @@ export function ViewPanelInner({
 
 /** O número herói: cartão próprio, tipografia grande. */
 function Metric({ metric }: { metric: ViewMetric }) {
-  const value =
-    metric.amount !== undefined ? formatCents(metric.amount) : (metric.text ?? "—");
+  const value = displayMetricValue(metric);
 
   return (
     <div className="min-w-0 rounded-[var(--clara-radius-card)] bg-[var(--clara-fog)] p-7 [container-type:inline-size]">

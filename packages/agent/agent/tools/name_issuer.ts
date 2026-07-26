@@ -45,7 +45,7 @@ export default defineTool({
       tenantId,
       async (tx) => {
         const [before] = await tx
-          .select({ id: documents.id, issuer: documents.issuer, filename: documents.filename })
+          .select({ id: documents.id, issuer: documents.issuer })
           .from(documents)
           .where(and(eq(documents.tenantId, tenantId), eq(documents.id, input.documentId)))
           .limit(1);
@@ -70,7 +70,6 @@ export default defineTool({
 
         return {
           documentId: before.id,
-          filename: before.filename,
           previousIssuer: before.issuer,
           issuer: canonical,
           ...(canonical !== issuer

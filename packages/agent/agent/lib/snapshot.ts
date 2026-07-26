@@ -4,6 +4,7 @@ import { commitments } from "@clara-financas/db/schema/commitment";
 import { concepts } from "@clara-financas/db/schema/knowledge";
 import { agentSessions } from "@clara-financas/db/schema/agent-session";
 import { forTenant } from "@clara-financas/db/tenant-scope";
+import { formatInvoiceLabel } from "@clara-financas/ledger";
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
 import { todayInSaoPaulo } from "./dates";
@@ -32,7 +33,7 @@ export type InvoiceSummary = {
   batchId: string;
   documentId: string;
   issuer: string | null;
-  filename: string;
+  invoiceLabel: string;
   status: "proposed" | "confirmed" | "rejected";
   periodStart: string | null;
   periodEnd: string | null;
@@ -83,7 +84,6 @@ export async function loadSnapshot(
           documentId: batches.documentId,
           status: batches.status,
           issuer: documents.issuer,
-          filename: documents.filename,
           periodStart: batches.periodStart,
           periodEnd: batches.periodEnd,
           dueDate: batches.dueDate,
@@ -115,7 +115,6 @@ export async function loadSnapshot(
                 documentId: batches.documentId,
                 status: batches.status,
                 issuer: documents.issuer,
-                filename: documents.filename,
                 periodStart: batches.periodStart,
                 periodEnd: batches.periodEnd,
                 dueDate: batches.dueDate,
@@ -181,7 +180,7 @@ export async function loadSnapshot(
         batchId: row.batchId,
         documentId: row.documentId,
         issuer: row.issuer,
-        filename: row.filename,
+        invoiceLabel: formatInvoiceLabel(row),
         status: row.status,
         periodStart: row.periodStart,
         periodEnd: row.periodEnd,
@@ -214,7 +213,7 @@ export async function loadSnapshot(
  * O snapshot como texto para o modelo.
  *
  * Vai como JSON porque é DADO, não instrução — a mesma fronteira de confiança
- * do padrão de memória multi-tenant do eve. Nome de comerciante e de arquivo
+ * do padrão de memória multi-tenant do eve. Nome de comerciante e metadados
  * são texto que a pessoa controla; embutido em prosa, viraria superfície de
  * injeção.
  */

@@ -57,14 +57,30 @@ const RowSchema = z.object({
 });
 
 /** Um número em destaque, com legenda. É o topo de quase toda resposta. */
-const MetricSchema = z.object({
-  label: z.string().min(1),
-  amount: cents.optional(),
-  /** Usado quando o destaque não é dinheiro — "6 assinaturas", "62%". */
-  text: z.string().optional(),
-  detail: z.string().optional(),
-  transactionIds: z.array(z.string().min(1)).default([]),
-});
+const MetricSchema = z
+  .object({
+    label: z.string().min(1),
+    amount: cents.optional(),
+    /** Usado quando o destaque não é dinheiro — "6 assinaturas", "62%". */
+    text: z.string().optional(),
+    detail: z.string().optional(),
+    transactionIds: z.array(z.string().min(1)).default([]),
+  })
+  .superRefine((metric, ctx) => {
+    const moneyLabel =
+      /\b(valor|total|gasto|gastos|saldo|diferença|ajuste|custo|preço|pagamento|fatura|economia)\b/i;
+    if (
+      metric.text !== undefined &&
+      moneyLabel.test(metric.label) &&
+      /^-?\d+$/.test(metric.text.trim())
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["text"],
+        message: "centavos devem usar amount; text é apenas para conteúdo não monetário",
+      });
+    }
+  });
 
 const base = {
   title: z.string().min(1).describe("Short panel title, in Brazilian Portuguese."),

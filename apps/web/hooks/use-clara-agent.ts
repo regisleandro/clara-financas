@@ -276,7 +276,7 @@ export function useClaraAgent({
       setAnsweredRequest(null);
       onTurnStartRef.current();
       await agent.send({
-        message: `Enviei ${result.filename}.`,
+        message: "Enviei uma fatura.",
         clientContext: {
           event: "document_uploaded",
           documentId: result.documentId,

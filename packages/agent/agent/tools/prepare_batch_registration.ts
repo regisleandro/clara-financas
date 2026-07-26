@@ -4,7 +4,11 @@ import { getDb } from "@clara-financas/db";
 import { financialActionProposals } from "@clara-financas/db/schema/financial-action";
 import { batches, documents, transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import { formatCents, type ChecksumReport } from "@clara-financas/ledger";
+import {
+  formatCents,
+  formatInvoiceLabel,
+  type ChecksumReport,
+} from "@clara-financas/ledger";
 import { and, count, eq } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
@@ -28,7 +32,8 @@ export default defineTool({
             updatedAt: batches.updatedAt,
             checksumReport: batches.checksumReport,
             issuer: documents.issuer,
-            filename: documents.filename,
+            periodEnd: batches.periodEnd,
+            dueDate: batches.dueDate,
           })
           .from(batches)
           .innerJoin(documents, eq(documents.id, batches.documentId))
@@ -55,6 +60,7 @@ export default defineTool({
         const checksum = found.checksumReport as ChecksumReport | null;
         const proposalId = `act_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
         const expiresAt = new Date(Date.now() + 30 * 60_000);
+        const invoiceLabel = formatInvoiceLabel(found);
         const payload = {
           transactionCount,
           checksumResult: checksum?.result ?? null,
@@ -62,7 +68,7 @@ export default defineTool({
           extractedTotalCents: checksum?.extractedTotal ?? null,
           differenceCents: checksum?.difference ?? null,
           issuer: found.issuer,
-          filename: found.filename,
+          invoiceLabel,
         };
         await tx.insert(financialActionProposals).values({
           id: proposalId,
@@ -83,7 +89,7 @@ export default defineTool({
           entityRevision: found.updatedAt.toISOString(),
           expiresAt: expiresAt.toISOString(),
           issuer: found.issuer,
-          filename: found.filename,
+          invoiceLabel,
           transactionCount,
           checksumResult: checksum?.result ?? null,
           declaredTotalCents: checksum?.declaredTotal ?? null,

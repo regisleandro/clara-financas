@@ -3,6 +3,7 @@ import "server-only";
 import { getDb } from "@clara-financas/db";
 import { batches, documents, transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
+import { formatCents } from "@clara-financas/ledger";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import type { Starter } from "@/components/chat-welcome";
@@ -29,9 +30,6 @@ const UPLOAD: Starter = {
   note: "Fatura, extrato ou nota fiscal em PDF",
   prompt: null,
 };
-
-const money = (cents: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
 
 const shortDate = (iso: string) =>
   new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" }).format(
@@ -139,7 +137,7 @@ export async function loadStarters(tenantId: string): Promise<Starter[]> {
       title: "Resolver o que ficou sem categoria",
       note: `${state.uncategorized.count} ${
         state.uncategorized.count === 1 ? "lançamento" : "lançamentos"
-      } · ${money(state.uncategorized.totalCents)}`,
+      } · ${formatCents(state.uncategorized.totalCents)}`,
       prompt:
         "Quais lançamentos ainda estão sem categoria? Me ajude a resolver e a guardar as regras.",
     });
