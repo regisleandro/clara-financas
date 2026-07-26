@@ -1,6 +1,7 @@
 # Avaliação dos agentes e dos fluxos de conversa — 2ª rodada
 
 Data: 2026-07-26 · Escopo: `packages/agent`, `packages/views`, `apps/web`, `packages/db`, `packages/ledger`
+Atualização: as propostas **P1 (§4) foram implementadas** na sequência da mesma rodada — ver §3.1.
 
 Sintomas relatados que motivaram esta rodada:
 
@@ -51,8 +52,8 @@ A suíte de testes exercita as tools contra o banco real (não o texto do modelo
 |---|---|---|
 | Nenhuma tool aceitava filtro por **operadora** | "Quanto gastei no Nubank?" irrespondível por construção; `name_issuer` até prometia uma visão por operadora que só existia na web | **Corrigido (P0)** |
 | Nenhuma tool aceitava **mês** como recorte | O modelo calculava `from`/`to` de cabeça e errava o último dia (fevereiro, meses de 30) | **Corrigido (P0)** |
-| **Documentos sem lote são invisíveis** — `list_invoices` e o snapshot fazem `innerJoin` com `batches` | Extração que falhou ou lote rejeitado somem; o documento não pode ser reaproveitado porque o hash barra o reenvio e nada lista o órfão | P1 (`list_documents`) |
-| **Trilhas escritas e nunca lidas**: `transaction_reclassifications`, `concept_revisions`, `notifications`, `agent_tool_events` | "O que você mudou?", "que avisos me deu?", "desfazer a regra" — sem porta; o revert prometido em `save_concept` não tem leitor do corpo antigo | P1/P2 |
+| **Documentos sem lote são invisíveis** — `list_invoices` e o snapshot fazem `innerJoin` com `batches` | Extração que falhou ou lote rejeitado somem; o documento não pode ser reaproveitado porque o hash barra o reenvio e nada lista o órfão | **Corrigido (P1: `list_documents`)** |
+| **Trilhas escritas e nunca lidas**: `transaction_reclassifications`, `concept_revisions`, `notifications`, `agent_tool_events` | "O que você mudou?", "que avisos me deu?", "desfazer a regra" — sem porta; o revert prometido em `save_concept` não tem leitor do corpo antigo | **Parcial (P1: `read_reclassifications`, `read_concept_history`)**; `agent_tool_events` segue P2 |
 | **Parcelas** omitidas do `brief()` do analista | O modelo não enxerga `installment` fora do `read_batch` | P2 |
 | Snapshot limita 12 faturas (anunciado via `invoicesOmitted`) | Mitigado por `list_invoices` | ok |
 
@@ -65,8 +66,8 @@ A suíte de testes exercita as tools contra o banco real (não o texto do modelo
 | **Erros na forma antiga** (string plana) em `commit_batch`, `apply_learned_rules`, `compare_periods`, `read_pdf_pages` | A interface exige `retryable` para mostrar aviso; sem ele, pintava **falha vermelha** em recusas desenhadas (ex.: o guard de alcance funcionando) e o modelo ficava sem `hint` | **Corrigido (P0)** |
 | **`create_adjustment` não reconferia o lote** | Divergência já resolvida continuava acusada para sempre: em `/revisar`, nos starters e no snapshot ("divergência ainda aberta") — a Clara reafirmava um problema que a pessoa acabara de resolver | **Corrigido (P0)** |
 | **Aprovação sem efeito era invisível**: `recategorize_transactions` sobre ids de rascunho devolvia sucesso com `changed: 0` | Check verde no trace; aprovar sem efeito indistinguível de aprovar com efeito | **Corrigido (P0)** |
-| **Retranscrição do lote**: o coordenador reemite token a token as 100+ linhas da extração no `propose_batch` | Custo de contexto proporcional à fatura + risco de erro de cópia no elo mais crítico | P1 (passagem por referência) |
-| `propose_batch` **apaga o rascunho anterior** do mesmo documento sem cartão | 10 turnos de correção podem sumir se a Clara repropõe interpretando mal um pedido | P1 |
+| **Retranscrição do lote**: o coordenador reemite token a token as 100+ linhas da extração no `propose_batch` | Custo de contexto proporcional à fatura + risco de erro de cópia no elo mais crítico | **Corrigido (P1: staging + `propose_batch_from_extraction`)** |
+| `propose_batch` **apaga o rascunho anterior** do mesmo documento sem cartão | 10 turnos de correção podem sumir se a Clara repropõe interpretando mal um pedido | **Corrigido (P1: `rascunho_editado` + `overwriteEditedDraft`)** |
 | `mark_reviewed` aceita **500 ids sem gate** | O argumento de escala que justifica o gate em `recategorize_transactions` vale aqui também | P2 |
 
 ### 2.3 Produto — promessas sem suporte
@@ -75,10 +76,10 @@ A suíte de testes exercita as tools contra o banco real (não o texto do modelo
 |---|---|
 | **Extrato bancário** declarado (`bank_statement` no schema, "extratos" no PRODUCT.md) mas nenhum código grava outro `kind` além de `credit_card_invoice`; checksum é todo modelado para fatura | P2 — exigiria outro contrato de conferência |
 | **Operadora sem identidade canônica**: `documents.issuer` é texto livre; a chave (`issuerKey`) só existe na leitura. "Nubank" e "Nu Bank" são duas linhas na matriz | Parcial: a chave agora é compartilhada (`@clara-financas/ledger`) e o snapshot entrega as grafias exatas; canonicalização na escrita (análoga ao `merchantKey`) fica P2 |
-| **Lembrete sem porta de saída**: `commitments.active` nunca recebe `"no"` — não há tool nem tela que desative; a varredura diária avisa para sempre | P1 (`deactivate_commitment`, com gate) |
+| **Lembrete sem porta de saída**: `commitments.active` nunca recebe `"no"` — não há tool nem tela que desative; a varredura diária avisa para sempre | **Corrigido (P1: `deactivate_commitment`, com gate)** |
 | **Proatividade sem opt-in**: o cron varre todos os tenants `ready`; o princípio "relevância **e consentimento**" está implementado só na metade relevância | P2 |
 | **Dupla contagem** fatura parcial + fatura fechada do mesmo ciclo (documentada no README): as duas conferências passam e o total mente sobre a vida financeira | P2 — fingerprint de lançamento ou supersessão de lote |
-| **`notifications.readAt` nunca é escrito**: o badge de alertas fica aceso para sempre após o primeiro aviso | P1 (pequeno) |
+| **`notifications.readAt` nunca é escrito**: o badge de alertas fica aceso para sempre após o primeiro aviso | **Corrigido (P1: agenda marca ao exibir)** |
 | **Fila de revisão só vê o confirmado**: um lote que fica `proposed` para sempre (fatura parcial, caminho recomendado no README) não aparece em fila nenhuma | P2 |
 
 ### 2.4 Telemetria — o que impede diagnosticar
@@ -97,11 +98,23 @@ A suíte de testes exercita as tools contra o banco real (não o texto do modelo
 
 Cobertura nova: `packages/agent/tests/tools/adjustment-and-errors.test.ts`, `packages/agent/tests/tools/issuer-month-filters.test.ts`, `packages/ledger/src/issuer.test.ts`, `apps/web/lib/answered-state.test.ts`, mais o caso de reconferência no `invoice-lifecycle.test.ts`.
 
+## 3.1 O que a rodada P1 implementou
+
+1. **Passagem por referência da extração** — nova tabela `extraction_stagings` (migração 0017, RLS + `GRANT SELECT, INSERT, DELETE`); o extractor persiste a leitura completa com a nova tool `save_extraction` e seu `outputSchema` virou um **recibo** (`ExtractionReceiptSchema`); o coordenador propõe com `propose_batch_from_extraction({extractionId})`, que consome a staging. As 100+ linhas da fatura não atravessam mais o contexto do coordenador. A escrita do lote virou helper compartilhado (`agent/lib/write-proposed-batch.ts`), usado também pelo `propose_batch` (que permanece para lotes ditados na conversa). A invariante do extractor foi reescrita: de "nenhuma tool de escrita" para "**não alcança o razão**" — a staging não tem grant sobre `batches`/`transactions`.
+2. **Proteção do rascunho editado** — repropor sobre um rascunho com `updatedAt > createdAt` (isto é, que já recebeu `edit_proposed_batch`) recusa com `rascunho_editado` e só substitui com `overwriteEditedDraft: true`, após confirmação da pessoa. Rascunho intocado mantém a idempotência silenciosa original.
+3. **`list_documents`** — join aberto com `batches` + staging pendente: órfãos e rejeitados aparecem, cada linha diz o próximo passo (`propose_batch_from_extraction`, delegar ao extractor, etc.).
+4. **`read_reclassifications`** — a trilha com autor/motivo/valores, filtrável por `transactionId` ou `byConceptId` (o alcance completo de uma regra aplicada — o desfazer inteiro).
+5. **`read_concept_history`** — as revisões de um conceito com corpo completo; o revert prometido por `save_concept` agora tem leitor.
+6. **`deactivate_commitment`** — com gate e cartão próprio no Decision Card; a varredura diária silencia (`active='no'`), histórico preservado; documentado que o upsert de `save_commitment` reativa (também atrás de cartão).
+7. **`notifications.readAt`** — a agenda marca os avisos exibidos como lidos (server action + componente cliente); o badge apaga.
+
+Erros novos no catálogo: `extracao_nao_encontrada`, `rascunho_editado`, `compromisso_nao_encontrado`, `conceito_nao_encontrado`. Instruções do coordenador e do extractor atualizadas (delegação por recibo, porta de saída da proatividade, o desfazer no ciclo de aprendizado, documentos órfãos). Cobertura nova: `extraction-staging.test.ts`, `p1-readers.test.ts`, `commitments.test.ts`.
+
 ---
 
 ## 4. Propostas — próximas rodadas
 
-### P1 — novas tools (destravam fluxos hoje impossíveis)
+### P1 — novas tools (destravam fluxos hoje impossíveis) — **IMPLEMENTADAS, ver §3.1**
 
 | Proposta | O que destrava |
 |---|---|

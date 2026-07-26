@@ -99,6 +99,12 @@ export const TOOL_LABEL: Record<string, string> = {
   set_transaction_category: "Ajustando a categoria",
   name_issuer: "Nomeando a operadora",
   list_review_queue: "Olhando o que falta revisar",
+  propose_batch_from_extraction: "Montando o rascunho a partir da leitura",
+  list_documents: "Listando os documentos enviados",
+  read_reclassifications: "Consultando o histórico de mudanças",
+  read_concept_history: "Consultando as versões do aprendizado",
+  deactivate_commitment: "Desativando o lembrete",
+  save_extraction: "Guardando a leitura do documento",
 };
 
 /** O que se diz de uma ferramenta que ainda não tem rótulo próprio. */
@@ -138,6 +144,12 @@ export const TOOL_ICON: Record<string, ActivityIcon> = {
   set_transaction_category: "tags",
   name_issuer: "tags",
   list_review_queue: "search",
+  propose_batch_from_extraction: "calculator",
+  list_documents: "document",
+  read_reclassifications: "search",
+  read_concept_history: "search",
+  deactivate_commitment: "calendar",
+  save_extraction: "save",
 };
 
 const SUBAGENT_ICON: Record<string, ActivityIcon> = {
