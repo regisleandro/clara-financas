@@ -27,7 +27,7 @@ const expiresInMinutes = 30;
  */
 export default defineTool({
   description:
-    "Prepares a canonical proposal to close the current difference of one already-recorded invoice. The tool calculates the sign and amount; never calculate or invert it yourself. After showing the proposal, call apply_invoice_resolution with only its proposalId to open the Eve approval gate.",
+    "Prepares a canonical proposal to close the current difference of one already-recorded invoice. The tool calculates the sign and amount; never calculate or invert it yourself. targetTransactionId is optional metadata: an id that is not an entry of this invoice is IGNORED and reported back in targetIgnored — the proposal still exists, at invoice level. After showing the proposal, call apply_invoice_resolution with only its proposalId to open the Eve approval gate.",
   inputSchema: z.object({
     batchId: z.string().min(1),
     targetTransactionId: z
@@ -85,7 +85,23 @@ export default defineTool({
           );
         }
 
+        /**
+         * Alvo inválido NÃO cancela o ajuste.
+         *
+         * O alvo é metadado: o delta sai de `invoiceResolutionPlan`, que só
+         * olha a diferença da conferência. Recusar por causa dele travava a
+         * correção inteira num caso em que o próprio relatório diz que não há
+         * culpado (`likelyCause: "rounding"`) — e o modelo, sem `read_batch`
+         * naquele turno, tende a oferecer o id que tem à mão, que é o da
+         * fatura. O resultado observado foi um laço: mesma chamada, mesmo
+         * erro, a cada "faça isso" da pessoa.
+         *
+         * Então a proposta segue no nível da fatura e o alvo descartado fica
+         * registrado — na resposta, para o modelo dizer o que foi feito, e no
+         * payload, para a auditoria enxergar o que havia sido pedido.
+         */
         let target: typeof transactions.$inferSelect | undefined;
+        let targetIgnored: { requestedId: string; reason: string } | null = null;
         if (input.targetTransactionId !== undefined) {
           [target] = await tx
             .select()
@@ -99,11 +115,11 @@ export default defineTool({
             )
             .limit(1);
           if (target === undefined) {
-            return notFound(
-              "lancamento_nao_encontrado",
-              "O lançamento indicado não pertence a esta fatura.",
-              { hint: "Use um id retornado por read_batch ou omita o alvo." },
-            );
+            targetIgnored = {
+              requestedId: input.targetTransactionId,
+              reason:
+                "O id indicado não é um lançamento desta fatura; o ajuste foi preparado no nível da fatura.",
+            };
           }
         }
 
@@ -117,6 +133,7 @@ export default defineTool({
           differenceAfterExpectedCents: plan.differenceAfterExpectedCents,
           targetTransactionId: target?.id ?? null,
           targetDescription: target?.originalDescription ?? null,
+          targetIgnored,
           reason: input.reason,
           issuer: batch.issuer,
           invoiceLabel,
@@ -145,6 +162,7 @@ export default defineTool({
           invoiceLabel,
           targetTransactionId: target?.id ?? null,
           targetDescription: target?.originalDescription ?? null,
+          targetIgnored,
           differenceBeforeCents: plan.differenceBeforeCents,
           differenceBeforeFormatted: formatCents(plan.differenceBeforeCents),
           adjustmentCents,
@@ -152,7 +170,9 @@ export default defineTool({
           differenceAfterExpectedCents: 0,
           reason: input.reason,
           next:
-            "Call apply_invoice_resolution with this proposalId. Do not ask for a prose confirmation.",
+            targetIgnored === null
+              ? "Call apply_invoice_resolution with this proposalId. Do not ask for a prose confirmation."
+              : "The target was ignored and the proposal is invoice-level. Call apply_invoice_resolution with this proposalId anyway — do not prepare again and do not ask for a prose confirmation.",
         };
       },
       getDb(),

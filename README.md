@@ -80,6 +80,8 @@ A Clara não descobre o que existe perguntando. Antes de cada turno, instruçõe
 
 Resolve em `turn.started`, não em `session.started`: dentro da mesma conversa a pessoa aprova uma fatura, e o turno seguinte precisa enxergar o razão já atualizado.
 
+O eve rebaixa instruções dinâmicas a mensagens de sistema guardadas por slug, e o valor do turno substitui o do turno anterior — existe sempre um snapshot só no request, e ele não entra no histórico da conversa. O que ele não pode ser é uma segunda fonte de verdade sobre algo que muda no meio do turno: `read_batch` e `resolve_invoice_reference` reescrevem o foco da sessão depois que o bloco já foi lido. Por isso o campo se chama `activeInvoiceAtTurnStart` e o bloco declara a precedência — resultado de ferramenta do turno vence o snapshot —, e por isso ele avisa que ali só há id de fatura e de documento: um `transactionId` existe apenas no retorno de `read_batch`.
+
 O analista e o categorizador têm cada um o seu próprio — um subagente declarado não herda nada do root, e essa duplicação é o preço do isolamento que garante que o extrator não alcance o razão.
 
 O snapshot é deliberadamente limitado às 12 faturas mais recentes. Quando a

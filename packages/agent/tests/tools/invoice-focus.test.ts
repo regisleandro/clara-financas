@@ -19,6 +19,8 @@ type Resolved = {
   checksumResult: string | null;
 };
 
+type ResolutionError = { error: { code: string; message: string } };
+
 describe("foco determinístico de fatura por sessão", () => {
   let tenantId: string;
   let ctx: never;
@@ -92,15 +94,38 @@ describe("foco determinístico de fatura por sessão", () => {
     assert.equal(result.batchId, newestId);
   });
 
-  it("a próxima divergente avança depois da fatura ativa", async () => {
+  it("a próxima divergente não anda enquanto a ativa continua divergente", async () => {
     await readBatch.execute({ batchId: newestId, onlySuspects: false }, ctx);
 
-    const result = (await resolveInvoiceReference.execute(
+    const first = (await resolveInvoiceReference.execute(
       { reference: "next_with_divergence" },
       ctx,
     )) as Resolved;
-    assert.equal(result.batchId, middleId);
-    assert.equal(result.checksumResult, "mismatch");
+    assert.equal(first.batchId, newestId);
+    assert.equal(first.checksumResult, "mismatch");
+
+    // A mesma pergunta, de novo: é o caso da pessoa que repete "faça isso".
+    // Uma leitura que se movesse aqui apontaria para uma fatura que ela nunca
+    // viu, e o alvo do turno anterior deixaria de pertencer ao lote.
+    const again = (await resolveInvoiceReference.execute(
+      { reference: "next_with_divergence" },
+      ctx,
+    )) as Resolved;
+    assert.equal(again.batchId, newestId);
+
+    const snapshot = await loadSnapshot(tenantId, `ses_${tenantId}`);
+    assert.equal(snapshot.activeInvoiceAtTurnStart?.batchId, newestId);
+  });
+
+  it("skipActive é o único caminho que avança para outra fatura", async () => {
+    await readBatch.execute({ batchId: newestId, onlySuspects: false }, ctx);
+
+    const next = (await resolveInvoiceReference.execute(
+      { reference: "next_with_divergence", skipActive: true },
+      ctx,
+    )) as Resolved;
+    assert.equal(next.batchId, middleId);
+    assert.equal(next.checksumResult, "mismatch");
 
     const active = (await resolveInvoiceReference.execute(
       { reference: "active" },
@@ -108,7 +133,12 @@ describe("foco determinístico de fatura por sessão", () => {
     )) as Resolved;
     assert.equal(active.batchId, middleId);
 
-    const snapshot = await loadSnapshot(tenantId, `ses_${tenantId}`);
-    assert.equal(snapshot.activeInvoice?.batchId, middleId);
+    // Depois da última divergente, avançar não inventa um lote por aproximação.
+    const exhausted = (await resolveInvoiceReference.execute(
+      { reference: "next_with_divergence", skipActive: true },
+      ctx,
+    )) as ResolutionError;
+    assert.equal(exhausted.error.code, "referencia_de_fatura_nao_encontrada");
+    assert.match(exhausted.error.message, /depois da atual/);
   });
 });
