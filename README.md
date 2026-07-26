@@ -92,6 +92,24 @@ O emissor imprime o mesmo comerciante de formas diferentes a cada fatura — má
 
 Ela resolve a parte mecânica e **deliberadamente não adivinha** que "Anthropic" e "Claude.Ai Subscription" são a mesma empresa: fusão errada some com dinheiro de um comerciante e o faz aparecer em outro, sem sinal na tela. Esse caso é aprendizado com aprovação — um conceito `MerchantAlias`, consumido por `detectRecurrences`.
 
+### O razão por operadora e por mês
+
+`/transacoes?vista=operadoras` cruza o gasto confirmado: operadora nas linhas, mês nas colunas, com as duas margens fechando no mesmo total. A operadora é `documents.issuer` — ela é do DOCUMENTO, não da linha, porque é a mesma informação para toda a fatura e duplicá-la abriria a chance de uma linha discordar da fatura de onde veio. O mês é o da **compra**, não o do fechamento: uma fatura fechada em julho cobre gastos de maio e junho.
+
+A agregação é `aggregateByIssuerMonth()` em `packages/ledger/src/analysis.ts` — pura, testada e disponível também para o analista, pelo mesmo motivo das demais: dois caminhos de cálculo acabariam divergindo entre a tela e a conversa. Cada célula carrega os `transactionIds` que a compõem, e é deles que a lista "de onde vem cada número" é montada, em vez de um segundo filtro parecido.
+
+Documento sem operadora identificada não some da matriz: vira a linha "Sem operadora", e a tela de revisão oferece nomeá-lo.
+
+### Revisão manual: o que a IA não fechou
+
+`/revisar` é a fila do trabalho que a extração não concluiu. Entram lançamentos **sem categoria** (a análise por categoria fica com um buraco), de **confiança baixa** (o extrator avisou que pode ter lido errado, e o valor conta como gasto de qualquer forma) e **sem comerciante** (a linha não se agrupa com nada). Fatura cuja soma não fechou e documento sem operadora aparecem em listas próprias — são o documento inteiro, não a linha.
+
+A tela mostra a **descrição crua do documento**: é contra ela que a pessoa confere, e escondê-la transformaria a revisão em adivinhação sobre o palpite da Clara.
+
+As escritas seguem a mesma disciplina da tool `recategorize_transactions` — o caminho humano não é um atalho que escapa da auditoria. Categoria e comerciante são leitura e podem mudar, cada mudança gravando uma linha em `transaction_reclassifications` com autor `human:<id>`. Valor, data, descrição e origem seguem recusados pelo trigger; correção de valor continua sendo linha de ajuste, feita pela conversa.
+
+O que é novo é o **atestado** (`transactions.reviewed_at` / `reviewed_by`, migração 0015): registra que uma pessoa olhou, mesmo quando nada muda. Sem ele a fila devolveria para sempre os itens cuja conclusão foi "a leitura já estava certa" — que é a conclusão mais comum — e a pessoa aprenderia a ignorá-la.
+
 ### Isolamento por tenant
 
 O tenant é derivado da sessão autenticada; ele nunca é aceito do input do modelo ou do corpo enviado pelo cliente. O JWT contém `tenantId` e `userId`, é validado pelo canal Eve e, em cada tool, passa por `requireTenantCaller`. A função `forTenant()` define `app.tenant_id` localmente na transação para que as políticas RLS do PostgreSQL filtrem os dados na própria query.

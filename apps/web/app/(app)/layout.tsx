@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { NavBar } from "@/components/nav-bar";
 import { hasUnreadAlerts } from "@/lib/agenda";
+import { countPendingReview } from "@/lib/review";
 import { getTenantContext } from "@/lib/tenant";
 
 /**
@@ -21,11 +22,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!context) redirect("/entrar");
   if (context.status !== "ready") redirect("/preparando");
 
-  const alerts = await hasUnreadAlerts(context.tenantId);
+  const [alerts, pendingReview] = await Promise.all([
+    hasUnreadAlerts(context.tenantId),
+    countPendingReview(context.tenantId),
+  ]);
 
   return (
     <div className="min-h-svh bg-background">
-      <NavBar hasAlerts={alerts} />
+      <NavBar hasAlerts={alerts} pendingReview={pendingReview} />
       {/* pt-12 compensa a barra fixa; o padding inferior generoso é do design
           — as telas terminam com ar, não com o rodapé colado no conteúdo. */}
       <main className="pt-12">{children}</main>

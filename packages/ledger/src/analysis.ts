@@ -27,8 +27,15 @@ export type CategoryTotal = Provenance & {
   share: number;
 };
 
-/** Lançamentos que representam gasto do período. Pagamento não é gasto. */
-export function spendable(transactions: Transaction[]): Transaction[] {
+/**
+ * Lançamentos que representam gasto do período. Pagamento não é gasto.
+ *
+ * Genérico em `T` para não descartar o que o chamador acrescentou à transação —
+ * a agregação por operadora precisa do `issuer` do outro lado do filtro, e uma
+ * assinatura fixa em `Transaction` a obrigaria a refiltrar por conta própria,
+ * que é como duas definições de "gasto" começam a existir.
+ */
+export function spendable<T extends Transaction>(transactions: T[]): T[] {
   return transactions.filter(countsTowardDeclaredTotal);
 }
 
@@ -136,6 +143,113 @@ export function comparePeriods(
 
 function index(totals: CategoryTotal[]): Map<string | null, CategoryTotal> {
   return new Map(totals.map((total) => [total.category, total]));
+}
+
+/**
+ * Uma transação do razão acompanhada da operadora que emitiu o documento.
+ *
+ * A operadora não está na transação: ela é do DOCUMENTO (`documents.issuer`).
+ * Entra por composição em vez de virar coluna porque é a mesma informação para
+ * todas as linhas do mesmo documento — duplicá-la abriria a possibilidade de
+ * uma linha discordar da fatura de onde veio.
+ */
+export type IssuedTransaction = Transaction & { issuer: string | null };
+
+export type Bucket = Provenance & { count: number };
+
+export type IssuerMonthMatrix = {
+  /** `YYYY-MM` presentes no razão, do mais recente para o mais antigo. */
+  months: string[];
+  issuers: Array<{
+    issuer: string | null;
+    total: Bucket;
+    /**
+     * Uma posição por mês de `months`, na mesma ordem. `null` significa que
+     * aquela operadora não tem lançamento naquele mês — diferente de zero, que
+     * seria "tem lançamentos e eles se anulam".
+     */
+    byMonth: Array<Bucket | null>;
+  }>;
+  /** Total de cada mês de `months`, na mesma ordem. */
+  monthTotals: Bucket[];
+  total: Bucket;
+};
+
+/**
+ * O razão cruzado por operadora e mês.
+ *
+ * Três decisões:
+ *
+ *  1. **O mês é o da COMPRA, não o do fechamento da fatura.** Uma fatura
+ *     fechada em julho cobre gastos de maio e junho; classificá-la como julho
+ *     colocaria em julho um dinheiro que saiu antes e deixaria maio vazio.
+ *
+ *  2. **Operadora `null` aparece como linha.** É o mesmo princípio do
+ *     `aggregateByCategory`: documento cuja operadora não foi identificada é
+ *     justamente o que precisa de atenção, e esconder a linha esconderia o
+ *     trabalho pendente.
+ *
+ *  3. **Toda célula carrega os `transactionIds`.** A tela cruzada é onde mais
+ *     dá vontade de perguntar "quais gastos são esses?" — sem os ids, a
+ *     resposta exigiria recalcular por outro caminho.
+ */
+export function aggregateByIssuerMonth(entries: IssuedTransaction[]): IssuerMonthMatrix {
+  const counted = spendable(entries);
+
+  const months = [...new Set(counted.map((entry) => entry.date.slice(0, 7)))].sort((a, b) =>
+    b.localeCompare(a),
+  );
+  const monthIndex = new Map(months.map((month, position) => [month, position]));
+
+  const byIssuer = new Map<string | null, Array<Bucket | null>>();
+  const monthTotals: Bucket[] = months.map(() => emptyBucket());
+  const total = emptyBucket();
+
+  for (const entry of counted) {
+    const position = monthIndex.get(entry.date.slice(0, 7))!;
+    const issuer = entry.issuer ?? null;
+
+    const row = byIssuer.get(issuer) ?? months.map(() => null);
+    row[position] = add(row[position] ?? emptyBucket(), entry);
+    byIssuer.set(issuer, row);
+
+    monthTotals[position] = add(monthTotals[position]!, entry);
+    add(total, entry);
+  }
+
+  return {
+    months,
+    issuers: [...byIssuer.entries()]
+      .map(([issuer, byMonth]) => ({
+        issuer,
+        total: byMonth.reduce<Bucket>(
+          (sum, cell) =>
+            cell === null
+              ? sum
+              : {
+                  value: sum.value + cell.value,
+                  transactionIds: [...sum.transactionIds, ...cell.transactionIds],
+                  count: sum.count + cell.count,
+                },
+          emptyBucket(),
+        ),
+        byMonth,
+      }))
+      .sort((a, b) => b.total.value - a.total.value),
+    monthTotals,
+    total,
+  };
+}
+
+function emptyBucket(): Bucket {
+  return { value: 0, transactionIds: [], count: 0 };
+}
+
+function add(bucket: Bucket, entry: Transaction): Bucket {
+  bucket.value += entry.amount;
+  bucket.transactionIds.push(entry.id);
+  bucket.count += 1;
+  return bucket;
 }
 
 export type Recurrence = Provenance & {

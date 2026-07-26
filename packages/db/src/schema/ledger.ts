@@ -144,6 +144,24 @@ export const transactions = pgTable(
     /** Preenchido só em linhas de ajuste: a transação que está sendo corrigida. */
     adjustsTransactionId: text("adjusts_transaction_id"),
 
+    /**
+     * Atestado de revisão humana — uma terceira natureza, ao lado de FATO e
+     * LEITURA.
+     *
+     * Não é `reclassifications`: aquela trilha registra o que MUDOU, e a maior
+     * parte da revisão manual termina em "a Clara leu certo, não mudo nada".
+     * Sem um lugar para gravar essa conclusão, a fila de revisão devolveria
+     * para sempre os mesmos itens já conferidos — e a pessoa aprenderia a
+     * ignorá-la, que é o pior destino de uma fila.
+     *
+     * Fora da lista de campos imutáveis do trigger de propósito: atestar não
+     * reescreve o razão, e a data de quando alguém olhou não é fato do
+     * documento.
+     */
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    /** Convenção de ator do OKF §7: `human:<id>`. */
+    reviewedBy: text("reviewed_by"),
+
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
@@ -156,6 +174,9 @@ export const transactions = pgTable(
     index("transactions_tenant_date_idx").on(table.tenantId, table.date),
     index("transactions_adjusts_idx").on(table.adjustsTransactionId),
     index("transactions_tenant_merchant_idx").on(table.tenantId, table.merchantKey),
+    // A fila de revisão pergunta sempre a mesma coisa: o que deste tenant
+    // ainda não foi conferido.
+    index("transactions_tenant_reviewed_idx").on(table.tenantId, table.reviewedAt),
   ],
 );
 

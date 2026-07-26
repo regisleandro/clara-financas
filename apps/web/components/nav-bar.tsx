@@ -18,11 +18,23 @@ const ITEMS = [
   { href: "/conversa", label: "Conversa" },
   { href: "/inicio", label: "Visão geral" },
   { href: "/transacoes", label: "Transações" },
+  { href: "/revisar", label: "Revisar" },
   { href: "/aprendizados", label: "Aprendizados" },
   { href: "/agenda", label: "Agenda" },
 ];
 
-export function NavBar({ hasAlerts = false }: { hasAlerts?: boolean }) {
+export function NavBar({
+  hasAlerts = false,
+  pendingReview = 0,
+}: {
+  hasAlerts?: boolean;
+  /**
+   * A contagem fica ao lado do rótulo, não num ponto vermelho: "3" diz o
+   * tamanho do trabalho, e um ponto só diz que existe trabalho — o que faz a
+   * pessoa abrir a tela para descobrir.
+   */
+  pendingReview?: number;
+}) {
   const pathname = usePathname();
 
   return (
@@ -50,15 +62,24 @@ export function NavBar({ hasAlerts = false }: { hasAlerts?: boolean }) {
         <ul className="flex items-center overflow-x-auto">
           {ITEMS.map((item) => {
             const active = pathname === item.href;
+            const badge = item.href === "/revisar" ? pendingReview : 0;
             return (
               <li key={item.href}>
                 <Link
                   href={item.href}
                   aria-current={active ? "page" : undefined}
-                  className="flex h-12 items-center whitespace-nowrap px-[11px] text-xs text-[var(--clara-fog)] transition-opacity hover:opacity-100"
+                  className="flex h-12 items-center gap-1.5 whitespace-nowrap px-[11px] text-xs text-[var(--clara-fog)] transition-opacity hover:opacity-100"
                   style={{ letterSpacing: "-0.01em", opacity: active ? 1 : 0.72 }}
                 >
                   {item.label}
+                  {badge > 0 ? (
+                    <span
+                      aria-label={`${badge} ${badge === 1 ? "item pendente" : "itens pendentes"}`}
+                      className="grid h-[17px] min-w-[17px] place-items-center rounded-full bg-[var(--clara-blue)] px-1 text-[10px] font-semibold text-white"
+                    >
+                      {badge > 99 ? "99+" : badge}
+                    </span>
+                  ) : null}
                 </Link>
               </li>
             );
