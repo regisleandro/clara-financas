@@ -1,5 +1,6 @@
 "use client";
 
+import { Client } from "eve/client";
 import { useEveAgent } from "eve/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -53,17 +54,31 @@ export function useClaraAgent({
     return data.token;
   }, []);
 
-  // `initialSession`/`initialEvents` são lidos na criação do store; trocar de
-  // conversa exige REMONTAR o componente que chama este hook (key= no pai).
+  /**
+   * A sessão é NOSSA, não do hook, por causa de `preserveCompletedSessions`.
+   *
+   * No padrão do eve, um turno que fecha com `session.completed` APAGA o cursor
+   * do cliente (`{ streamIndex: 0 }`, sem sessionId) — o próximo envio abriria
+   * uma conversa nova no servidor. Sem sessionId não há o que gravar, e a
+   * conversa simplesmente não entrava no registro local: ao recarregar, a
+   * página retomava a última que por acaso tinha cursor, e não a última de
+   * verdade. É a recomendação do guia de frontend do eve para UI de chat.
+   *
+   * Criada uma única vez por montagem: trocar de conversa REMONTA o componente
+   * que chama este hook (key= no pai), e é daí que sai a sessão nova.
+   */
+  const [session] = useState(() =>
+    new Client({
+      auth: { bearer },
+      host: agentHost,
+      preserveCompletedSessions: true,
+    }).session(initial?.cursor),
+  );
+
+  // `session`/`initialEvents` são lidos na criação do store.
   const agent = useEveAgent({
-    host: agentHost,
-    auth: { bearer },
-    ...(initial !== null
-      ? {
-          initialSession: initial.cursor,
-          initialEvents: initial.events as never[],
-        }
-      : {}),
+    session,
+    ...(initial !== null ? { initialEvents: initial.events as never[] } : {}),
   });
 
   const busy = agent.status === "submitted" || agent.status === "streaming";
@@ -230,11 +245,23 @@ export function useClaraAgent({
   const snapshotRef = useRef({ session: agent.session, events: agent.events, firstUserText });
   snapshotRef.current = { session: agent.session, events: agent.events, firstUserText };
 
+  // Só grava depois de um turno REAL desta montagem. Antes, montar já bastava
+  // para regravar a conversa retomada — e como o registro era ordenado por
+  // data, abrir uma conversa antiga a promovia a "a última", embaralhando qual
+  // conversa a próxima visita retomaria. Agora quem responde por isso é o
+  // ponteiro de conversa aberta (`setActiveConversation`), e `updatedAt` volta
+  // a significar atividade de verdade — que é o que o menu mostra.
+  const turnRan = useRef(false);
+
   useEffect(() => {
-    if (agent.status !== "ready" && agent.status !== "error") return;
-    const { session, events, firstUserText: title } = snapshotRef.current;
+    if (agent.status === "submitted" || agent.status === "streaming") {
+      turnRan.current = true;
+      return;
+    }
+    if (!turnRan.current) return;
+    const { session: cursor, events, firstUserText: title } = snapshotRef.current;
     if (events.length === 0) return;
-    saveSession(tenantKey, session, events, title);
+    saveSession(tenantKey, cursor, events, title);
   }, [agent.status, tenantKey]);
 
   return {

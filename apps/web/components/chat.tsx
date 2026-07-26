@@ -26,9 +26,10 @@ import { deriveActivity } from "@/lib/activity";
 import { batchArtifact, type BatchProposal } from "@/lib/artifact";
 import { deriveFollowups } from "@/lib/followups";
 import {
-  latestConversation,
+  activeConversation,
   listConversations,
   loadSession,
+  setActiveConversation,
   type StoredSession,
 } from "@/lib/session-store";
 import { useMediaQuery } from "@/lib/use-media-query";
@@ -76,9 +77,16 @@ export function Chat(props: ChatProps) {
   >(null);
 
   useEffect(() => {
-    const latest = latestConversation(props.tenantKey);
-    const stored = latest === null ? null : loadSession(props.tenantKey, latest.sessionId);
-    setBoot({ key: latest?.sessionId ?? "new", initial: stored });
+    // A conversa ABERTA, não a mais recente por data: ver `activeConversation`.
+    const sessionId = activeConversation(props.tenantKey);
+    if (sessionId === null) {
+      setBoot({ key: "new", initial: null });
+      return;
+    }
+    // Registro aponta para uma conversa sem payload (quota, limpeza parcial):
+    // abrir em branco é honesto — retomar com o histórico de outra não seria.
+    const stored = loadSession(props.tenantKey, sessionId);
+    setBoot({ key: stored === null ? "new" : sessionId, initial: stored });
   }, [props.tenantKey]);
 
   // Antes de ler o storage não há o que desenhar além do esqueleto do layout;
@@ -92,6 +100,9 @@ export function Chat(props: ChatProps) {
       {...props}
       initial={boot.initial}
       onSwitchConversation={(sessionId) => {
+        // O ponteiro segue a TELA: trocar de conversa (ou começar uma nova) é
+        // o que decide onde a próxima visita abre.
+        setActiveConversation(props.tenantKey, sessionId);
         const stored = sessionId === null ? null : loadSession(props.tenantKey, sessionId);
         setBoot({ key: sessionId ?? `new-${Date.now()}`, initial: stored });
       }}
@@ -213,6 +224,9 @@ function ChatSession({
     [presented, followups],
   );
 
+  // `agent.reset()` aborta o stream em voo e limpa a tela; quem CRIA a sessão
+  // nova é a remontagem (a sessão é nossa agora — ver `use-clara-agent`), então
+  // as duas chamadas andam juntas.
   const startNewConversation = () => {
     agent.reset();
     onSwitchConversation(null);

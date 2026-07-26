@@ -51,6 +51,13 @@ const TITLE_MAX = 80;
 const registryKey = (tenantKey: string) => `clara:conversations:${tenantKey}`;
 const sessionKey = (tenantKey: string, sessionId: string) =>
   `clara:session:${tenantKey}:${sessionId}`;
+const activeKey = (tenantKey: string) => `clara:active:${tenantKey}`;
+
+/**
+ * Qual conversa está ABERTA no dispositivo. `sessionId: null` é uma conversa
+ * nova em aberto — diferente de "não há ponteiro", que é o primeiro acesso.
+ */
+type ActivePointer = { sessionId: string | null };
 
 function defaultStorage(): Storage | null {
   if (typeof window === "undefined") return null;
@@ -140,6 +147,50 @@ export function latestConversation(
   return listConversations(tenantKey, storage)[0] ?? null;
 }
 
+/**
+ * Aponta qual conversa está aberta. `null` = conversa nova: quem recarrega a
+ * página depois de clicar em "Nova conversa" NÃO deve receber a antiga de volta.
+ */
+export function setActiveConversation(
+  tenantKey: string,
+  sessionId: string | null,
+  storage: Storage | null = defaultStorage(),
+): void {
+  if (storage === null) return;
+  writeJson(storage, activeKey(tenantKey), { sessionId } satisfies ActivePointer);
+}
+
+/**
+ * A conversa a retomar ao abrir a página.
+ *
+ * É o PONTEIRO, não a data: ordenar por `updatedAt` fazia a retomada depender
+ * de qual gravação venceu a corrida — uma conversa cujo turno fechou sem
+ * cursor (ver `saveSession`) nunca subia no registro, e a página voltava numa
+ * conversa antiga qualquer. O ponteiro é escrito quando a conversa é aberta ou
+ * criada, então ele é a resposta exata para "onde eu estava".
+ *
+ * Sem ponteiro (primeiro acesso, storage limpo) ou apontando para uma conversa
+ * que já não existe, cai na mais recente — melhor que abrir em branco quem tem
+ * histórico.
+ */
+export function activeConversation(
+  tenantKey: string,
+  storage: Storage | null = defaultStorage(),
+): string | null {
+  if (storage === null) return null;
+  const known = listConversations(tenantKey, storage);
+  const fallback = known[0]?.sessionId ?? null;
+
+  const pointer = readJson<ActivePointer>(storage, activeKey(tenantKey));
+  if (pointer === null || typeof pointer !== "object") return fallback;
+  if (pointer.sessionId === null) return null;
+  if (typeof pointer.sessionId !== "string") return fallback;
+
+  return known.some((entry) => entry.sessionId === pointer.sessionId)
+    ? pointer.sessionId
+    : fallback;
+}
+
 export function loadSession(
   tenantKey: string,
   sessionId: string,
@@ -152,10 +203,16 @@ export function loadSession(
 }
 
 /**
- * Grava cursor + eventos de uma conversa e a promove no registro.
+ * Grava cursor + eventos de uma conversa, a promove no registro e a marca como
+ * a conversa aberta.
  *
  * `title` só é aplicado se a conversa ainda não tem um — o título é a
  * primeira mensagem, não a última.
+ *
+ * Cursor sem `sessionId` não é gravável: retomar exige o id. Quando isso
+ * acontece o silêncio é a pior saída — a conversa some do registro sem rastro,
+ * e a página volta noutra. Ver `preserveCompletedSessions` em
+ * `use-clara-agent.ts`, que é o que mantém o cursor vivo entre turnos.
  */
 export function saveSession(
   tenantKey: string,
@@ -166,7 +223,14 @@ export function saveSession(
 ): void {
   if (storage === null) return;
   const sessionId = cursor.sessionId;
-  if (sessionId === undefined || sessionId === "") return;
+  if (sessionId === undefined || sessionId === "") {
+    if (events.length > 0) {
+      console.warn(
+        "[clara] turno terminou sem cursor de sessão: esta conversa não pôde ser guardada para retomada.",
+      );
+    }
+    return;
+  }
 
   let payload: StoredSession = {
     cursor,
@@ -190,8 +254,13 @@ export function saveSession(
     ...rest,
   ].slice(0, MAX_CONVERSATIONS);
 
-  // Conversas que saíram do registro não podem deixar órfãos ocupando quota.
-  for (const dropped of existing.slice(MAX_CONVERSATIONS)) {
+  // Conversas que saíram do registro não podem deixar órfãos ocupando quota —
+  // e quota estourada faz `setItem` falhar em silêncio, o que arruína a
+  // retomada de todo mundo. Compara com o registro NOVO: `existing` já vinha
+  // no teto, então cortar por índice nunca achava a conversa expulsa.
+  const kept = new Set(next.map((entry) => entry.sessionId));
+  for (const dropped of existing) {
+    if (kept.has(dropped.sessionId)) continue;
     try {
       storage.removeItem(sessionKey(tenantKey, dropped.sessionId));
     } catch {
@@ -200,6 +269,10 @@ export function saveSession(
   }
 
   writeJson(storage, registryKey(tenantKey), next);
+
+  // Uma conversa nova só tem id depois do primeiro turno; é aqui que o
+  // ponteiro passa de "conversa nova" para ela.
+  setActiveConversation(tenantKey, sessionId, storage);
 }
 
 export function removeConversation(
@@ -217,6 +290,12 @@ export function removeConversation(
     (entry) => entry.sessionId !== sessionId,
   );
   writeJson(storage, registryKey(tenantKey), rest);
+
+  // Ponteiro pendurado numa conversa removida abriria em branco na próxima
+  // visita; o fallback do `activeConversation` cobre isso, mas o ponteiro
+  // mentiroso não precisa sobreviver.
+  const pointer = readJson<ActivePointer>(storage, activeKey(tenantKey));
+  if (pointer?.sessionId === sessionId) setActiveConversation(tenantKey, null, storage);
 }
 
 function truncateTitle(value: string): string {
