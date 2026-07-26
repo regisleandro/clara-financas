@@ -1,9 +1,11 @@
 "use client";
 
+import { Client, type ClientSession } from "eve/client";
 import { useEveAgent } from "eve/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { inflightTurnId } from "@/lib/activity";
 import { resolveAnswered, type AnsweredRequest } from "@/lib/answered-state";
 import { uploadDocument } from "@/lib/document-upload";
 import { saveSession, type StoredSession } from "@/lib/session-store";
@@ -17,9 +19,13 @@ import { findPendingRequest, resolveApprovalOption } from "@clara-financas/views
  *
  * Persistência: o cursor (`SessionState`) e os eventos são gravados no
  * localStorage quando o turno termina — é o que permite recarregar a página e
- * retomar a conversa (`initialSession`/`initialEvents` do eve). Gravar por
- * evento seria escrita demais durante o streaming; gravar no fim do turno
- * perde no pior caso o turno em voo.
+ * retomar a conversa (`initialEvents` do eve + o cursor semeado na sessão).
+ * Gravar por evento seria escrita demais durante o streaming; gravar no fim do
+ * turno perde no pior caso o turno em voo.
+ *
+ * A `ClientSession` é NOSSA, não do store do eve: cancelar um turno é uma
+ * operação de sessão (`session.cancel`), e o hook só tem o que oferecer ao
+ * botão "Parar" se for ele quem segura o handle. Ver `cancel` abaixo.
  */
 export function useClaraAgent({
   agentHost,
@@ -53,17 +59,31 @@ export function useClaraAgent({
     return data.token;
   }, []);
 
-  // `initialSession`/`initialEvents` são lidos na criação do store; trocar de
-  // conversa exige REMONTAR o componente que chama este hook (key= no pai).
-  const agent = useEveAgent({
+  /**
+   * A sessão desta conversa, criada UMA vez por montagem.
+   *
+   * `preserveCompletedSessions: true` porque a sessão é interativa: sem isso o
+   * handle zera o cursor na fronteira `session.completed` e perde o
+   * `sessionId` — que é justamente o endereço da rota de cancelamento.
+   *
+   * Ref, não `useMemo`: memo é cache, não garantia, e um novo `Client` no meio
+   * da conversa apontaria para uma sessão que não é a corrente.
+   */
+  const sessionRef = useRef<ClientSession | null>(null);
+  sessionRef.current ??= new Client({
     host: agentHost,
     auth: { bearer },
-    ...(initial !== null
-      ? {
-          initialSession: initial.cursor,
-          initialEvents: initial.events as never[],
-        }
-      : {}),
+    preserveCompletedSessions: true,
+  }).session(initial?.cursor);
+  const session = sessionRef.current;
+
+  // O cursor vai na criação da sessão e `initialEvents` na do store; trocar de
+  // conversa exige REMONTAR o componente que chama este hook (key= no pai) —
+  // com sessão externa, `agent.reset()` reaproveita ESTE handle em vez de abrir
+  // uma sessão nova, então o remonte não é conveniência, é o mecanismo.
+  const agent = useEveAgent({
+    session,
+    ...(initial !== null ? { initialEvents: initial.events as never[] } : {}),
   });
 
   const busy = agent.status === "submitted" || agent.status === "streaming";
@@ -157,6 +177,46 @@ export function useClaraAgent({
     }
   };
 
+  /**
+   * Cancela o turno em voo — de verdade, no servidor.
+   *
+   * `agent.stop()` é LOCAL: descola o stream do cliente e nada mais. O turno
+   * continua rodando (e cobrando) do outro lado, e o botão "Parar" que chamava
+   * aquilo mentia. Cancelar é `session.cancel({ turnId })`, com três cuidados
+   * que a doc do eve trata como parte do contrato:
+   *
+   * 1. O `turnId` é o do turno OBSERVADO no stream. Sem ele, um clique que
+   *    chega tarde cancelaria o turno seguinte; com ele, o servidor consome o
+   *    pedido como no-op. Enquanto nenhum `turn.started` chegou não há o que
+   *    cancelar, e `canCancel` fica falso em vez de a UI fingir que dá.
+   * 2. O stream fica ABERTO. O cancelamento é assíncrono e assenta na
+   *    fronteira (`turn.cancelled` → `session.waiting`); é ela que devolve o
+   *    status para `ready`. Abortar aqui trocaria um botão morto por um
+   *    cancelamento cego.
+   * 3. `no_active_turn` é sucesso, não erro — o turno assentou antes do pedido
+   *    chegar. Só falha de transporte ou recusa da rota viram recado na tela.
+   */
+  const [cancellingTurn, setCancellingTurn] = useState<string | null>(null);
+  const turnId = inflightTurnId(agent.events);
+  const cancelling = turnId !== null && cancellingTurn === turnId;
+  const canCancel = turnId !== null && !cancelling;
+
+  const cancelRef = useRef<() => void>(() => {});
+  cancelRef.current = () => {
+    if (turnId === null || cancelling) return;
+    setCancellingTurn(turnId);
+    void session.cancel({ turnId }).catch((error: unknown) => {
+      // Pedido recusado: o turno SEGUE rodando. Devolver o botão ao estado
+      // clicável é o que permite tentar de novo — e o recado é o que evita a
+      // pessoa achar que parou.
+      setCancellingTurn((current) => (current === turnId ? null : current));
+      // A mensagem da rota é do eve, em inglês ("Session does not belong to
+      // this user."): serve para depurar, não para a tela.
+      console.warn("[clara] cancelamento recusado", { turnId, error });
+      toast.error("Não consegui interromper agora — a Clara ainda está trabalhando.");
+    });
+  };
+
   const onTurnStartRef = useRef<() => void>(() => {});
   sendRef.current = (message: string) => {
     setAnsweredRequest(null);
@@ -245,9 +305,15 @@ export function useClaraAgent({
     pending,
     answered,
     isWelcome,
+    /** Há um turno observado para cancelar, e nenhum pedido em voo. */
+    canCancel,
+    /** O cancelamento foi pedido e a fronteira ainda não chegou. */
+    cancelling,
     upload,
     /** Envia uma mensagem de texto (turno novo). */
     send: (message: string) => sendRef.current(message),
+    /** Interrompe o turno em voo no servidor (não é `stop()`). */
+    cancel: () => cancelRef.current(),
     /** Responde o gate pendente (aprovar/negar/opção). */
     answer: (optionId: string) => answerRef.current(optionId),
     /** Responde uma pergunta livre; valores sensíveis viajam em contexto efêmero. */

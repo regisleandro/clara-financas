@@ -49,10 +49,11 @@ import {
  * `ChatMessage`, persistência em `lib/session-store`. O que fica aqui é
  * composição e layout.
  *
- * A retomada de conversa exige remontar (`key={conversationKey}`): o eve lê
- * `initialSession`/`initialEvents` na criação do store. O invólucro `Chat`
- * resolve o estado inicial do localStorage DEPOIS de montar — client
- * component ainda renderiza no servidor, onde localStorage não existe.
+ * A retomada de conversa exige remontar (`key={conversationKey}`): o cursor
+ * semeia a `ClientSession` e os eventos são lidos na criação do store, ambos
+ * uma vez só. O invólucro `Chat` resolve o estado inicial do localStorage
+ * DEPOIS de montar — client component ainda renderiza no servidor, onde
+ * localStorage não existe.
  */
 
 const FALLBACK_STARTERS: readonly Starter[] = [
@@ -120,6 +121,7 @@ function ChatSession({
 
   const clara = useClaraAgent({ agentHost, tenantKey, initial });
   const { agent, busy, uploading, progress, pending, answered, isWelcome } = clara;
+  const { canCancel, cancelling } = clara;
 
   const activity = useMemo(() => deriveActivity(agent.events), [agent.events]);
 
@@ -399,16 +401,23 @@ function ChatSession({
                 />
               </PromptInputBody>
               <InputGroupAddon align="inline-end" className="order-3 sm:order-last">
-                {/* Durante o streaming o botão vira "Parar" DE VERDADE: antes
-                    ele só trocava o ícone, sem função — um botão de stop morto
-                    é pior que nenhum. */}
+                {/* "Parar" interrompe o TURNO, não o stream. `agent.stop()`
+                    só descolava o cliente: a Clara seguia rodando — e
+                    cobrando — do outro lado, e o botão dizia o contrário. Agora
+                    é `session.cancel({ turnId })`, e a espera é honesta: o
+                    stream fica aberto até a fronteira do cancelamento
+                    (`turn.cancelled` → `session.waiting`), que é o que devolve
+                    o botão para "Enviar". No instante em que o turno ainda não
+                    anunciou seu id (`submitted`), não há o que cancelar e o
+                    botão fica inerte em vez de prometer o que não cumpre. */}
                 <PromptInputSubmit
                   status={agent.status === "error" ? "ready" : agent.status}
-                  onStop={() => agent.stop()}
+                  onStop={() => clara.cancel()}
+                  disabled={busy && !canCancel}
                   size="sm"
                   className="clara-pill clara-pill-primary mb-0.5 h-10 w-auto px-4 text-sm sm:px-5"
                 >
-                  {busy ? "Parar" : "Enviar"}
+                  {busy ? (cancelling ? "Parando…" : "Parar") : "Enviar"}
                 </PromptInputSubmit>
               </InputGroupAddon>
             </PromptInput>

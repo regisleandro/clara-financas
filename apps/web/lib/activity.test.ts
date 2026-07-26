@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { deriveActivity, TOOL_FALLBACK_LABEL, TOOL_LABEL } from "./activity";
+import { deriveActivity, inflightTurnId, TOOL_FALLBACK_LABEL, TOOL_LABEL } from "./activity";
 
 /**
  * A trilha de execução é a única parte da conversa onde nomes internos podem
@@ -180,5 +180,88 @@ describe("deriveActivity", () => {
 
     assert.equal(activity.steps[0]?.status, "failed");
     assert.equal(activity.steps[0]?.cause, "A sessão expirou.");
+  });
+
+  /**
+   * Um turno cancelado não fecha suas etapas: o que estava rodando não volta, e
+   * um subagente cancelado nem emite `subagent.completed`. Ficava um ícone
+   * pulsando para sempre num turno que a própria pessoa interrompeu.
+   */
+  it("um turno cancelado fecha as etapas em aviso, não em vermelho", () => {
+    const activity = deriveActivity(
+      turn([
+        requested("c1", "propose_batch"),
+        { type: "turn.cancelled", data: { turnId: "t1" } },
+        { type: "session.waiting", data: {} },
+      ]),
+    );
+
+    assert.equal(activity.steps[0]?.status, "warning");
+    assert.equal(activity.steps[0]?.cause, "Interrompida a seu pedido.");
+    assert.equal(activity.current, null);
+  });
+
+  it("o cancelamento não apaga a causa de uma etapa que já tinha falhado", () => {
+    const activity = deriveActivity(
+      turn([
+        requested("c1", "commit_batch"),
+        {
+          type: "action.result",
+          data: { result: { callId: "c1", output: { error: "lote não encontrado" } } },
+        },
+        { type: "turn.cancelled", data: { turnId: "t1" } },
+      ]),
+    );
+
+    assert.equal(activity.steps[0]?.status, "failed");
+    assert.equal(activity.steps[0]?.cause, "lote não encontrado");
+  });
+});
+
+/**
+ * O id do turno em voo é o que torna o botão "Parar" honesto: `session.cancel`
+ * sem ele cancelaria o turno que estivesse ativo NA HORA em que o pedido
+ * chegasse — inclusive um turno seguinte, que a pessoa nunca pediu para parar.
+ */
+describe("inflightTurnId", () => {
+  it("devolve o turno aberto", () => {
+    assert.equal(inflightTurnId(turn([requested("c1", "commit_batch")])), "t1");
+  });
+
+  it("turno postado e ainda sem eventos não tem id para cancelar", () => {
+    // O status `submitted` do eve: o POST saiu, nada voltou. Cancelar aqui
+    // seria um tiro no escuro; a UI prefere um botão inerte por um instante.
+    assert.equal(inflightTurnId([]), null);
+  });
+
+  it("turno que assentou não é cancelável — em nenhuma das fronteiras", () => {
+    for (const settled of [
+      "turn.completed",
+      "turn.failed",
+      "turn.cancelled",
+      "session.waiting",
+      "session.completed",
+      "session.failed",
+    ]) {
+      assert.equal(
+        inflightTurnId([...turn([requested("c1", "commit_batch")]), { type: settled, data: {} }]),
+        null,
+        `${settled} deveria encerrar o turno`,
+      );
+    }
+  });
+
+  it("depois de um turno fechado, o id é o do turno NOVO", () => {
+    const events = [
+      ...turn([requested("c1", "commit_batch")]),
+      { type: "session.waiting", data: {} },
+      { type: "turn.started", data: { turnId: "t2" } },
+    ];
+
+    assert.equal(inflightTurnId(events), "t2");
+  });
+
+  it("turno sem id no evento não é cancelado às cegas", () => {
+    assert.equal(inflightTurnId([{ type: "turn.started", data: {} }]), null);
   });
 });
