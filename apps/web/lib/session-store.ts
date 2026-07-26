@@ -4,7 +4,8 @@
  * Recarregar a página perdia a conversa inteira: o histórico de mensagens é
  * propriedade do `useEveAgent`, e nada o guardava. O eve suporta retomada
  * nativamente — basta persistir o cursor (`SessionState`) e os eventos e
- * semeá-los na montagem (`initialSession`/`initialEvents`).
+ * semeá-los na montagem (o cursor na `ClientSession`, os eventos em
+ * `initialEvents`).
  *
  * localStorage, por tenant, com um registro pequeno de conversas. É retomada
  * LOCAL por decisão de escopo: cross-device exigiria endpoint próprio sobre
