@@ -1,7 +1,7 @@
 import { defineDynamic, defineInstructions } from "eve/instructions";
 
 import { loadSnapshot, renderSnapshot } from "../lib/snapshot";
-import { requireTenantCaller } from "../lib/tenant";
+import { requireSessionCaller } from "../lib/tenant";
 
 /**
  * O estado do razão entra no contexto ANTES da primeira pergunta.
@@ -25,13 +25,14 @@ export default defineDynamic({
   events: {
     "turn.started": async (_event, ctx) => {
       let tenantId: string;
+      let sessionId: string;
       try {
-        ({ tenantId } = requireTenantCaller(ctx));
+        ({ tenantId, sessionId } = requireSessionCaller(ctx));
       } catch {
         return null;
       }
 
-      const snapshot = await loadSnapshot(tenantId);
+      const snapshot = await loadSnapshot(tenantId, sessionId);
       return defineInstructions({ markdown: renderSnapshot(snapshot) });
     },
   },

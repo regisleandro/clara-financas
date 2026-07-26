@@ -42,7 +42,8 @@ export type ToolErrorCode =
   | "proposta_ja_decidida"
   | "proposta_expirada"
   | "proposta_desatualizada"
-  | "fatura_sem_divergencia";
+  | "fatura_sem_divergencia"
+  | "referencia_de_fatura_nao_encontrada";
 
 export type ToolError = {
   error: {

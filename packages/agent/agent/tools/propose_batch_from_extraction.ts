@@ -7,8 +7,9 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { notFound } from "../lib/errors";
+import { setInvoiceFocus } from "../lib/invoice-focus";
 import { optionalText } from "../lib/schema";
-import { requireTenantCaller } from "../lib/tenant";
+import { requireSessionCaller } from "../lib/tenant";
 import { writeProposedBatch } from "../lib/write-proposed-batch";
 
 /**
@@ -44,9 +45,9 @@ export default defineTool({
     })
     .refine((input) => input.extractionId !== undefined || input.documentId !== undefined, {
       message: "informe extractionId ou documentId",
-    }),
+  }),
   async execute(input, ctx) {
-    const { tenantId } = requireTenantCaller(ctx);
+    const { tenantId, sessionId } = requireSessionCaller(ctx);
     const db = getDb();
 
     const staged = await forTenant(
@@ -98,6 +99,10 @@ export default defineTool({
       overwriteEditedDraft: input.overwriteEditedDraft,
     });
     if ("error" in result) return result;
+    const focused = await setInvoiceFocus(tenantId, sessionId, result.batchId);
+    if (!focused) {
+      throw new Error("A sessão Eve não estava persistida para guardar o foco da fatura.");
+    }
 
     // Consumida: o rascunho é a única fonte a partir daqui. Fora da transação
     // da proposta de propósito — se a staging sobreviver a uma falha aqui, o

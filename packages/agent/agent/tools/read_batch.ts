@@ -8,7 +8,8 @@ import { z } from "zod";
 
 import { categoryLabel, loadCategoryLabels } from "../lib/categories";
 import { notFound } from "../lib/errors";
-import { requireTenantCaller } from "../lib/tenant";
+import { setInvoiceFocus } from "../lib/invoice-focus";
+import { requireSessionCaller } from "../lib/tenant";
 
 /**
  * Abrir uma fatura e ver o que está dentro dela.
@@ -38,7 +39,7 @@ export default defineTool({
       ),
   }),
   async execute(input, ctx) {
-    const { tenantId } = requireTenantCaller(ctx);
+    const { tenantId, sessionId } = requireSessionCaller(ctx);
 
     const found = await forTenant(
       tenantId,
@@ -84,6 +85,10 @@ export default defineTool({
     }
 
     const { batch, rows } = found;
+    const focused = await setInvoiceFocus(tenantId, sessionId, batch.batchId);
+    if (!focused) {
+      throw new Error("A sessão Eve não estava persistida para guardar o foco da fatura.");
+    }
     const report = batch.checksumReport as ChecksumReport | null;
     const suspects = new Set((report?.suspectItems ?? []).map((item) => item.transactionId));
     const labels = await loadCategoryLabels(tenantId);

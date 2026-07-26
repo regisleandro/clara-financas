@@ -38,4 +38,12 @@ describe("contratos de interação dos prompts", () => {
       assert.match(source, /outputSchema:/);
     }
   });
+
+  it("referências relativas de fatura passam pelo foco persistido", async () => {
+    const prompt = await read("../agent/instructions.md");
+    assert.match(prompt, /resolve_invoice_reference\(active\)/);
+    assert.match(prompt, /resolve_invoice_reference\(latest\)/);
+    assert.match(prompt, /resolve_invoice_reference\(next_with_divergence\)/);
+    assert.match(prompt, /Never choose a batch.+transcript/is);
+  });
 });

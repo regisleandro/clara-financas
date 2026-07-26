@@ -71,10 +71,10 @@ export function ViewPanelInner({
 
   return (
     <Artifact className="h-full rounded-none border-0 bg-transparent">
-        <ArtifactHeader className="items-start border-0 px-7 pb-5 pt-7">
-          <div className="min-w-0">
+        <ArtifactHeader className="min-w-0 items-start gap-3 border-0 px-7 pb-5 pt-7">
+          <div className="min-w-0 flex-1">
             <p className="clara-eyebrow">{EYEBROW[view.kind]}</p>
-            <ArtifactTitle className="clara-display-sm mt-1.5 text-foreground">
+            <ArtifactTitle className="clara-display-sm mt-1.5 break-words text-foreground [overflow-wrap:anywhere]">
               {view.title}
             </ArtifactTitle>
             {view.summary !== undefined ? (
@@ -104,7 +104,7 @@ export function ViewPanelInner({
               </nav>
             ) : null}
           </div>
-          <ArtifactActions>
+          <ArtifactActions className="shrink-0">
             <ArtifactClose onClick={onClose} />
           </ArtifactActions>
         </ArtifactHeader>
@@ -144,9 +144,11 @@ function Metric({ metric }: { metric: ViewMetric }) {
     metric.amount !== undefined ? formatCents(metric.amount) : (metric.text ?? "—");
 
   return (
-    <div className="rounded-[var(--clara-radius-card)] bg-[var(--clara-fog)] p-7">
+    <div className="min-w-0 rounded-[var(--clara-radius-card)] bg-[var(--clara-fog)] p-7 [container-type:inline-size]">
       <p className="clara-eyebrow">{metric.label}</p>
-      <p className="clara-metric mt-3.5">{value}</p>
+      <p className="clara-metric mt-3.5 max-w-full break-words [font-size:clamp(2rem,15cqi,4.5rem)] [overflow-wrap:anywhere]">
+        {value}
+      </p>
       {metric.detail !== undefined ? (
         <p className="mt-1.5 text-[var(--clara-graphite)]">{metric.detail}</p>
       ) : null}
@@ -199,7 +201,7 @@ function Row({ row, showBars }: { row: ViewRow; showBars: boolean }) {
 
   return (
           <li className="border-b border-[var(--clara-fog)] py-4 last:border-0">
-            <div className="grid grid-cols-[1fr_auto] items-baseline gap-4">
+            <div className="grid grid-cols-[minmax(0,11fr)_minmax(0,9fr)] items-baseline gap-4">
               <span className="min-w-0">
                 <strong className="flex items-baseline gap-2 font-semibold">
                   {/* O marcador vem ANTES do rótulo: numa agenda, a urgência é
@@ -231,9 +233,11 @@ function Row({ row, showBars }: { row: ViewRow; showBars: boolean }) {
                   </button>
                 ) : null}
               </span>
-              <span className="flex items-center gap-1.5 tabular-nums">
+              <span className="flex min-w-0 items-center justify-end gap-1.5 text-right tabular-nums">
                 {row.trend !== undefined ? <Trend trend={row.trend} /> : null}
-                {row.amount !== undefined ? formatCents(row.amount) : null}
+                {row.amount !== undefined ? (
+                  <span className="min-w-0 break-all">{formatCents(row.amount)}</span>
+                ) : null}
               </span>
             </div>
 
@@ -290,7 +294,7 @@ function Checksum({ view }: { view: Extract<View, { kind: "checksum" }> }) {
   return (
     <>
       <div
-        className="rounded-[var(--clara-radius-card)] p-7"
+        className="min-w-0 rounded-[var(--clara-radius-card)] p-7 [container-type:inline-size]"
         style={{
           background:
             matched || noDeclared
@@ -312,7 +316,7 @@ function Checksum({ view }: { view: Extract<View, { kind: "checksum" }> }) {
               ? "Sem total declarado"
               : "Diferença encontrada"}
         </p>
-        <p className="clara-metric mt-3.5">
+        <p className="clara-metric mt-3.5 max-w-full break-words [font-size:clamp(2rem,15cqi,4.5rem)] [overflow-wrap:anywhere]">
           {matched || noDeclared || view.difference === null
             ? formatCents(view.extractedTotal)
             : formatCents(view.difference)}
@@ -327,15 +331,17 @@ function Checksum({ view }: { view: Extract<View, { kind: "checksum" }> }) {
       </div>
 
       <ul className="mt-8">
-        <li className="grid grid-cols-[1fr_auto] gap-4 border-b border-[var(--clara-fog)] py-3.5">
+        <li className="grid grid-cols-[minmax(0,11fr)_minmax(0,9fr)] gap-4 border-b border-[var(--clara-fog)] py-3.5">
           <span className="clara-small">Total da fatura</span>
-          <span className="tabular-nums">
+          <span className="break-all text-right tabular-nums">
             {view.declaredTotal !== null ? formatCents(view.declaredTotal) : "—"}
           </span>
         </li>
-        <li className="grid grid-cols-[1fr_auto] gap-4 py-3.5">
+        <li className="grid grid-cols-[minmax(0,11fr)_minmax(0,9fr)] gap-4 py-3.5">
           <span className="clara-small">Total extraído</span>
-          <span className="tabular-nums">{formatCents(view.extractedTotal)}</span>
+          <span className="break-all text-right tabular-nums">
+            {formatCents(view.extractedTotal)}
+          </span>
         </li>
       </ul>
 

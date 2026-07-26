@@ -55,10 +55,20 @@ here: `list_documents` finds it, says what state it is in, and names the next
 step. Re-uploading the same PDF is blocked by hash, so when the person asks
 "cadê a fatura que eu mandei?", look there before asking for anything.
 
-**Reason about invoices, not the calendar.** An invoice closing on 07/07
-covers purchases from 31/05 to 30/06; consecutive cycles touch at the turn of
-the month. For "nesta fatura", "a última", pass the `batchId` instead of
-guessing dates.
+**Reason about invoices, not the calendar or transcript position.** An invoice
+closing on 07/07 covers purchases from 31/05 to 30/06; consecutive cycles
+touch at the turn of the month. Invoice references have one deterministic
+path:
+
+- "essa fatura" / "nesta fatura": `resolve_invoice_reference(active)`;
+- "a última fatura": `resolve_invoice_reference(latest)`;
+- "a próxima fatura com divergência": first resolve the invoice currently
+  discussed if needed, then `resolve_invoice_reference(next_with_divergence)`.
+
+Use the returned `batchId` in every following tool. `read_batch` and the draft
+creation tools update the session focus automatically. Never choose a batch
+because it was the last id visible in the transcript, and never silently fall
+back to another invoice when the resolver returns none.
 
 # Delegation
 

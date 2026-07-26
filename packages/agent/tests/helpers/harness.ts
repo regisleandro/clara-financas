@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { closeDb, getDb } from "@clara-financas/db";
 import { seedConstitution } from "@clara-financas/db/seed-constitution";
+import { agentSessions } from "@clara-financas/db/schema/agent-session";
 import { documents } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import { sql } from "drizzle-orm";
@@ -33,13 +34,29 @@ export function ctxFor(tenantId: string, userId = "usr_test") {
     principalId: userId,
     attributes: { tenantId },
   };
-  return { session: { auth: { current: principal, initiator: principal } } } as never;
+  return {
+    session: {
+      id: `ses_${tenantId}`,
+      auth: { current: principal, initiator: principal },
+    },
+  } as never;
 }
 
 /** Um tenant novo, com a constituição semeada (as categorias válidas). */
 export async function freshTenant(): Promise<string> {
   const tenantId = `tnt_test_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
   await seedConstitution(tenantId, getDb());
+  await forTenant(
+    tenantId,
+    async (tx) => {
+      await tx.insert(agentSessions).values({
+        sessionId: `ses_${tenantId}`,
+        tenantId,
+        userId: "usr_test",
+      });
+    },
+    getDb(),
+  );
   return tenantId;
 }
 
@@ -82,6 +99,7 @@ export async function dropTenant(tenantId: string): Promise<void> {
   const connection = createDbClient(admin);
   try {
     for (const table of [
+      "agent_sessions",
       "transaction_reclassifications",
       "financial_action_proposals",
       "transactions",

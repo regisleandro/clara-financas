@@ -1,5 +1,7 @@
 import { index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
+import { batches } from "./ledger";
+
 /**
  * Posse de sessão do eve.
  *
@@ -22,8 +24,21 @@ export const agentSessions = pgTable(
     sessionId: text("session_id").primaryKey(),
     tenantId: text("tenant_id").notNull(),
     userId: text("user_id").notNull(),
+    /**
+     * Fatura que a conversa está tratando agora.
+     *
+     * Pronomes como "essa" e "nesta" não devem ser resolvidos relendo texto
+     * antigo. O foco é estado da sessão e sempre aponta para um lote real.
+     */
+    activeBatchId: text("active_batch_id").references(() => batches.id, {
+      onDelete: "set null",
+    }),
+    focusUpdatedAt: timestamp("focus_updated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (table) => [index("agent_sessions_tenant_idx").on(table.tenantId)],
+  (table) => [
+    index("agent_sessions_tenant_idx").on(table.tenantId),
+    index("agent_sessions_active_batch_idx").on(table.activeBatchId),
+  ],
 );

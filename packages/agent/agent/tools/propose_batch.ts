@@ -1,7 +1,8 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
-import { requireTenantCaller } from "../lib/tenant";
+import { setInvoiceFocus } from "../lib/invoice-focus";
+import { requireSessionCaller } from "../lib/tenant";
 import { writeProposedBatch } from "../lib/write-proposed-batch";
 
 /**
@@ -78,10 +79,14 @@ export default defineTool({
       ),
   }),
   async execute(input, ctx) {
-    const { tenantId } = requireTenantCaller(ctx);
+    const { tenantId, sessionId } = requireSessionCaller(ctx);
 
     const result = await writeProposedBatch(tenantId, input);
     if ("error" in result) return result;
+    const focused = await setInvoiceFocus(tenantId, sessionId, result.batchId);
+    if (!focused) {
+      throw new Error("A sessão Eve não estava persistida para guardar o foco da fatura.");
+    }
 
     return {
       batchId: result.batchId,

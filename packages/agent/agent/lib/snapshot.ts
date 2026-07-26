@@ -2,6 +2,7 @@ import { getDb } from "@clara-financas/db";
 import { batches, documents, transactions } from "@clara-financas/db/schema/ledger";
 import { commitments } from "@clara-financas/db/schema/commitment";
 import { concepts } from "@clara-financas/db/schema/knowledge";
+import { agentSessions } from "@clara-financas/db/schema/agent-session";
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
@@ -44,6 +45,8 @@ export type InvoiceSummary = {
 export type LedgerSnapshot = {
   today: string;
   invoices: InvoiceSummary[];
+  /** Fatura explicitamente aberta nesta sessão, inclusive se saiu do recorte. */
+  activeInvoice: InvoiceSummary | null;
   invoicesOmitted: number;
   coverage: { count: number; firstDate: string | null; lastDate: string | null };
   /**
@@ -65,7 +68,10 @@ export type LedgerSnapshot = {
   openCommitmentCount: number;
 };
 
-export async function loadSnapshot(tenantId: string): Promise<LedgerSnapshot> {
+export async function loadSnapshot(
+  tenantId: string,
+  sessionId?: string,
+): Promise<LedgerSnapshot> {
   const db = getDb();
 
   return forTenant(
@@ -99,6 +105,37 @@ export async function loadSnapshot(tenantId: string): Promise<LedgerSnapshot> {
         .select({ count: sql<number>`count(*)::int` })
         .from(batches)
         .where(inArray(batches.status, ["proposed", "confirmed"]));
+
+      const [activeInvoice] =
+        sessionId === undefined
+          ? []
+          : await tx
+              .select({
+                batchId: batches.id,
+                documentId: batches.documentId,
+                status: batches.status,
+                issuer: documents.issuer,
+                filename: documents.filename,
+                periodStart: batches.periodStart,
+                periodEnd: batches.periodEnd,
+                dueDate: batches.dueDate,
+                declaredTotal: batches.declaredTotal,
+                checksumResult: batches.checksumResult,
+                transactionCount: sql<number>`(
+                  select count(*)::int from ${transactions}
+                  where ${transactions.batchId} = ${batches.id}
+                )`,
+              })
+              .from(agentSessions)
+              .innerJoin(batches, eq(batches.id, agentSessions.activeBatchId))
+              .innerJoin(documents, eq(documents.id, batches.documentId))
+              .where(
+                and(
+                  eq(agentSessions.sessionId, sessionId),
+                  inArray(batches.status, ["proposed", "confirmed"]),
+                ),
+              )
+              .limit(1);
 
       const [coverage] = await tx
         .select({
@@ -140,21 +177,24 @@ export async function loadSnapshot(tenantId: string): Promise<LedgerSnapshot> {
         .from(commitments)
         .where(eq(commitments.active, "yes"));
 
+      const summarizeInvoice = (row: (typeof invoiceRows)[number]): InvoiceSummary => ({
+        batchId: row.batchId,
+        documentId: row.documentId,
+        issuer: row.issuer,
+        filename: row.filename,
+        status: row.status,
+        periodStart: row.periodStart,
+        periodEnd: row.periodEnd,
+        dueDate: row.dueDate,
+        declaredTotalCents: row.declaredTotal,
+        checksumResult: row.checksumResult,
+        transactionCount: row.transactionCount,
+      });
+
       return {
         today: todayInSaoPaulo(),
-        invoices: invoiceRows.map((row) => ({
-          batchId: row.batchId,
-          documentId: row.documentId,
-          issuer: row.issuer,
-          filename: row.filename,
-          status: row.status,
-          periodStart: row.periodStart,
-          periodEnd: row.periodEnd,
-          dueDate: row.dueDate,
-          declaredTotalCents: row.declaredTotal,
-          checksumResult: row.checksumResult,
-          transactionCount: row.transactionCount,
-        })),
+        invoices: invoiceRows.map(summarizeInvoice),
+        activeInvoice: activeInvoice === undefined ? null : summarizeInvoice(activeInvoice),
         invoicesOmitted: Math.max(0, (invoiceCount?.count ?? invoiceRows.length) - invoiceRows.length),
         coverage: coverage ?? { count: 0, firstDate: null, lastDate: null },
         uncategorized: uncategorized ?? { count: 0, totalCents: 0 },
@@ -200,6 +240,10 @@ export function renderSnapshot(snapshot: LedgerSnapshot): string {
     "- `invoices` traz no máximo as 12 faturas mais recentes. Se",
     "  `invoicesOmitted` for maior que zero e a pessoa mencionar uma fatura",
     "  antiga, use `list_invoices` em vez de adivinhar ou negar que ela exista.",
+    "- `activeInvoice` é a fatura que esta conversa abriu por último. Para",
+    "  'essa fatura' ou 'nesta fatura', use EXATAMENTE esse `batchId`. Se for",
+    "  `null`, chame `resolve_invoice_reference` com `active`; nunca escolha",
+    "  uma fatura pela posição em que ela apareceu no texto.",
     "- Uma fatura com `status: proposed` está esperando a decisão dela. Se for",
     "  o assunto, retome pelo `batchId` em vez de recomeçar.",
     "- `periodStart`/`periodEnd` são o ciclo COBERTO pela fatura, que não é o",
