@@ -4,6 +4,7 @@ import { useEveAgent } from "eve/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { resolveAnswered, type AnsweredRequest } from "@/lib/answered-state";
 import { uploadDocument } from "@/lib/document-upload";
 import { saveSession, type StoredSession } from "@/lib/session-store";
 import { findPendingRequest, resolveApprovalOption } from "@clara-financas/views/hitl";
@@ -31,7 +32,10 @@ export function useClaraAgent({
   initial: StoredSession | null;
 }) {
   const tokenRef = useRef<{ value: string; expiresAt: number } | null>(null);
-  const [answered, setAnswered] = useState<boolean | null>(null);
+  // Amarrado ao requestId respondido, não ao turno: gates encadeados no mesmo
+  // turno têm ids diferentes, e o cartão do próximo precisa aparecer. Ver
+  // `lib/answered-state.ts` para o bug que a forma global causava.
+  const [answeredRequest, setAnsweredRequest] = useState<AnsweredRequest | null>(null);
   const [uploading, setUploading] = useState(false);
   /** Porcentagem do upload direto, ou `null` fora dele (hash, parser, registro). */
   const [progress, setProgress] = useState<number | null>(null);
@@ -64,6 +68,7 @@ export function useClaraAgent({
 
   const busy = agent.status === "submitted" || agent.status === "streaming";
   const pending = findPendingRequest(agent.data.messages);
+  const answered = resolveAnswered(pending, answeredRequest);
   const isWelcome = agent.data.messages.length === 0;
 
   // Reatribuídos a cada render: um `useMemo` no chamador guardaria a versão
@@ -78,9 +83,22 @@ export function useClaraAgent({
     // o id da opção e passam direto.
     const intent = optionId === "approve" || optionId === "deny" ? optionId : null;
     const resolved = intent === null ? optionId : resolveApprovalOption(pending, intent);
-    setAnswered(intent === null ? true : intent === "approve");
-    void agent.send({
-      inputResponses: [{ requestId: pending.requestId, optionId: resolved }],
+    const { requestId } = pending;
+    setAnsweredRequest({ requestId, approved: intent === null ? true : intent === "approve" });
+    // Se o envio falhar (token vencido, ACL da sessão), o cartão precisa
+    // VOLTAR: antes o estado ficava marcado como respondido e a única pista
+    // era o bloco de erro genérico — sem nada clicável para tentar de novo.
+    void Promise.resolve(
+      agent.send({
+        inputResponses: [{ requestId, optionId: resolved }],
+      }),
+    ).catch((error: unknown) => {
+      setAnsweredRequest((current) => (current?.requestId === requestId ? null : current));
+      toast.error(
+        error instanceof Error && error.message !== ""
+          ? error.message
+          : "Não consegui enviar a resposta. Tente de novo.",
+      );
     });
   };
 
@@ -102,25 +120,37 @@ export function useClaraAgent({
         protectedInput = { requestId: pending.requestId, token: data.token };
       }
 
-      setAnswered(true);
-      void agent.send({
-        inputResponses: [
-          {
-            requestId: pending.requestId,
-            text: sensitive ? "Resposta protegida fornecida." : text,
-          },
-        ],
-        ...(protectedInput
-          ? {
-              clientContext: {
-                protectedInput: {
-                  ...protectedInput,
-                  instruction:
-                    "Encaminhe este token somente à tool de leitura do documento. Não o repita.",
+      const { requestId } = pending;
+      setAnsweredRequest({ requestId, approved: true });
+      // Mesmo cuidado do `answer`: o `try` de fora só cobre o selamento da
+      // senha; o envio em si falhando precisa devolver o campo de resposta.
+      void Promise.resolve(
+        agent.send({
+          inputResponses: [
+            {
+              requestId,
+              text: sensitive ? "Resposta protegida fornecida." : text,
+            },
+          ],
+          ...(protectedInput
+            ? {
+                clientContext: {
+                  protectedInput: {
+                    ...protectedInput,
+                    instruction:
+                      "Encaminhe este token somente à tool de leitura do documento. Não o repita.",
+                  },
                 },
-              },
-            }
-          : {}),
+              }
+            : {}),
+        }),
+      ).catch((error: unknown) => {
+        setAnsweredRequest((current) => (current?.requestId === requestId ? null : current));
+        toast.error(
+          error instanceof Error && error.message !== ""
+            ? error.message
+            : "Não foi possível enviar a resposta.",
+        );
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível enviar a resposta.");
@@ -129,7 +159,7 @@ export function useClaraAgent({
 
   const onTurnStartRef = useRef<() => void>(() => {});
   sendRef.current = (message: string) => {
-    setAnswered(null);
+    setAnsweredRequest(null);
     onTurnStartRef.current();
     void agent.send({ message });
   };
@@ -160,7 +190,7 @@ export function useClaraAgent({
       }
       if (result.warning !== null) toast.warning(result.warning);
 
-      setAnswered(null);
+      setAnsweredRequest(null);
       onTurnStartRef.current();
       void agent.send({
         message: `Enviei ${result.filename}.`,
