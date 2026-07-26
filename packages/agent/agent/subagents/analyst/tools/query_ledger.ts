@@ -3,6 +3,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { loadCategoryLabels } from "../../../lib/categories";
+import { monthRange } from "../../../lib/dates";
 import { requireTenantCaller } from "../../../lib/tenant";
 import { optionalText } from "../../../lib/schema";
 import { brief, ledgerCoverage, loadLedger } from "../../../lib/ledger-query";
@@ -25,6 +26,12 @@ export default defineTool({
       .describe("Ids returned by another analysis. Use to drill into a number."),
     from: optionalText().describe("Start date, YYYY-MM-DD."),
     to: optionalText().describe("End date, YYYY-MM-DD, inclusive."),
+    month: optionalText().describe(
+      "Calendar month, YYYY-MM. Shorthand for from/to covering the whole month. Remember an invoice CYCLE is not a calendar month — for 'nesta fatura' questions prefer batchId.",
+    ),
+    issuer: optionalText().describe(
+      "Card issuer/operator name as the person says it (e.g. 'Nubank'). Accent- and case-insensitive; matches the issuer of the document each transaction came from. Use for 'quanto gastei no <cartão>'.",
+    ),
     batchId: optionalText().describe(
       "Restrict to ONE invoice, by the batchId shown in the ledger state. Prefer this over guessing dates whenever the question is about a specific invoice or 'nesta fatura'. An invoice still awaiting approval is included and every row says which `status` it is in.",
     ),
@@ -57,9 +64,14 @@ export default defineTool({
     // Todo o recorte vai ao BANCO. Antes, só a data ia; o resto era filtrado em
     // memória depois de carregar o razão inteiro — e a busca por texto, sendo
     // `includes()`, exigia acerto exato de caixa e acentuação.
+    // `month` é açúcar sobre from/to; datas explícitas ganham quando as duas
+    // formas vierem juntas, porque são o recorte mais específico.
+    const monthDates = input.month !== undefined ? monthRange(input.month) : undefined;
+
     const rows = await loadLedger(tenantId, {
-      from: input.from,
-      to: input.to,
+      from: input.from ?? monthDates?.from,
+      to: input.to ?? monthDates?.to,
+      issuer: input.issuer,
       batchId: input.batchId,
       // Perguntar sobre UMA fatura inclui a que ainda espera decisão: é
       // justamente a que está em conferência. Fora desse recorte, rascunho
