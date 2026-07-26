@@ -124,6 +124,18 @@ function decisionCopy(pending: PendingRequest, proposal: BatchProposal | null): 
     };
   }
 
+  if (pending.toolName === "deactivate_commitment") {
+    const title = asString(input?.title) ?? "este lembrete";
+    return {
+      title: `Desativar o lembrete “${title}”?`,
+      consequence:
+        "A Clara para de avisar sobre este vencimento. O histórico fica guardado, e dá para reativar depois.",
+      approveLabel: "Desativar lembrete",
+      denyLabel: "Continuar avisando",
+      details: [],
+    };
+  }
+
   /**
    * Sem um bloco próprio, uma escrita nova cai no genérico "Confirmar esta
    * alteração?" — que é pedir para a pessoa aprovar no escuro. Cada tool com
