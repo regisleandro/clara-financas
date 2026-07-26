@@ -124,6 +124,31 @@ function decisionCopy(pending: PendingRequest, proposal: BatchProposal | null): 
     };
   }
 
+  if (pending.toolName === "set_proactivity") {
+    const enabled = input?.enabled === true;
+    return {
+      title: enabled ? "Religar os avisos automáticos?" : "Desligar os avisos automáticos?",
+      consequence: enabled
+        ? "A Clara volta a avisar sobre vencimentos por conta própria."
+        : "A Clara para de avisar qualquer coisa por conta própria. Os compromissos continuam guardados e visíveis na agenda.",
+      approveLabel: enabled ? "Religar avisos" : "Desligar avisos",
+      denyLabel: "Deixar como está",
+      details: [],
+    };
+  }
+
+  if (pending.toolName === "mark_reviewed") {
+    const ids = Array.isArray(input?.transactionIds) ? input.transactionIds : [];
+    return {
+      title: `Marcar ${ids.length} lançamentos como revisados?`,
+      consequence:
+        "Eles saem da fila de revisão de uma vez. Só confirme se você olhou mesmo — a fila existe para o que ninguém conferiu.",
+      approveLabel: "Marcar como revisados",
+      denyLabel: "Manter na fila",
+      details: [],
+    };
+  }
+
   if (pending.toolName === "deactivate_commitment") {
     const title = asString(input?.title) ?? "este lembrete";
     return {

@@ -1,7 +1,7 @@
 # Avaliação dos agentes e dos fluxos de conversa — 2ª rodada
 
 Data: 2026-07-26 · Escopo: `packages/agent`, `packages/views`, `apps/web`, `packages/db`, `packages/ledger`
-Atualização: as propostas **P1 (§4) foram implementadas** na sequência da mesma rodada — ver §3.1.
+Atualização: as propostas **P1 e P2 (§4) foram implementadas** na sequência da mesma rodada — ver §3.1 e §3.2.
 
 Sintomas relatados que motivaram esta rodada:
 
@@ -68,7 +68,7 @@ A suíte de testes exercita as tools contra o banco real (não o texto do modelo
 | **Aprovação sem efeito era invisível**: `recategorize_transactions` sobre ids de rascunho devolvia sucesso com `changed: 0` | Check verde no trace; aprovar sem efeito indistinguível de aprovar com efeito | **Corrigido (P0)** |
 | **Retranscrição do lote**: o coordenador reemite token a token as 100+ linhas da extração no `propose_batch` | Custo de contexto proporcional à fatura + risco de erro de cópia no elo mais crítico | **Corrigido (P1: staging + `propose_batch_from_extraction`)** |
 | `propose_batch` **apaga o rascunho anterior** do mesmo documento sem cartão | 10 turnos de correção podem sumir se a Clara repropõe interpretando mal um pedido | **Corrigido (P1: `rascunho_editado` + `overwriteEditedDraft`)** |
-| `mark_reviewed` aceita **500 ids sem gate** | O argumento de escala que justifica o gate em `recategorize_transactions` vale aqui também | P2 |
+| `mark_reviewed` aceita **500 ids sem gate** | O argumento de escala que justifica o gate em `recategorize_transactions` vale aqui também | **Corrigido (P2: cartão acima de 20 ids)** |
 
 ### 2.3 Produto — promessas sem suporte
 
@@ -77,14 +77,16 @@ A suíte de testes exercita as tools contra o banco real (não o texto do modelo
 | **Extrato bancário** declarado (`bank_statement` no schema, "extratos" no PRODUCT.md) mas nenhum código grava outro `kind` além de `credit_card_invoice`; checksum é todo modelado para fatura | P2 — exigiria outro contrato de conferência |
 | **Operadora sem identidade canônica**: `documents.issuer` é texto livre; a chave (`issuerKey`) só existe na leitura. "Nubank" e "Nu Bank" são duas linhas na matriz | Parcial: a chave agora é compartilhada (`@clara-financas/ledger`) e o snapshot entrega as grafias exatas; canonicalização na escrita (análoga ao `merchantKey`) fica P2 |
 | **Lembrete sem porta de saída**: `commitments.active` nunca recebe `"no"` — não há tool nem tela que desative; a varredura diária avisa para sempre | **Corrigido (P1: `deactivate_commitment`, com gate)** |
-| **Proatividade sem opt-in**: o cron varre todos os tenants `ready`; o princípio "relevância **e consentimento**" está implementado só na metade relevância | P2 |
-| **Dupla contagem** fatura parcial + fatura fechada do mesmo ciclo (documentada no README): as duas conferências passam e o total mente sobre a vida financeira | P2 — fingerprint de lançamento ou supersessão de lote |
+| **Proatividade sem opt-in**: o cron varre todos os tenants `ready`; o princípio "relevância **e consentimento**" está implementado só na metade relevância | **Corrigido (P2: `set_proactivity`)** |
+| **Dupla contagem** fatura parcial + fatura fechada do mesmo ciclo (documentada no README): as duas conferências passam e o total mente sobre a vida financeira | **Mitigado (P2: `duplicateSuspects` na proposta — aviso com ids, decisão da pessoa)** |
 | **`notifications.readAt` nunca é escrito**: o badge de alertas fica aceso para sempre após o primeiro aviso | **Corrigido (P1: agenda marca ao exibir)** |
 | **Fila de revisão só vê o confirmado**: um lote que fica `proposed` para sempre (fatura parcial, caminho recomendado no README) não aparece em fila nenhuma | P2 |
 
 ### 2.4 Telemetria — o que impede diagnosticar
 
-`agent_tool_events` é escrita e nunca lida por tela ou tool. Além disso: `durationMs` declarado e nunca preenchido; `turnId` só gravado em `turn.failed` (impossível agrupar um turno); as tools de **subagente** rodam na sessão filha e não passam pelo hook — o extractor, componente mais caro e frágil, é o menos observado; `pendingInputs` é um `Map` de módulo sem TTL (vaza em turno cancelado e quebra em serverless multi-instância); sem `CLARA_TELEMETRY_ALL`, os `ok` são descartados e não há denominador para taxa de erro. Tudo P2, mas é o que transformaria "os agentes não conseguem" de impressão em número.
+`agent_tool_events` é escrita e nunca lida por tela ou tool. Além disso: `durationMs` declarado e nunca preenchido; `turnId` só gravado em `turn.failed` (impossível agrupar um turno); as tools de **subagente** rodam na sessão filha e não passam pelo hook — o extractor, componente mais caro e frágil, é o menos observado; `pendingInputs` é um `Map` de módulo sem TTL (vaza em turno cancelado e quebra em serverless multi-instância); sem `CLARA_TELEMETRY_ALL`, os `ok` são descartados e não há denominador para taxa de erro.
+
+**Status pós-P2: corrigido** exceto o denominador (`CLARA_TELEMETRY_ALL` continua opt-in, decisão de custo): `durationMs` e `turnId` gravados, hooks nos três subagentes, teto+prazo no `pendingInputs`, e `read_tool_events` como leitor pela conversa — ver §3.2.
 
 ---
 
@@ -110,6 +112,17 @@ Cobertura nova: `packages/agent/tests/tools/adjustment-and-errors.test.ts`, `pac
 
 Erros novos no catálogo: `extracao_nao_encontrada`, `rascunho_editado`, `compromisso_nao_encontrado`, `conceito_nao_encontrado`. Instruções do coordenador e do extractor atualizadas (delegação por recibo, porta de saída da proatividade, o desfazer no ciclo de aprendizado, documentos órfãos). Cobertura nova: `extraction-staging.test.ts`, `p1-readers.test.ts`, `commitments.test.ts`.
 
+## 3.2 O que a rodada P2 implementou
+
+1. **Telemetria completa** — o hook virou factory (`agent/lib/telemetry-hook.ts`) instalada no root **e nos três subagentes** (subagente declarado não herda hooks — o extractor, componente mais frágil, era o menos observado); `durationMs` e `turnId` agora são gravados em todo `action.result`; o `Map` de inputs pendentes ganhou teto (1000) e prazo (6h), fechando o vazamento; o nome do agente executor entra no `inputSummary`.
+2. **Auditoria pela conversa** — decisão de desenho registrada: o "subagente auditor" proposto virou **duas tools de leitura da coordenadora**, porque os leitores de trilha da P1 já moram nela e são leituras baratas com teto — um subagente só adicionaria isolamento sem benefício. `read_tool_events` lê o log de execução (tool, status, código, duração — sem valores financeiros por construção) e `list_notifications` lê os avisos já enviados com o estado de visto, fechando o ciclo "o que você fez/mudou/avisou".
+3. **Consentimento de proatividade** — `set_proactivity` (com gate, nas duas direções) grava o interruptor geral como conceito `preferences/proactivity` no bundle `learnings` — dado do tenant, atrás da RLS, com trilha de revisões, e não no registry do control plane; `sweepDueDates` pula o tenant desligado. `deactivate_commitment` (P1) continua sendo a porta individual.
+4. **Aviso de dupla contagem** — `write-proposed-batch` compara cada linha proposta com o que já está **confirmado vindo de outro documento** (mesma data, valor e `merchantKey`) e devolve `duplicateSuspects` com os ids; as instruções mandam avisar a pessoa **antes** de abrir o commit. É aviso, não bloqueio — duas compras idênticas no mesmo dia existem; quem decide é a pessoa. Fecha o caso documentado no README (fatura parcial + fechada do mesmo ciclo, as duas conferências passando).
+5. **Identidade de operadora na escrita** — `canonicalIssuer` (por `issuerKey`): `name_issuer` e a proposta de lote reusam a grafia já registrada da mesma operadora ("NUBANK" converge para "Nubank"). Grafias estruturalmente diferentes ("Nu Bank") continuam sendo trabalho de alias (`IssuerPattern`), registrado como limite.
+6. **Gate para atestado em massa** — `mark_reviewed` acima de 20 ids abre o cartão (mesmo argumento de escala do `recategorize_transactions`); reabrir nunca pede cartão — devolver à fila é a direção segura. Cartões próprios no Decision Card para `mark_reviewed` em massa e `set_proactivity`.
+
+Cobertura nova: `p2-guardrails.test.ts` (consentimento liga/desliga a varredura de verdade, dupla contagem acusada, grafia da operadora converge, limiar do gate do atestado, porta individual convive com o interruptor geral).
+
 ---
 
 ## 4. Propostas — próximas rodadas
@@ -126,7 +139,7 @@ Erros novos no catálogo: `extracao_nao_encontrada`, `rascunho_editado`, `compro
 | Confirmação antes de `propose_batch` sobre rascunho já editado | Protege as correções acumuladas de uma re-proposta acidental |
 | Marcar `notifications.readAt` ao abrir a agenda | Apaga o badge eterno |
 
-### P2 — arquitetura e produto
+### P2 — arquitetura e produto — **IMPLEMENTADAS (com dois ajustes de desenho), ver §3.2**
 
 - **Subagente auditor** (leitura pura das trilhas: reclassificações, revisões de conceito, notificações, telemetria) — responde "o que você fez/mudou/avisou" sem inchar a coordenadora.
 - **Identidade de operadora na escrita** (`IssuerPattern`/alias, análogo ao `merchantKey`) — canonicaliza no `name_issuer`/`propose_batch` em vez de slugificar na leitura.

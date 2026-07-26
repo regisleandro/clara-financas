@@ -5,7 +5,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
-import { requireTenantCaller } from "../lib/tenant";
+import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
 
 /**
  * O atestado: "uma pessoa olhou isto".
@@ -17,13 +17,19 @@ import { requireTenantCaller } from "../lib/tenant";
  * migração 0015 e só a tela sabia escrevê-las; pela conversa — que é onde a
  * pessoa de fato confere — não havia caminho.
  *
- * Sem gate por construção: não muda nenhum dado financeiro, e é reversível na
- * frase seguinte com `reopen`. O trigger de imutabilidade permite `reviewed_at`
- * em linha confirmada exatamente por isso.
+ * Poucas linhas passam sem gate: não muda nenhum dado financeiro e é
+ * reversível na frase seguinte com `reopen`. Mas o atestado em MASSA é outra
+ * coisa — "marquei as 500 como revisadas" esvazia a fila inteira com uma
+ * frase, e ninguém olhou 500 linhas numa frase. Acima do limiar, o cartão
+ * aparece: é o mesmo argumento de escala que separa
+ * `set_transaction_category` de `recategorize_transactions`. Reabrir nunca
+ * exige cartão — devolver itens à fila é a direção segura.
  */
+const NO_CARD_LIMIT = 20;
+
 export default defineTool({
   description:
-    "Marks entries as reviewed by the person, or reopens them with reopen=true. Use when the conclusion is 'the reading was already right' — without it the review queue keeps handing back the same entries forever. Changes no financial data and needs no approval card.",
+    "Marks entries as reviewed by the person, or reopens them with reopen=true. Use when the conclusion is 'the reading was already right' — without it the review queue keeps handing back the same entries forever. Changes no financial data. Up to 20 entries apply directly; more than that opens the approval card, because attesting in bulk empties the queue.",
   inputSchema: z.object({
     transactionIds: z.array(z.string().min(1)).min(1).max(500),
     reopen: z
@@ -31,6 +37,20 @@ export default defineTool({
       .optional()
       .describe("true clears the review mark, putting the entries back in the queue."),
   }),
+
+  approval: (ctx) => {
+    const current = tenantIdOf(ctx.session.auth.current);
+    if (current === undefined || current !== tenantIdOf(ctx.session.auth.initiator)) {
+      return { type: "denied", reason: "A sessão não está fixada a um único usuário." };
+    }
+    const input = ctx.toolInput as
+      | { transactionIds?: string[]; reopen?: boolean }
+      | undefined;
+    // Reabrir devolve à fila — direção segura, nunca pede cartão. Atestar em
+    // massa esvazia a fila, e isso a pessoa decide.
+    const count = input?.transactionIds?.length ?? 0;
+    return input?.reopen !== true && count > NO_CARD_LIMIT ? "user-approval" : "not-applicable";
+  },
 
   async execute(input, ctx) {
     const { tenantId, userId } = requireTenantCaller(ctx);

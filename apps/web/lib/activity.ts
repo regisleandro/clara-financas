@@ -105,6 +105,9 @@ export const TOOL_LABEL: Record<string, string> = {
   read_concept_history: "Consultando as versões do aprendizado",
   deactivate_commitment: "Desativando o lembrete",
   save_extraction: "Guardando a leitura do documento",
+  read_tool_events: "Consultando o registro de execução",
+  list_notifications: "Olhando os avisos já enviados",
+  set_proactivity: "Ajustando os avisos automáticos",
 };
 
 /** O que se diz de uma ferramenta que ainda não tem rótulo próprio. */
@@ -150,6 +153,9 @@ export const TOOL_ICON: Record<string, ActivityIcon> = {
   read_concept_history: "search",
   deactivate_commitment: "calendar",
   save_extraction: "save",
+  read_tool_events: "search",
+  list_notifications: "calendar",
+  set_proactivity: "calendar",
 };
 
 const SUBAGENT_ICON: Record<string, ActivityIcon> = {
