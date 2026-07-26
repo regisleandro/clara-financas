@@ -39,6 +39,22 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      # Falhar AQUI, com diagnóstico, e não dentro do drizzle-kit com
+      # "url: ''". O secret chega vazio quando: foi salvo em "Variables" em
+      # vez de "Secrets"; foi salvo num Environment (este job não declara
+      # `environment:`, então não os enxerga); o nome não é exatamente
+      # DATABASE_ADMIN_URL; ou é um secret de organização sem acesso a este
+      # repositório.
+      - name: Conferir o secret DATABASE_ADMIN_URL
+        env:
+          DATABASE_ADMIN_URL: ${{ secrets.DATABASE_ADMIN_URL }}
+        run: |
+          if [ -z "${DATABASE_ADMIN_URL}" ]; then
+            echo "::error::O secret DATABASE_ADMIN_URL está vazio ou invisível para este workflow. Confira em Settings → Secrets and variables → Actions → aba 'Secrets' → 'Repository secrets': o nome precisa ser exatamente DATABASE_ADMIN_URL (não vale a aba 'Variables', nem secret de Environment — este job não declara environment)."
+            exit 1
+          fi
+          echo "Secret presente."
+
       # Só o pacote do banco e suas dependências — o drizzle-kit não precisa
       # do resto do monorepo.
       - name: Instalar dependências
