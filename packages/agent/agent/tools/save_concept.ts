@@ -61,27 +61,52 @@ const LEARNED_TYPES = [
 
 export default defineTool({
   description:
-    "Records a learning about this person (categorisation rule, merchant, commitment, issuer pattern). Requires explicit approval. Use after proposing the rule in conversation and the person agreeing.",
-  inputSchema: z.object({
-    conceptId: z
-      .string()
-      .min(1)
-      .regex(
-        /^[a-z0-9][a-z0-9/-]*$/,
-        "use caminho em minúsculas, ex.: merchants/padaria-central",
-      )
-      .describe('Caminho dentro do bundle, sem .md. Ex.: "rules/nuvem-digital".'),
-    type: z.enum(LEARNED_TYPES),
-    title: z.string().min(1).describe("Short, readable title, in Brazilian Portuguese."),
-    description: optionalText().describe("One line explaining the rule, in Brazilian Portuguese."),
-    body: z
-      .string()
-      .min(1)
-      .describe(
-        "Markdown body, written in Brazilian Portuguese. To reference another concept use an absolute markdown link, e.g. [Assinaturas](/categories/subscriptions.md).",
+    "Requests approval to record a learning about this person. Call when the exact learning is ready to show: the call itself opens the approval card and executes only after approval. Do not collect a prose confirmation first.",
+  inputSchema: z
+    .object({
+      conceptId: z
+        .string()
+        .min(1)
+        .regex(
+          /^[a-z0-9][a-z0-9/-]*$/,
+          "use caminho em minúsculas, ex.: merchants/padaria-central",
+        )
+        .describe('Caminho dentro do bundle, sem .md. Ex.: "rules/nuvem-digital".'),
+      type: z.enum(LEARNED_TYPES),
+      title: z.string().min(1).describe("Short, readable title, in Brazilian Portuguese."),
+      description: optionalText().describe("One line explaining the rule, in Brazilian Portuguese."),
+      merchant: optionalText().describe(
+        "Stable lowercased merchant fragment. Required for CategorizationRule.",
       ),
-    reason: optionalText().describe("Why this learning exists. Write it in Brazilian Portuguese."),
-  }),
+      aliases: z
+        .array(z.string().min(1))
+        .min(2)
+        .optional()
+        .describe("Merchant spellings proved to be the same company. Required for MerchantAlias."),
+      body: z
+        .string()
+        .min(1)
+        .describe(
+          "Markdown body, written in Brazilian Portuguese. To reference another concept use an absolute markdown link, e.g. [Assinaturas](/categories/subscriptions.md).",
+        ),
+      reason: optionalText().describe("Why this learning exists. Write it in Brazilian Portuguese."),
+    })
+    .superRefine((input, ctx) => {
+      if (input.type === "CategorizationRule" && input.merchant === undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "CategorizationRule exige merchant",
+          path: ["merchant"],
+        });
+      }
+      if (input.type === "MerchantAlias" && input.aliases === undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "MerchantAlias exige aliases",
+          path: ["aliases"],
+        });
+      }
+    }),
 
   approval: (ctx) => {
     const current = tenantIdOf(ctx.session.auth.current);
@@ -115,6 +140,8 @@ export default defineTool({
           type: input.type,
           title: input.title,
           ...(input.description !== undefined ? { description: input.description } : {}),
+          ...(input.merchant !== undefined ? { merchant: input.merchant } : {}),
+          ...(input.aliases !== undefined ? { aliases: input.aliases } : {}),
           status: "stable" as const,
           generated: { by: AGENT_ACTOR, at: isoNow },
           // Convenção de ator do OKF §7. É a prova de que uma pessoa aprovou.

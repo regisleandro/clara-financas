@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.20",
+    "@clara-financas/auth": "workspace:*",
     "@clara-financas/db": "workspace:*",
     "@clara-financas/ledger": "workspace:*",
     "@clara-financas/okf": "workspace:*",
@@ -26,13 +27,13 @@
     "dotenv": "catalog:",
     "drizzle-orm": "catalog:",
     "eve": "catalog:",
+    "jose": "^6.1.0",
     "unpdf": "^1.8.0",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@clara-financas/config": "workspace:*",
     "@types/node": "catalog:",
-    "jose": "^6.1.0",
     "microsandbox": "^0.6.6",
     "tsx": "^4.22.5",
     "typescript": "catalog:"

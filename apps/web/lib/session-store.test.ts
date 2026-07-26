@@ -73,6 +73,33 @@ describe("session-store", () => {
     assert.equal(stored?.cursor.sessionId, "s1", "a retomada continua possível");
   });
 
+  it("não persiste senha respondida em um pedido protegido", () => {
+    const storage = memoryStorage();
+    const events = [
+      {
+        type: "message.appended",
+        data: {
+          parts: [
+            {
+              toolMetadata: {
+                eve: {
+                  inputRequest: { prompt: "Qual é a senha deste PDF?" },
+                  inputResponse: { text: "segredo-real" },
+                },
+              },
+            },
+          ],
+        },
+      },
+    ];
+
+    saveSession("t1", cursor("s1"), events, "Documento", storage);
+    const raw = storage.getItem("clara:session:t1:s1") ?? "";
+
+    assert.equal(raw.includes("segredo-real"), false);
+    assert.equal(raw.includes("[resposta protegida]"), true);
+  });
+
   it("tenants não se enxergam", () => {
     const storage = memoryStorage();
     saveSession("t1", cursor("s1"), [], "Do tenant 1", storage);

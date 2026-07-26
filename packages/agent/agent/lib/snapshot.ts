@@ -3,7 +3,7 @@ import { batches, documents, transactions } from "@clara-financas/db/schema/ledg
 import { commitments } from "@clara-financas/db/schema/commitment";
 import { concepts } from "@clara-financas/db/schema/knowledge";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { todayInSaoPaulo } from "./dates";
 
@@ -44,6 +44,7 @@ export type InvoiceSummary = {
 export type LedgerSnapshot = {
   today: string;
   invoices: InvoiceSummary[];
+  invoicesOmitted: number;
   coverage: { count: number; firstDate: string | null; lastDate: string | null };
   /**
    * Lançamentos confirmados que continuam sem categoria, EXCLUÍDOS pagamentos
@@ -83,7 +84,13 @@ export async function loadSnapshot(tenantId: string): Promise<LedgerSnapshot> {
         .innerJoin(documents, eq(documents.id, batches.documentId))
         // Lote rejeitado não é fatura da pessoa, é tentativa descartada.
         .where(inArray(batches.status, ["proposed", "confirmed"]))
-        .orderBy(asc(batches.periodEnd), asc(batches.createdAt));
+        .orderBy(desc(batches.periodEnd), desc(batches.createdAt))
+        .limit(12);
+
+      const [invoiceCount] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(batches)
+        .where(inArray(batches.status, ["proposed", "confirmed"]));
 
       const [coverage] = await tx
         .select({
@@ -135,6 +142,7 @@ export async function loadSnapshot(tenantId: string): Promise<LedgerSnapshot> {
           checksumResult: row.checksumResult,
           transactionCount: row.transactionCount,
         })),
+        invoicesOmitted: Math.max(0, (invoiceCount?.count ?? invoiceRows.length) - invoiceRows.length),
         coverage: coverage ?? { count: 0, firstDate: null, lastDate: null },
         uncategorized: uncategorized ?? { count: 0, totalCents: 0 },
         learnedRuleCount: rules?.count ?? 0,
@@ -172,6 +180,9 @@ export function renderSnapshot(snapshot: LedgerSnapshot): string {
     "- `invoices` são as faturas que ela já enviou. Nunca peça um documento que",
     "  já está aqui com `status: confirmed`, e nunca diga que não há nada",
     "  registrado quando `coverage.count` for maior que zero.",
+    "- `invoices` traz no máximo as 12 faturas mais recentes. Se",
+    "  `invoicesOmitted` for maior que zero e a pessoa mencionar uma fatura",
+    "  antiga, use `list_invoices` em vez de adivinhar ou negar que ela exista.",
     "- Uma fatura com `status: proposed` está esperando a decisão dela. Se for",
     "  o assunto, retome pelo `batchId` em vez de recomeçar.",
     "- `periodStart`/`periodEnd` são o ciclo COBERTO pela fatura, que não é o",

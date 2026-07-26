@@ -12,7 +12,7 @@ import { findMessageView, findPresentedView } from "./stream";
 const view = (title: string) => ({
   kind: "metric",
   title,
-  metric: { label: "Total", amount: 1000 },
+  metric: { label: "Total", amount: 1000, transactionIds: ["t1"] },
   rows: [],
 });
 

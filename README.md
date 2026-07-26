@@ -82,6 +82,29 @@ Resolve em `turn.started`, não em `session.started`: dentro da mesma conversa a
 
 O analista e o categorizador têm cada um o seu próprio — um subagente declarado não herda nada do root, e essa duplicação é o preço do isolamento que garante que o extrator não alcance o razão.
 
+O snapshot é deliberadamente limitado às 12 faturas mais recentes. Quando a
+pessoa menciona uma fatura mais antiga, a Clara usa `list_invoices` para
+recuperar o histórico sob demanda. Assim o custo de contexto não cresce sem
+limite junto com a vida financeira da pessoa.
+
+### A conversa traduz a execução
+
+Extrator, analista e categorizador devolvem contratos estruturados validados
+por Zod. A coordenadora escolhe a apresentação, mas não precisa copiar números
+ou ids de uma resposta livre. Painéis financeiros falham fechado quando falta
+proveniência.
+
+Na interface, nomes de tools, raciocínio e JSON não aparecem. O stream vira
+progresso orientado à tarefa — “Lendo o documento”, “Conferindo os valores” —
+e cada escrita durável tem um cartão próprio com objeto, alcance e
+consequência. Chamar a tool abre a decisão; não existe um “sim” em prosa
+seguido de uma segunda confirmação.
+
+Upload também não fabrica uma mensagem com `documentId`: o texto visível é
+natural e o identificador viaja em `clientContext` de um turno. Senhas de PDF
+usam resposta livre protegida e são removidas do histórico guardado neste
+dispositivo.
+
 ### Fatura não é intervalo de datas
 
 Um ciclo que fecha em 07/07 cobre compras de 31/05 a 30/06, e duas faturas consecutivas se tocam na virada. Por isso as ferramentas do analista aceitam `batchId`: recortar por data conta a compra da fronteira dos dois lados. O snapshot entrega os `batchId` disponíveis, então "nesta fatura" tem resposta exata.
@@ -132,6 +155,8 @@ clara-financas/
 │   └── views/               # Contratos dos painéis e eventos HITL
 ├── bundles/constitution/    # Categorias, convenções e regras financeiras
 ├── docs/                    # Deploy e diagrama de arquitetura
+├── PRODUCT.md               # Usuários, propósito e princípios estratégicos
+├── DESIGN.md / DESIGN.json  # Sistema visual e tokens para agentes de interface
 ├── scripts/                 # Env da Vercel e reset do razão
 ├── turbo.json               # Pipeline do Turborepo
 └── pnpm-workspace.yaml      # Workspace e catálogo de dependências

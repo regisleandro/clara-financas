@@ -25,7 +25,7 @@ import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
  */
 export default defineTool({
   description:
-    "Records into the ledger the transactions of a batch the person has verified. Requires explicit approval. Use only after presenting the verification card and the person approving.",
+    "Requests approval to record a verified draft batch in the ledger. Call when the verification is ready for the person's decision: the call opens the approval card, pauses, and executes only after approval. Do not ask for a prose confirmation first.",
   inputSchema: z.object({
     batchId: z.string().min(1).describe("Id of the proposed batch, as returned by propose_batch."),
   }),

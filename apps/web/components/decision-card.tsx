@@ -11,6 +11,144 @@ import {
 } from "@/components/ai-elements/confirmation";
 import type { BatchProposal } from "@/lib/artifact";
 
+type UnknownRecord = Record<string, unknown>;
+
+const asRecord = (value: unknown): UnknownRecord | null =>
+  typeof value === "object" && value !== null ? (value as UnknownRecord) : null;
+
+const asString = (value: unknown): string | null =>
+  typeof value === "string" && value.length > 0 ? value : null;
+
+const asNumber = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
+type DecisionCopy = {
+  title: string;
+  consequence: string;
+  approveLabel: string;
+  denyLabel: string;
+  details: string[];
+};
+
+const dateLabel = (value: string) =>
+  new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T12:00:00Z`));
+
+function decisionCopy(pending: PendingRequest, proposal: BatchProposal | null): DecisionCopy {
+  const input = asRecord(pending.toolInput);
+
+  if (pending.toolName === "commit_batch") {
+    const count = proposal?.transactionCount;
+    const total = proposal?.checksum.extractedTotal;
+    const matched = proposal?.checksum.result === "match";
+    return {
+      title:
+        count === undefined
+          ? "Registrar esta fatura no razão?"
+          : `Registrar ${count} lançamentos no razão?`,
+      consequence: "Depois do registro, valor, data e origem não mudam mais.",
+      approveLabel: "Registrar fatura",
+      denyLabel: "Manter como rascunho",
+      details:
+        total === undefined
+          ? []
+          : [
+              formatCents(total),
+              matched ? "O total confere com a fatura" : "A soma não confere com a fatura",
+            ],
+    };
+  }
+
+  if (pending.toolName === "recategorize_transactions") {
+    const changes = Array.isArray(input?.changes) ? input.changes : [];
+    const labels = [
+      ...new Set(
+        changes
+          .map((change) => asString(asRecord(change)?.categoryLabel))
+          .filter((label): label is string => label !== null),
+      ),
+    ];
+    return {
+      title: `Alterar a categoria de ${changes.length} ${
+        changes.length === 1 ? "lançamento" : "lançamentos"
+      }?`,
+      consequence: "Os valores não mudam. A alteração fica registrada no histórico.",
+      approveLabel: "Alterar categorias",
+      denyLabel: "Manter categorias atuais",
+      details: labels.length > 0 ? [`Nova categoria: ${labels.join(", ")}`] : [],
+    };
+  }
+
+  if (pending.toolName === "save_concept") {
+    const title = asString(input?.title) ?? "este aprendizado";
+    const description = asString(input?.description);
+    const body = asString(input?.body);
+    const merchant = asString(input?.merchant);
+    const aliases = Array.isArray(input?.aliases)
+      ? input.aliases.filter((value): value is string => typeof value === "string")
+      : [];
+    return {
+      title: `Guardar “${title}” para as próximas conversas?`,
+      consequence: "A Clara poderá usar esse aprendizado em análises futuras.",
+      approveLabel: "Guardar aprendizado",
+      denyLabel: "Não guardar",
+      details: [
+        description,
+        merchant === null ? null : `Comerciante: ${merchant}`,
+        aliases.length === 0 ? null : `Grafias reconhecidas: ${aliases.join(", ")}`,
+        body,
+      ].filter((value): value is string => value !== null),
+    };
+  }
+
+  if (pending.toolName === "save_commitment") {
+    const title = asString(input?.title) ?? "este lembrete";
+    const dueDate = asString(input?.dueDate);
+    const amount = asNumber(input?.expectedAmount);
+    const days = asNumber(input?.remindDaysBefore) ?? 3;
+    return {
+      title: `Criar o lembrete “${title}”?`,
+      consequence: `A Clara avisará ${days} ${
+        days === 1 ? "dia" : "dias"
+      } antes do vencimento.`,
+      approveLabel: "Criar lembrete",
+      denyLabel: "Não criar",
+      details: [
+        dueDate === null ? null : `Vencimento: ${dateLabel(dueDate)}`,
+        amount === null ? null : `Valor esperado: ${formatCents(amount)}`,
+      ].filter((value): value is string => value !== null),
+    };
+  }
+
+  if (pending.toolName === "apply_learned_rules") {
+    const ids = Array.isArray(input?.expectedTransactionIds)
+      ? input.expectedTransactionIds
+      : [];
+    return {
+      title: `Aplicar as regras em ${ids.length} ${
+        ids.length === 1 ? "lançamento" : "lançamentos"
+      }?`,
+      consequence:
+        "As categorias serão atualizadas e cada mudança ficará registrada no histórico.",
+      approveLabel: "Aplicar regras",
+      denyLabel: "Não alterar",
+      details: [],
+    };
+  }
+
+  return {
+    title: pending.prompt ?? "Confirmar esta alteração?",
+    consequence: "A alteração só acontece depois da sua confirmação.",
+    approveLabel: "Confirmar alteração",
+    denyLabel: "Não alterar",
+    details: [],
+  };
+}
+
 /**
  * A decisão, dentro da conversa.
  *
@@ -35,9 +173,7 @@ export function DecisionCard({
   disabled: boolean;
   onAnswer: (optionId: string) => void;
 }) {
-  const count = proposal?.transactionCount;
-  const total = proposal?.checksum.extractedTotal;
-  const matched = proposal?.checksum.result === "match";
+  const copy = decisionCopy(pending, proposal);
 
   return (
     <Confirmation
@@ -46,17 +182,17 @@ export function DecisionCard({
       className="clara-card border-0 p-7"
     >
       <ConfirmationTitle className="clara-display-xs block text-foreground">
-        {count === undefined
-          ? "Registrar esta fatura no razão?"
-          : `Registrar ${count} lançamentos no razão?`}
+        {copy.title}
       </ConfirmationTitle>
 
-      <p className="clara-small mt-1.5">
-        {total === undefined
-          ? "Depois de registrado, valor, data e origem não mudam mais."
-          : `${formatCents(total)}${matched ? " · total confere com a fatura" : " · a soma não bateu com a fatura"}. ` +
-            "Depois de registrado, valor, data e origem não mudam mais."}
-      </p>
+      {copy.details.length > 0 ? (
+        <ul className="mt-4 flex flex-col gap-1 text-sm text-foreground">
+          {copy.details.map((detail) => (
+            <li key={detail}>{detail}</li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="clara-small mt-2">{copy.consequence}</p>
 
       <ConfirmationActions className="mt-5 justify-start self-start">
         <ConfirmationAction
@@ -64,7 +200,7 @@ export function DecisionCard({
           disabled={disabled}
           className="clara-pill clara-pill-primary h-10 px-5"
         >
-          Registrar fatura
+          {copy.approveLabel}
         </ConfirmationAction>
         <ConfirmationAction
           onClick={() => onAnswer("deny")}
@@ -72,7 +208,7 @@ export function DecisionCard({
           variant="ghost"
           className="clara-link h-10 px-2"
         >
-          Rejeitar lote
+          {copy.denyLabel}
         </ConfirmationAction>
       </ConfirmationActions>
     </Confirmation>

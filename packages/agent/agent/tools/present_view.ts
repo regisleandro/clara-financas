@@ -42,9 +42,7 @@ export default defineTool({
       rowCount: input.rows?.length ?? 0,
       provenanceCount: ids.length,
       note:
-        ids.length === 0
-          ? "Panel shown without provenance: the person will not be able to open the source transactions. Include transactionIds on the rows whenever the number comes from the ledger."
-          : "Panel shown. Reply in the chat in 2-3 sentences, in Brazilian Portuguese, without repeating the panel's numbers.",
+        "Panel shown with validated provenance. Reply in the chat in 2-3 sentences, in Brazilian Portuguese, without repeating the panel's numbers.",
     };
   },
 });

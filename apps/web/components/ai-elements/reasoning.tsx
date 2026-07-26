@@ -154,14 +154,16 @@ export type ReasoningTriggerProps = ComponentProps<
   getThinkingMessage?: (isStreaming: boolean, duration?: number) => ReactNode;
 };
 
+// Em pt-BR: o padrão do AI Elements vem em inglês, e um componente vendorizado
+// que ninguém traduz é exatamente por onde o inglês volta à tela.
 const defaultGetThinkingMessage = (isStreaming: boolean, duration?: number) => {
   if (isStreaming || duration === 0) {
-    return <Shimmer duration={1}>Thinking...</Shimmer>;
+    return <Shimmer duration={1}>Pensando…</Shimmer>;
   }
   if (duration === undefined) {
-    return <p>Thought for a few seconds</p>;
+    return <p>Pensou por alguns segundos</p>;
   }
-  return <p>Thought for {duration} seconds</p>;
+  return <p>Pensou por {duration}s</p>;
 };
 
 export const ReasoningTrigger = memo(

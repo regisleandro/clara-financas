@@ -1,4 +1,5 @@
 import { defineAgent } from "eve";
+import { AnalysisResultSchema } from "@clara-financas/views/agent-contracts";
 
 import { coordinatorModel } from "../../lib/models";
 
@@ -16,4 +17,5 @@ export default defineAgent({
   description:
     "Answers spending questions from the ledger: composition by category, period comparison, recurrences, and subscriptions. Delegate when the person asks how much they spent, why it changed, or where they could save.",
   model: coordinatorModel(),
+  outputSchema: AnalysisResultSchema,
 });

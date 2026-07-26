@@ -15,7 +15,7 @@ describe("parseView", () => {
     const view = parseView({
       kind: "metric",
       title: "Restaurantes em junho",
-      metric: { label: "Total", amount: 84210 },
+      metric: { label: "Total", amount: 84210, transactionIds: ["t1"] },
       rows: [{ label: "Outback", amount: 21000, transactionIds: ["t1"] }],
     });
 
@@ -49,13 +49,13 @@ describe("parseView", () => {
     assert.equal(view, null);
   });
 
-  it("proveniência ausente vira lista vazia, não undefined", () => {
+  it("recusa uma linha financeira sem proveniência", () => {
     const view = parseView({
       kind: "breakdown",
       title: "Composição",
       rows: [{ label: "Mercado", amount: 1000 }],
     });
-    assert.deepEqual(view?.rows[0]?.transactionIds, []);
+    assert.equal(view, null);
   });
 
   it("comparação exige os rótulos dos dois períodos", () => {
@@ -71,6 +71,7 @@ describe("parseView", () => {
   it("conferência carrega os três totais e o resultado", () => {
     const view = parseView({
       kind: "checksum",
+      batchId: "bat_1",
       title: "Conferência da fatura",
       declaredTotal: 325162,
       extractedTotal: 325161,
@@ -91,6 +92,7 @@ describe("parseView", () => {
     // ou a mandar null e perder o painel inteiro.
     const view = parseView({
       kind: "checksum",
+      batchId: "bat_1",
       title: "Conferência da fatura",
       declaredTotal: null,
       extractedTotal: 325161,
@@ -105,11 +107,66 @@ describe("parseView", () => {
   it("conferência continua recusando centavo fracionado", () => {
     const view = parseView({
       kind: "checksum",
+      batchId: "bat_1",
       title: "Conferência",
       declaredTotal: 3251.62,
       extractedTotal: 325161,
       difference: -1,
       result: "mismatch",
+    });
+    assert.equal(view, null);
+  });
+
+  it("agenda desenha vencimentos sem proveniência — não há transação por trás", () => {
+    // Um compromisso é um lembrete agendado, não um lançamento do razão.
+    // Exigir `transactionIds` aqui reprovaria TODO painel de vencimentos, e o
+    // sintoma seria a pessoa perguntar o que vence e não receber painel algum.
+    const view = parseView({
+      kind: "commitments",
+      title: "Próximos vencimentos",
+      metric: { label: "A pagar em 30 dias", amount: 412300 },
+      rows: [
+        { label: "Fatura Nubank", amount: 325162, detail: "vence em 3 dias · 12/08", accent: "danger" },
+        { label: "Aluguel", amount: 87138, detail: "vence em 21 dias · 30/08", accent: "attention" },
+      ],
+    });
+
+    assert.equal(view?.kind, "commitments");
+    assert.equal(view?.rows[0]?.accent, "danger");
+  });
+
+  it("proposta exige proveniência — decidir sobre lista sem ids é decidir no escuro", () => {
+    const view = parseView({
+      kind: "proposal",
+      title: "Categorias sugeridas",
+      rows: [{ label: "Nuvem Digital", detail: "Sem categoria → Assinaturas" }],
+    });
+    assert.equal(view, null);
+  });
+
+  it("proposta passa quando cada linha diz a quais lançamentos se aplica", () => {
+    const view = parseView({
+      kind: "proposal",
+      title: "Categorias sugeridas",
+      summary: "Três lançamentos sem categoria que parecem assinaturas.",
+      rows: [
+        {
+          label: "Nuvem Digital",
+          detail: "Sem categoria → Assinaturas",
+          transactionIds: ["t1", "t2", "t3"],
+        },
+      ],
+    });
+
+    assert.equal(view?.kind, "proposal");
+    assert.deepEqual(view === null ? [] : viewTransactionIds(view), ["t1", "t2", "t3"]);
+  });
+
+  it("recusa accent inventado — o marcador tem vocabulário fechado", () => {
+    const view = parseView({
+      kind: "commitments",
+      title: "Vencimentos",
+      rows: [{ label: "Fatura", accent: "urgentissimo" }],
     });
     assert.equal(view, null);
   });
@@ -145,7 +202,7 @@ describe("parseViewResult", () => {
     const result = parseViewResult({
       kind: "metric",
       title: "Total",
-      metric: { label: "Total", amount: 8421 },
+      metric: { label: "Total", amount: 8421, transactionIds: ["t1"] },
     });
     assert.ok(result.ok);
   });

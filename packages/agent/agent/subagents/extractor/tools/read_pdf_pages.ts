@@ -1,3 +1,4 @@
+import { openSealedInput } from "@clara-financas/auth/sealed-input";
 import { getDb } from "@clara-financas/db";
 import { documents } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
@@ -21,18 +22,34 @@ import { extractPdfText, PdfPasswordRequiredError } from "../../../lib/pdf";
  */
 export default defineTool({
   description:
-    "Reads the text of an already-uploaded financial PDF, page by page. Use before extracting transactions. If the PDF is protected, supply the password.",
+    "Reads the text of an already-uploaded financial PDF, page by page. Use before extracting transactions. If the PDF is protected, supply the short-lived sealed password token.",
   inputSchema: z.object({
     documentId: z.string().min(1).describe("Id of the document the person uploaded."),
-    password: z
+    passwordToken: z
       .string()
       .optional()
-      .describe("PDF password, when protected. Ask the person rather than guessing."),
+      .describe("Short-lived sealed password token, when protected. Never ask for plaintext."),
     fromPage: z.number().int().positive().optional().describe("First page (1-based)."),
     toPage: z.number().int().positive().optional().describe("Last page, inclusive."),
   }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);
+    let password: string | undefined;
+
+    if (input.passwordToken) {
+      const secret = process.env.AGENT_TOKEN_SECRET;
+      if (!secret) throw new Error("AGENT_TOKEN_SECRET não configurado");
+
+      try {
+        const sealed = await openSealedInput(input.passwordToken, secret);
+        if (sealed.tenantId !== tenantId || sealed.purpose !== "pdf_password") {
+          return { error: "credencial_invalida" as const };
+        }
+        password = sealed.value;
+      } catch {
+        return { error: "credencial_invalida" as const };
+      }
+    }
 
     const document = await forTenant(
       tenantId,
@@ -55,7 +72,7 @@ export default defineTool({
 
     try {
       const pages = await extractPdfText(document.blobKey, {
-        password: input.password,
+        password,
         fromPage: input.fromPage,
         toPage: input.toPage,
       });

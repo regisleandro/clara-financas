@@ -36,6 +36,17 @@ export function deriveFollowups(
       case "metric":
         contextual.push("Como isso se compara ao período anterior?");
         break;
+      case "commitments":
+        // Um lembrete já está agendado — oferecer "me lembre disso" seria
+        // oferecer o que a pessoa acabou de ver pronto. O que ela ainda não
+        // sabe é o peso da soma no mês.
+        contextual.push("Quanto isso pesa neste mês?");
+        break;
+      case "proposal":
+        // A proposta existe para ser decidida; o follow-up é a decisão, não
+        // mais uma pergunta sobre ela.
+        contextual.push("Aplicar essas mudanças");
+        break;
       case "transactions":
         break;
     }

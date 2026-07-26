@@ -83,6 +83,41 @@ function writeJson(storage: Storage, key: string, value: unknown): boolean {
   }
 }
 
+const recordOf = (value: unknown): Record<string, unknown> | null =>
+  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+
+/**
+ * Respostas sensíveis de `ask_question` não entram no histórico local. O Eve
+ * mantém os metadados necessários para retomar a sessão; para a UI basta
+ * registrar que a pergunta foi respondida.
+ */
+function redactSensitiveResponses(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactSensitiveResponses);
+  const record = recordOf(value);
+  if (record === null) return value;
+
+  const request = recordOf(record.inputRequest);
+  const prompt = typeof request?.prompt === "string" ? request.prompt : "";
+  const sensitive = /senha|password/i.test(prompt);
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(record)) {
+    if (sensitive && key === "inputResponse") {
+      const response = recordOf(child);
+      sanitized[key] =
+        response === null
+          ? child
+          : {
+              ...response,
+              ...(typeof response.text === "string" ? { text: "[resposta protegida]" } : {}),
+            };
+      continue;
+    }
+    sanitized[key] = redactSensitiveResponses(child);
+  }
+  return sanitized;
+}
+
 export function listConversations(
   tenantKey: string,
   storage: Storage | null = defaultStorage(),
@@ -133,7 +168,10 @@ export function saveSession(
   const sessionId = cursor.sessionId;
   if (sessionId === undefined || sessionId === "") return;
 
-  let payload: StoredSession = { cursor, events };
+  let payload: StoredSession = {
+    cursor,
+    events: redactSensitiveResponses(events) as readonly unknown[],
+  };
   const json = JSON.stringify(payload);
   if (json.length > MAX_EVENTS_JSON_BYTES) {
     payload = { cursor, events: [], eventsDropped: true };

@@ -1,4 +1,5 @@
 import { defineAgent } from "eve";
+import { CategorizationResultSchema } from "@clara-financas/views/agent-contracts";
 
 import { coordinatorModel } from "../../lib/models";
 
@@ -22,4 +23,5 @@ export default defineAgent({
   description:
     "Keeps categorisation coherent: triages uncategorised spending, reports which learned rules would reach it, and spots the same merchant written under different spellings. Read-only — it returns proposals with transaction ids; every write goes back through the coordinator's approval tools. Delegate when uncategorised spending needs triage, when a correction might become a rule, or when two spellings look like the same merchant.",
   model: coordinatorModel(),
+  outputSchema: CategorizationResultSchema,
 });

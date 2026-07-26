@@ -33,11 +33,10 @@ const ICONS: Record<ActivityIcon, LucideIcon> = {
 };
 
 /**
- * "Execução desta resposta" — o trace do design, sobre o `Task` do AI Elements.
+ * Progresso orientado à tarefa, sobre o `Task` do AI Elements.
  *
- * Mostra o que a Clara fez para chegar à resposta: quais ferramentas chamou e
- * a qual especialista delegou. É o que sustenta a promessa de número
- * verificável; sem isso, "cálculo verificado" é só uma frase.
+ * Mostra o que a Clara fez em termos que a pessoa entende. Nomes de tools,
+ * subagentes e payloads ficam fora da interface principal.
  *
  * Renderiza TAMBÉM quando ainda não há passo nenhum — no começo do turno o
  * modelo só está pensando, e ficar sem indicador dá a impressão de que nada
@@ -57,8 +56,8 @@ export function ExecutionTrace({ activity, busy }: { activity: Activity; busy: b
   const title = running
     ? (activity.current?.label ?? "Trabalhando")
     : failed
-      ? "Execução desta resposta · com falha"
-      : "Execução desta resposta";
+      ? "Não foi possível concluir uma etapa"
+      : "Como cheguei a esta resposta";
 
   return (
     <Task defaultOpen={false} className="w-full">
@@ -78,7 +77,7 @@ export function ExecutionTrace({ activity, busy }: { activity: Activity; busy: b
         </div>
       </TaskTrigger>
 
-      <TaskContent className="mt-3 space-y-2 border-l pl-4">
+      <TaskContent className="mt-3 flex flex-col gap-2 border-l pl-4">
         {activity.steps.map((step) => {
           const Icon = ICONS[step.icon];
           return (

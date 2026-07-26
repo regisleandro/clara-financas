@@ -26,7 +26,7 @@ import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
  */
 export default defineTool({
   description:
-    "Applies already-approved categorisation rules to transactions that still have no category. Requires approval. Use after learning a new rule, or when the person asks to tidy up what was left uncategorised.",
+    "Previews or requests approval to apply learned categorisation rules. First call with dryRun=true. If there are matches, call again with the exact expectedTransactionIds from the preview; that call opens the approval card and writes only if the scope is unchanged.",
   inputSchema: z.object({
     dryRun: z
       .boolean()
@@ -34,6 +34,11 @@ export default defineTool({
       .describe(
         "true returns what WOULD be applied, without writing. Use to show the reach before asking for the decision.",
       ),
+    expectedTransactionIds: z
+      .array(z.string().min(1))
+      .min(1)
+      .optional()
+      .describe("Required for a write: exact transaction ids returned by the immediately preceding dry run."),
   }),
 
   approval: (ctx) => {
@@ -106,6 +111,23 @@ export default defineTool({
             uncategorizedCount: uncategorized.length,
             wouldApply: matches.length,
             matches: matches.slice(0, 20),
+            transactionIds: matches.map((match) => match.transactionId),
+          };
+        }
+
+        const expected = [...(input.expectedTransactionIds ?? [])].sort();
+        const actual = matches.map((match) => match.transactionId).sort();
+        if (
+          expected.length === 0 ||
+          expected.length !== actual.length ||
+          expected.some((id, index) => id !== actual[index])
+        ) {
+          return {
+            error: "alcance_alterado" as const,
+            message:
+              "O alcance mudou desde a simulação. Rode dryRun novamente e abra uma nova decisão.",
+            expectedCount: expected.length,
+            actualCount: actual.length,
           };
         }
 

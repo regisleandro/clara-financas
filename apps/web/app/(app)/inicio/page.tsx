@@ -121,7 +121,7 @@ function InsightCard({ insight }: { insight: { headline: string; href: string } 
   if (insight === null) {
     return (
       <article className="clara-card flex min-h-[360px] flex-col justify-between p-7">
-        <span className="clara-chip self-start">Insight da Clara</span>
+        <span className="clara-chip self-start">O que a Clara notou</span>
         <div>
           <p className="clara-display-md text-balance">
             Assim que houver dois períodos no razão, eu explico o que mudou.
@@ -137,7 +137,7 @@ function InsightCard({ insight }: { insight: { headline: string; href: string } 
   return (
     <article className="relative flex min-h-[360px] flex-col justify-between overflow-hidden rounded-[var(--clara-radius-card)] bg-[var(--clara-ink)] p-7">
       <span className="relative z-10 self-start rounded-full bg-white/15 px-3 py-[5px] text-xs text-[var(--clara-fog)]">
-        Insight da Clara
+        O que a Clara notou
       </span>
       <div
         aria-hidden="true"

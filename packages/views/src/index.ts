@@ -27,7 +27,7 @@ const cents = z.number().int();
  * transações que o compõem, senão "de onde veio esse valor?" não tem resposta.
  */
 export const ProvenanceSchema = z.object({
-  transactionIds: z.array(z.string()).default([]),
+  transactionIds: z.array(z.string().min(1)).min(1),
 });
 
 const RowSchema = z.object({
@@ -39,7 +39,21 @@ const RowSchema = z.object({
   share: z.number().min(0).max(1).optional(),
   /** `up` = piorou, `down` = melhorou. Só faz sentido em comparação. */
   trend: z.enum(["up", "down", "flat"]).optional(),
-  transactionIds: z.array(z.string()).default([]),
+  /**
+   * Severidade da linha, desenhada como um marcador colorido.
+   *
+   * Existe por causa da agenda: numa lista de vencimentos, "vence amanhã" e
+   * "vence em dois meses" são a mesma linha tipograficamente, e a diferença
+   * entre elas é justamente o que a pessoa abriu o painel para ver. Ausente,
+   * a linha fica neutra — nenhuma forma é obrigada a usar.
+   */
+  accent: z
+    .enum(["attention", "danger", "positive"])
+    .optional()
+    .describe(
+      "Row severity marker: `danger` for what is overdue or imminent, `attention` for what deserves a look, `positive` for what is already settled. Omit for neutral rows.",
+    ),
+  transactionIds: z.array(z.string().min(1)).default([]),
 });
 
 /** Um número em destaque, com legenda. É o topo de quase toda resposta. */
@@ -49,6 +63,7 @@ const MetricSchema = z.object({
   /** Usado quando o destaque não é dinheiro — "6 assinaturas", "62%". */
   text: z.string().optional(),
   detail: z.string().optional(),
+  transactionIds: z.array(z.string().min(1)).default([]),
 });
 
 const base = {
@@ -62,7 +77,7 @@ const base = {
 /**
  * As formas. `kind` é o que a Clara escolhe.
  */
-export const ViewSchema = z.discriminatedUnion("kind", [
+const ViewShapeSchema = z.discriminatedUnion("kind", [
   /** Um número que responde a pergunta, com o detalhe que o sustenta. */
   z.object({
     ...base,
@@ -105,6 +120,43 @@ export const ViewSchema = z.discriminatedUnion("kind", [
   }),
 
   /**
+   * A agenda: o que vence, do mais próximo ao mais distante.
+   *
+   * Faltava uma forma para isto, e a falta tinha consequência: `list_commitments`
+   * é ferramenta do coordenador, mas a resposta "o que vence este mês" não tinha
+   * painel nenhum para onde ir — ou virava número solto no chat, ou era espremida
+   * num `transactions` que promete lançamentos do razão e entrega lembretes.
+   *
+   * As linhas não carregam proveniência: um compromisso é um lembrete agendado,
+   * não um lançamento — não há transação de onde ele tenha saído.
+   */
+  z.object({
+    ...base,
+    kind: z.literal("commitments"),
+    metric: MetricSchema.optional(),
+    rows: z.array(RowSchema).min(1).max(30),
+  }),
+
+  /**
+   * O que a Clara PROPÕE mudar, antes de mudar.
+   *
+   * Uma proposta de recategorização, o alcance de uma regra aprendida em
+   * simulação, a triagem do guarda-livros — os três são a mesma coisa para
+   * quem olha: uma lista de lançamentos que vão mudar de categoria, e a decisão
+   * fica na conversa. Sem esta forma, a proposta chegava como parágrafo, e
+   * decidir sobre uma lista descrita em prosa é decidir no escuro.
+   *
+   * Não é o gate: quem abre a decisão é a tool correspondente. O painel é o que
+   * a pessoa lê ANTES de clicar.
+   */
+  z.object({
+    ...base,
+    kind: z.literal("proposal"),
+    metric: MetricSchema.optional(),
+    rows: z.array(RowSchema).min(1).max(50),
+  }),
+
+  /**
    * A conferência (H2). `difference` é o que a pessoa precisa ver primeiro
    * quando não bate — o resto é contexto.
    *
@@ -117,6 +169,7 @@ export const ViewSchema = z.discriminatedUnion("kind", [
   z.object({
     ...base,
     kind: z.literal("checksum"),
+    batchId: z.string().min(1).describe("Batch that produced this verification."),
     declaredTotal: cents.nullable().describe("Null when the document declares no total."),
     extractedTotal: cents,
     difference: cents.nullable().describe("Null when there is no declared total to compare against."),
@@ -125,6 +178,52 @@ export const ViewSchema = z.discriminatedUnion("kind", [
     rows: z.array(RowSchema).max(20).default([]),
   }),
 ]);
+
+/**
+ * Proveniência falha fechado. O painel é entrada de modelo, portanto um aviso
+ * devolvido depois de desenhá-lo chega tarde demais. Métricas e linhas
+ * financeiras sem origem são recusadas antes de alcançar a interface.
+ */
+export const ViewSchema = ViewShapeSchema.superRefine((view, ctx) => {
+  // `commitments` fica de fora, e não por indulgência: um compromisso é um
+  // lembrete agendado — não saiu de lançamento nenhum, então não HÁ id para
+  // pedir. Exigir proveniência aqui reprovaria todo painel de vencimentos na
+  // validação, e o sintoma seria justamente o que esta regra quer evitar: a
+  // pessoa perguntando o que vence e não recebendo painel nenhum.
+  const traceable = view.kind !== "commitments";
+
+  const metric = "metric" in view ? view.metric : undefined;
+  if (traceable && view.kind !== "checksum" && metric?.amount !== undefined) {
+    if (metric.transactionIds.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "uma métrica com valor exige transactionIds",
+        path: ["metric", "transactionIds"],
+      });
+    }
+  }
+
+  for (const [index, row] of view.rows.entries()) {
+    const financial =
+      traceable &&
+      (row.amount !== undefined ||
+        row.share !== undefined ||
+        row.trend !== undefined ||
+        view.kind === "recurrences" ||
+        view.kind === "transactions" ||
+        // Uma proposta fala de lançamentos ESPECÍFICOS que vão mudar de
+        // categoria. Sem os ids, "18 lançamentos viram Assinaturas" é uma
+        // afirmação que ninguém consegue conferir antes de aprovar.
+        view.kind === "proposal");
+    if (financial && row.transactionIds.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "uma linha financeira exige transactionIds",
+        path: ["rows", index, "transactionIds"],
+      });
+    }
+  }
+});
 
 export type View = z.infer<typeof ViewSchema>;
 export type ViewKind = View["kind"];
@@ -137,6 +236,8 @@ export const VIEW_KINDS = [
   "comparison",
   "recurrences",
   "transactions",
+  "commitments",
+  "proposal",
   "checksum",
 ] as const;
 

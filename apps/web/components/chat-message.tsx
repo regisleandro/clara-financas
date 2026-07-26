@@ -1,24 +1,16 @@
 "use client";
 
 import { FileTextIcon } from "lucide-react";
+import {
+  Attachment,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+} from "@clara-financas/ui/components/attachment";
 
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
-import {
-  Reasoning,
-  ReasoningContent,
-  ReasoningTrigger,
-} from "@/components/ai-elements/reasoning";
-import { Shimmer } from "@/components/ai-elements/shimmer";
-import {
-  Tool,
-  ToolContent,
-  ToolHeader,
-  ToolInput,
-  ToolOutput,
-  type ToolPart,
-} from "@/components/ai-elements/tool";
 import { ArtifactLink } from "@/components/artifact-surface";
-import { TOOL_LABEL } from "@/lib/activity";
 
 /**
  * Uma mensagem da conversa, renderizada POR PARTE.
@@ -26,9 +18,9 @@ import { TOOL_LABEL } from "@/lib/activity";
  * Antes, o chat achatava todas as `parts` num único texto — raciocínio,
  * chamadas de tool e anexos eram simplesmente descartados no render, e os
  * componentes `tool.tsx`/`reasoning.tsx` existiam no repo sem nenhum uso.
- * Aqui cada tipo tem seu desenho: texto vira markdown, raciocínio vira um
- * colapsável discreto, tool call vira um cartão recolhido com parâmetros e
- * resultado, anexo vira um chip.
+ * Aqui só o que pertence à pessoa vira conteúdo: texto final, anexos e o link
+ * do artefato. Raciocínio, nomes de tools, inputs e outputs são detalhes de
+ * execução; o `ExecutionTrace` os traduz para etapas humanas sem expor JSON.
  *
  * Duas exclusões deliberadas:
  * - `present_view` não vira cartão de tool: o input dela É o painel, que já
@@ -48,12 +40,6 @@ type UnknownRecord = Record<string, unknown>;
 
 const asRecord = (value: unknown): UnknownRecord | undefined =>
   typeof value === "object" && value !== null ? (value as UnknownRecord) : undefined;
-
-const thinkingMessage = (isStreaming: boolean, duration?: number) => {
-  if (isStreaming || duration === 0) return <Shimmer duration={1}>Pensando…</Shimmer>;
-  if (duration === undefined) return <p>Pensou por alguns segundos</p>;
-  return <p>Pensou por {duration}s</p>;
-};
 
 export function ChatMessage({
   message,
@@ -93,41 +79,13 @@ export function ChatMessage({
 
       case "reasoning": {
         flushText();
-        const text = typeof part.text === "string" ? part.text : "";
-        if (text.trim() === "") break;
-        rendered.push(
-          <Reasoning key={`reasoning-${index}`} isStreaming={part.state === "streaming"}>
-            <ReasoningTrigger getThinkingMessage={thinkingMessage} />
-            <ReasoningContent>{text}</ReasoningContent>
-          </Reasoning>,
-        );
+        // Nunca mostramos raciocínio interno. O estado útil vive no trace.
         break;
       }
 
       case "dynamic-tool": {
         flushText();
-        const toolName = typeof part.toolName === "string" ? part.toolName : "";
-        const state = typeof part.state === "string" ? part.state : "input-available";
-        if (toolName === "" || toolName === "present_view") break;
-        if (state === "approval-requested") break;
-
-        rendered.push(
-          <Tool key={`tool-${index}`}>
-            <ToolHeader
-              type="dynamic-tool"
-              toolName={toolName}
-              title={TOOL_LABEL[toolName] ?? toolName}
-              state={state as ToolPart["state"]}
-            />
-            <ToolContent>
-              {part.input !== undefined ? <ToolInput input={part.input} /> : null}
-              <ToolOutput
-                output={part.output}
-                errorText={typeof part.errorText === "string" ? part.errorText : undefined}
-              />
-            </ToolContent>
-          </Tool>,
-        );
+        // Aprovações têm cartões próprios; as demais tools ficam no trace.
         break;
       }
 
@@ -135,13 +93,19 @@ export function ChatMessage({
         flushText();
         const filename = typeof part.filename === "string" ? part.filename : "documento";
         rendered.push(
-          <span
+          <Attachment
             key={`file-${index}`}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--clara-fog)] px-3 py-1.5 text-xs"
+            size="sm"
+            className="rounded-[var(--clara-radius-tile)]"
           >
-            <FileTextIcon className="size-3.5" aria-hidden="true" />
-            {filename}
-          </span>,
+            <AttachmentMedia>
+              <FileTextIcon aria-hidden="true" />
+            </AttachmentMedia>
+            <AttachmentContent>
+              <AttachmentTitle>{filename}</AttachmentTitle>
+              <AttachmentDescription>Documento PDF</AttachmentDescription>
+            </AttachmentContent>
+          </Attachment>,
         );
         break;
       }
