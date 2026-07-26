@@ -37,8 +37,17 @@ const INSTALLMENT = /\s*[-–—]?\s*(parcela\s*)?\d{1,2}\s*\/\s*\d{1,2}\s*$/iu;
  * própria descrição, então o MESMO comerciante gera uma string diferente a
  * cada cobrança — é o que separa "Cursor, Ai Powered Ide USD 10.00 Conversão:
  * USD 1 = R$ 5,26" de "Cursor, Ai Powered Ide".
+ *
+ * Eram quatro moedas fixas (`usd|eur|gbp|brl`), e a lista tinha o mesmo
+ * problema que a de intermediários: uma compra em CAD, JPY, ARS ou CHF não
+ * normalizava, o mesmo comerciante virava dois, e a recorrência deixava de
+ * fechar sem nada na tela. A regra passa a ser ESTRUTURAL — três letras
+ * seguidas de um número é código de moeda mais valor, qualquer que seja a
+ * moeda. Exigir CENTAVOS no valor é o que mantém a regra segura: "USD 10.00"
+ * casa, "Padaria Sul 2" não — sem isso, qualquer palavra de três letras
+ * seguida de um número viraria fim de linha e comeria nome de comerciante.
  */
-const FX_TAIL = /\s+(usd|eur|gbp|brl)\s*[\d.,]+.*$/iu;
+const FX_TAIL = /\s+[a-z]{3}\s*\d[\d.]*[.,]\d{2}\b.*$/iu;
 const FX_CONVERSION = /\s*convers[ãa]o\s*:.*$/iu;
 
 /** Invólucro do IOF: `IOF de "Claude.Ai Subscription"`. */
@@ -64,8 +73,52 @@ const IOF_WRAPPER = /^iof\s+(de|sobre)\s*["“”']?\s*(?<inner>.+?)\s*["“”'
  */
 const GATEWAY_PREFIX = /^[a-z0-9]{1,15}\s*\*+\s*(?=\S)/iu;
 
-/** Sufixo de estabelecimento que o emissor às vezes acrescenta. */
-const TRAILING_NOISE = /\s*[-–—*]+\s*(nupay|nubank|pix|debito|credito)\s*$/iu;
+/**
+ * Sufixo de meio de pagamento que o emissor acrescenta ao fim da linha.
+ *
+ * Era uma lista de nomes de operadora e arranjo (`nupay`, `nubank`, `pix`,
+ * `debito`, `credito`) — a última lista fechada que sobrou aqui, e com o mesmo
+ * defeito das outras: cada arranjo novo faz a mesma loja virar duas.
+ *
+ * Aqui, porém, a regra posicional NÃO serve, e é importante dizer por quê:
+ * "Padaria - Central" e "Mercado - Pix" têm a mesma forma, e uma regra que
+ * corte pela posição comeria "Central". Entre perder uma normalização e apagar
+ * parte do nome de um comerciante, perde-se a normalização — o erro invisível
+ * é o inaceitável.
+ *
+ * Então continua sendo uma lista, mas do que ela de fato é: MEIOS DE PAGAMENTO
+ * e bandeiras, não comerciantes. É vocabulário estável do domínio, ao
+ * contrário de nomes de loja, e cresce por edição consciente.
+ */
+const PAYMENT_RAILS = [
+  "nupay",
+  "nubank",
+  "pix",
+  "debito",
+  "credito",
+  "avista",
+  "parcelado",
+  "visa",
+  "master",
+  "mastercard",
+  "elo",
+  "amex",
+  "hiper",
+  "maestro",
+  "cielo",
+  "rede",
+  "stone",
+  "getnet",
+  "picpay",
+  "applepay",
+  "googlepay",
+  "samsungpay",
+] as const;
+
+const TRAILING_NOISE = new RegExp(
+  String.raw`\s*[-–—*]+\s*(${PAYMENT_RAILS.join("|")})\s*$`,
+  "iu",
+);
 
 /**
  * Chave canônica do comerciante, ou `null` quando não há identidade a extrair.

@@ -1,4 +1,5 @@
 export {
+  DEFAULT_ROUNDING,
   verifyChecksum,
   sumAmounts,
   formatCents,

@@ -173,4 +173,47 @@ describe("agrupamento", () => {
 
     assert.equal(new Set(clustered.values()).size, 3);
   });
+
+  /**
+   * As duas listas fechadas que sobraram aqui foram revistas. O que importa é
+   * o par de garantias: a normalização alcança o que antes escapava, e não
+   * passa a comer nome de comerciante.
+   */
+  it("normaliza câmbio em qualquer moeda, não só nas quatro conhecidas", () => {
+    const usd = merchantKey({
+      originalDescription: "Cursor, Ai Powered Ide USD 10.00",
+      merchant: null,
+    });
+    for (const currency of ["CAD", "JPY", "ARS", "CHF"]) {
+      assert.equal(
+        merchantKey({
+          originalDescription: `Cursor, Ai Powered Ide ${currency} 10,00`,
+          merchant: null,
+        }),
+        usd,
+        `compra em ${currency} tem de agrupar com a mesma loja`,
+      );
+    }
+  });
+
+  it("um número no fim do nome NÃO é confundido com câmbio", () => {
+    // Sem exigir centavos, "Sul 2" viraria cauda de conversão e o nome
+    // perderia a última palavra — erro invisível, do pior tipo.
+    assert.notEqual(
+      merchantKey({ originalDescription: "PADARIA SUL 2", merchant: null }),
+      merchantKey({ originalDescription: "PADARIA", merchant: null }),
+    );
+  });
+
+  it("sufixo de meio de pagamento sai; palavra do nome fica", () => {
+    assert.equal(
+      merchantKey({ originalDescription: "MERCADO CENTRAL - PIX", merchant: null }),
+      merchantKey({ originalDescription: "MERCADO CENTRAL", merchant: null }),
+    );
+    // "Central" tem a mesma forma de um sufixo de arranjo, e é parte do nome.
+    assert.notEqual(
+      merchantKey({ originalDescription: "PADARIA - CENTRAL", merchant: null }),
+      merchantKey({ originalDescription: "PADARIA", merchant: null }),
+    );
+  });
 });
