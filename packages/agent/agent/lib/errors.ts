@@ -43,7 +43,12 @@ export type ToolErrorCode =
   | "proposta_expirada"
   | "proposta_desatualizada"
   | "fatura_sem_divergencia"
-  | "referencia_de_fatura_nao_encontrada";
+  | "referencia_de_fatura_nao_encontrada"
+  // Painel recusado por proveniência. Tem código porque antes NÃO tinha: a
+  // recusa acontecia na validação do schema, antes do corpo da tool, e portanto
+  // não gerava evento nenhum. O sintoma em produção era a pessoa pedir uma
+  // lista e não receber nada, sem um registro que explicasse.
+  | "painel_sem_proveniencia";
 
 export type ToolError = {
   error: {
