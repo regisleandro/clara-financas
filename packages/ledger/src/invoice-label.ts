@@ -27,3 +27,23 @@ export function formatInvoiceLabel({
   }
   return `${origin} ${SHORT_DATE.format(new Date(`${date}T12:00:00Z`))}`;
 }
+
+const MONTH_LABEL = new Intl.DateTimeFormat("pt-BR", {
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+/**
+ * `2026-06` como "junho de 2026".
+ *
+ * Mora aqui, junto do rótulo de fatura, porque a tela cruzada por operadora e a
+ * conversa nomeiam os MESMOS meses: duas formatações independentes divergiriam
+ * na primeira diferença de locale, e a pessoa leria "junho" num lugar e "Jun"
+ * no outro para a mesma linha. Devolve o mês cru quando o formato não é
+ * `YYYY-MM` — inventar um nome de mês seria pior que mostrar o código.
+ */
+export function formatMonthLabel(yearMonth: string): string {
+  if (!/^\d{4}-\d{2}$/.test(yearMonth)) return yearMonth;
+  return MONTH_LABEL.format(new Date(`${yearMonth}-01T12:00:00Z`));
+}

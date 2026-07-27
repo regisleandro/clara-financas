@@ -121,13 +121,17 @@ Ela resolve a parte mecânica e **deliberadamente não adivinha** que "Anthropic
 
 `/transacoes?vista=operadoras` cruza o gasto confirmado: operadora nas linhas, mês nas colunas, com as duas margens fechando no mesmo total. A operadora é `documents.issuer` — ela é do DOCUMENTO, não da linha, porque é a mesma informação para toda a fatura e duplicá-la abriria a chance de uma linha discordar da fatura de onde veio. O mês é o da **compra**, não o do fechamento: uma fatura fechada em julho cobre gastos de maio e junho.
 
-A agregação é `aggregateByIssuerMonth()` em `packages/ledger/src/analysis.ts` — pura, testada e disponível também para o analista, pelo mesmo motivo das demais: dois caminhos de cálculo acabariam divergindo entre a tela e a conversa. Cada célula carrega os `transactionIds` que a compõem, e é deles que a lista "de onde vem cada número" é montada, em vez de um segundo filtro parecido.
+A agregação é `aggregateByIssuerMonth()` em `packages/ledger/src/analysis.ts` — pura, testada e usada pelos dois lados, pelo mesmo motivo das demais: dois caminhos de cálculo acabariam divergindo entre a tela e a conversa. Cada célula carrega os `transactionIds` que a compõem, e é deles que a lista "de onde vem cada número" é montada, em vez de um segundo filtro parecido.
+
+Na conversa, quem a alcança é `aggregate_by_month`, do analista: uma chamada devolve a série inteira, cada mês com proveniência e com a composição por operadora. Antes dela só a tela chegava a esta conta, e "quanto gastei mês a mês" exigia uma chamada por mês, adivinhando quantos meses existem — a mesma falha da fila de revisão atrás de `server-only`: a resposta existia na aba ao lado e a conversa dizia que não sabia.
 
 Documento sem operadora identificada não some da matriz: vira a linha "Sem operadora", e a tela de revisão oferece nomeá-lo.
 
 ### Revisão manual: o que a IA não fechou
 
 `/revisar` é a fila do trabalho que a extração não concluiu. Entram lançamentos **sem categoria** (a análise por categoria fica com um buraco), de **confiança baixa** (o extrator avisou que pode ter lido errado, e o valor conta como gasto de qualquer forma) e **sem comerciante** (a linha não se agrupa com nada). Fatura cuja soma não fechou e documento sem operadora aparecem em listas próprias — são o documento inteiro, não a linha.
+
+"Sem categoria" quer dizer **gasto** sem categoria: pagamento de fatura e ajuste de saldo não esperam categoria nenhuma, e ficam fora do motivo (podem entrar pelos outros dois). O predicado é um só — `uncategorizedSpendCondition()` em `packages/db/src/queries/review.ts` —, compartilhado pela fila, pelo estado do razão que a Clara lê a cada turno e pela triagem do guarda-livros. Quando divergiam, a conversa afirmava "há 2 itens sem categoria" e, na frase seguinte, não conseguia listá-los: a fila devolvia outra contagem, e o item já atestado não aparecia em nenhuma das duas.
 
 A tela mostra a **descrição crua do documento**: é contra ela que a pessoa confere, e escondê-la transformaria a revisão em adivinhação sobre o palpite da Clara.
 
@@ -167,7 +171,9 @@ clara-financas/
 ### Pacotes de domínio
 
 - `@clara-financas/ledger` contém funções puras para total, categorias, comparação de períodos, recorrências, identidade de comerciante e checksum. Nenhuma delas chama um modelo.
-- `@clara-financas/views` define, com Zod, os formatos de painel (`metric`, `breakdown`, `comparison`, `recurrences`, `transactions` e `checksum`) e a leitura de pedidos de aprovação.
+- `@clara-financas/views` define, com Zod, os formatos de painel (`metric`, `breakdown`, `comparison`, `recurrences`, `transactions`, `invoices`, `commitments`, `proposal` e `checksum`) e a leitura de pedidos de aprovação.
+
+  Toda linha com valor exige `transactionIds`, e as três exceções são as mesmas três coisas: `commitments` (um lembrete não saiu de lançamento nenhum), `checksum` e `invoices` (o total de uma fatura é o que o documento declara, não uma soma escolhida). A exceção não é indulgência — sem ela, a forma certa fica inexprimível e o sintoma é a pessoa pedir uma lista e não receber painel nenhum. Foi assim com a conferência, e depois com "liste as faturas mês a mês".
 - `@clara-financas/okf` carrega e valida conceitos Markdown/YAML. A constituição define o contrato do domínio; aprendizados são separados e reversíveis.
 
 ## Pré-requisitos

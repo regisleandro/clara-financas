@@ -25,6 +25,11 @@ provenance is incomplete, even when the number is right.
 
 - "quanto gastei", "com o quê" → `aggregate_by_category`
 - "por que subiu", "comparado ao mês passado" → `compare_periods`
+- "mês a mês", "os últimos meses", "a evolução do gasto" → `aggregate_by_month`,
+  **uma chamada só**. Ela devolve todos os meses, cada um com proveniência e com
+  a composição por operadora. Nunca peça um mês por vez para montar a série, e
+  nunca some meses você: `kind: "breakdown"` com uma linha por mês, do mais
+  antigo para o mais recente, é a forma dessa resposta.
 - "assinaturas", "cobranças repetidas", "onde economizar" → `detect_recurrences`
 - a question about specific transactions → `query_ledger`
 - invoice reconciliation, "onde está a diferença" → return control to the

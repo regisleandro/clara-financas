@@ -176,32 +176,71 @@ export const AnalysisResultSchema = z
     }
   });
 
+/**
+ * O peso de um grupo da triagem: quantos lançamentos e quanto somam.
+ *
+ * Vem COPIADO da tool (`list_uncategorized` devolve `count` e `totalCents` por
+ * grupo; `categorize_by_rules`, por regra) — nunca somado pelo guarda-livros,
+ * que é modelo e não calculadora. Por isso é obrigatório: a triagem sem os
+ * valores foi exatamente o que produziu, em produção, *"existem 2 itens sem
+ * categoria, somando R$ 79,94"* seguido de *"a consulta não retornou os 2 itens
+ * de forma confiável"*. Os itens tinham voltado; o contrato é que não tinha onde
+ * guardar o valor de cada um, e a coordenadora — proibida de calcular — não
+ * podia apresentar uma lista de gastos sem gasto nenhum.
+ */
+const weight = {
+  count: z.number().int().positive().describe("Entries in this group, as the tool returned it."),
+  totalCents: cents.describe("Sum of the group, copied from the tool. Never add it up yourself."),
+};
+
 export const CategorizationResultSchema = z.object({
-  matchedRules: z.array(
-    z.object({
-      conceptId: z.string().min(1),
-      categoryId: z.string().min(1),
-      categoryLabel: z.string().min(1),
-      reason: z.string().min(1),
-      transactionIds,
-    }),
-  ),
-  proposals: z.array(
-    z.object({
-      merchant: z.string().min(1),
-      categoryId: z.string().nullable(),
-      categoryLabel: z.string().nullable(),
-      reason: z.string().min(1),
-      transactionIds,
-    }),
-  ),
-  merchantAliases: z.array(
-    z.object({
-      aliases: z.array(z.string().min(1)).min(2),
-      reason: z.string().min(1),
-      transactionIds,
-    }),
-  ),
+  // Os três arrays têm `.default([])` pela mesma razão que `rows` acima: uma
+  // triagem que só encontrou propostas omitia `matchedRules` e
+  // `merchantAliases`, o output reprovava na validação, e o pai recebia uma
+  // falha em vez da resposta certa que o modelo tinha produzido.
+  matchedRules: z
+    .array(
+      z.object({
+        conceptId: z.string().min(1),
+        categoryId: z.string().min(1),
+        categoryLabel: z.string().min(1),
+        reason: z.string().min(1),
+        ...weight,
+        transactionIds,
+      }),
+    )
+    .default([]),
+  proposals: z
+    .array(
+      z.object({
+        merchant: z.string().min(1),
+        categoryId: z.string().nullable(),
+        categoryLabel: z.string().nullable(),
+        reason: z.string().min(1),
+        ...weight,
+        transactionIds,
+      }),
+    )
+    .default([]),
+  merchantAliases: z
+    .array(
+      z.object({
+        aliases: z.array(z.string().min(1)).min(2),
+        reason: z.string().min(1),
+        transactionIds,
+      }),
+    )
+    .default([]),
+  /**
+   * O total do recorte triado, também copiado de `list_uncategorized`.
+   *
+   * É o número que a pessoa ouviu primeiro ("2 itens, R$ 79,94") e contra o qual
+   * ela confere a lista. Opcional porque a delegação pode ser só sobre grafias
+   * de comerciante, onde não há recorte de gasto nenhum a resumir.
+   */
+  uncategorized: z
+    .object({ count: z.number().int().nonnegative(), totalCents: cents })
+    .optional(),
   warnings: z.array(z.string()).default([]),
 });
 

@@ -1,11 +1,12 @@
 import { getDb } from "@clara-financas/db";
+import { uncategorizedSpendCondition } from "@clara-financas/db/queries/review";
 import { batches, documents, transactions } from "@clara-financas/db/schema/ledger";
 import { commitments } from "@clara-financas/db/schema/commitment";
 import { concepts } from "@clara-financas/db/schema/knowledge";
 import { agentSessions } from "@clara-financas/db/schema/agent-session";
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import { formatInvoiceLabel } from "@clara-financas/ledger";
-import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
 import { todayInSaoPaulo } from "./dates";
 
@@ -166,10 +167,11 @@ export async function loadSnapshot(
         .where(
           and(
             inArray(transactions.status, ["confirmed", "adjustment"]),
-            isNull(transactions.category),
-            // Ver o comentário do tipo: pagamento e ajuste não são gasto a
-            // classificar, e apareciam aqui só para parecer trabalho pendente.
-            inArray(transactions.kind, ["purchase", "refund", "fee"]),
+            // Predicado compartilhado (`queries/review`): este número aparece em
+            // todo turno, e a fila de revisão precisa concordar com ele. Quando
+            // divergiram, a conversa afirmou "existem 2 sem categoria" e, na
+            // frase seguinte, que não conseguia listá-los.
+            uncategorizedSpendCondition(),
           ),
         );
 

@@ -87,9 +87,13 @@ describe("revisar e categorizar o que a extração não fechou", () => {
       items: Array<{ description: string; reasons: string[] }>;
     };
 
-    // Os dois pagamentos: sem categoria e sem comerciante. A padaria não entra.
+    // Os dois pagamentos estão na fila por FALTA DE COMERCIANTE. Não por falta
+    // de categoria: pagamento de fatura não espera nenhuma, e marcá-lo assim
+    // fazia a fila contar 3 "sem categoria" onde o estado do razão contava 2 —
+    // o número que a conversa acabou de dizer em voz alta. A padaria não entra.
     assert.equal(queue.pending, 2);
-    assert.ok(queue.items.every((item) => item.reasons.includes("sem_categoria")));
+    assert.ok(queue.items.every((item) => item.reasons.includes("sem_comerciante")));
+    assert.ok(queue.items.every((item) => !item.reasons.includes("sem_categoria")));
 
     const filtered = (await listReviewQueue.execute({ reasons: ["sem_comerciante"] }, ctx)) as {
       returned: number;
