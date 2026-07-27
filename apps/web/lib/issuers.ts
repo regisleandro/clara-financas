@@ -1,7 +1,13 @@
 import "server-only";
 
 import { loadCategoryLabels } from "@clara-financas/db/category-labels";
-import { aggregateByIssuerMonth, categoryLabel, issuerKey, UNKNOWN_ISSUER } from "@clara-financas/ledger";
+import {
+  aggregateByIssuerMonth,
+  categoryLabel,
+  formatMonthLabel,
+  issuerKey,
+  UNKNOWN_ISSUER,
+} from "@clara-financas/ledger";
 
 import { loadLedgerView, type LedgerRow } from "@/lib/ledger";
 
@@ -62,10 +68,10 @@ export type IssuerMonthView = {
   }>;
 };
 
-const monthLabel = (yearMonth: string) =>
-  new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" }).format(
-    new Date(`${yearMonth}-01T12:00:00Z`),
-  );
+// O nome longo do mês vem do domínio (`formatMonthLabel`), não de um Intl
+// local: a conversa nomeia os MESMOS meses desta tela, e duas formatações
+// independentes divergiriam na primeira diferença de locale.
+const monthLabel = formatMonthLabel;
 
 const shortMonthLabel = (yearMonth: string) =>
   new Intl.DateTimeFormat("pt-BR", { month: "short", year: "2-digit", timeZone: "UTC" }).format(

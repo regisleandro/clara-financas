@@ -32,6 +32,7 @@ const EYEBROW: Record<View["kind"], string> = {
   comparison: "Comparação",
   recurrences: "Recorrências",
   transactions: "Razão",
+  invoices: "Faturas",
   commitments: "Agenda",
   proposal: "Proposta",
   checksum: "Conferência",

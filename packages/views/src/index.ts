@@ -136,6 +136,34 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
   }),
 
   /**
+   * As FATURAS, uma por linha — o histórico mês a mês.
+   *
+   * Faltava, e a falta não aparecia como erro: aparecia como silêncio. "Liste
+   * as faturas mês a mês" tem tool que responde (`list_invoices`) e não tinha
+   * forma nenhuma para chegar à tela. `breakdown`, `transactions`, `metric` e
+   * `comparison` recusam a linha na validação, porque exigem `transactionIds`
+   * de toda linha com valor; `commitments` aceitaria e desenharia "Agenda"
+   * sobre uma lista que não é de vencimentos. Sem saída válida, a resposta
+   * ficava entre um painel reprovado e a proibição de despejar número no chat —
+   * e a pessoa não recebia nada.
+   *
+   * As linhas NÃO carregam proveniência, pelo mesmo motivo do `checksum`: o
+   * total de uma fatura é fato do DOCUMENTO (o que ele declara, ou a soma que a
+   * extração leu dele), não uma agregação de lançamentos que a coordenadora
+   * escolheu. Para ver os lançamentos de uma fatura existe caminho próprio —
+   * `read_batch` e um painel `transactions`, aí com os ids.
+   *
+   * E não há `metric`: um total somando faturas seria aritmética de modelo
+   * sobre dinheiro, que é a origem do pior defeito possível aqui — um número
+   * inventado com cara de certo. Cada linha traz o valor que uma tool devolveu.
+   */
+  z.object({
+    ...base,
+    kind: z.literal("invoices"),
+    rows: z.array(RowSchema).min(1).max(30),
+  }),
+
+  /**
    * A agenda: o que vence, do mais próximo ao mais distante.
    *
    * Faltava uma forma para isto, e a falta tinha consequência: `list_commitments`
@@ -239,7 +267,14 @@ export const ViewSchema = ViewShapeSchema.superRefine((view, ctx) => {
   // existe id para pedir. A métrica já era isenta aqui; as linhas não eram, e
   // o painel de conferência caía na validação exatamente quando mais
   // importava: quando a conta não bate.
-  const traceable = view.kind !== "commitments" && view.kind !== "checksum";
+  //
+  // `invoices` é o terceiro caso da MESMA família, e o sintoma dele foi o mais
+  // silencioso: uma fatura é um documento, seu total é o que ele declara (ou o
+  // que a extração leu dele), e não existe conjunto de lançamentos que a
+  // coordenadora tenha escolhido somar. Exigir ids ali reprovava todo painel de
+  // histórico — "liste as faturas mês a mês" não tinha resposta possível.
+  const traceable =
+    view.kind !== "commitments" && view.kind !== "checksum" && view.kind !== "invoices";
 
   const metric = "metric" in view ? view.metric : undefined;
   if (traceable && metric?.amount !== undefined) {
@@ -285,6 +320,7 @@ export const VIEW_KINDS = [
   "comparison",
   "recurrences",
   "transactions",
+  "invoices",
   "commitments",
   "proposal",
   "checksum",

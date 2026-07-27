@@ -153,6 +153,56 @@ describe("parseView", () => {
     assert.equal(view?.rows[0]?.accent, "danger");
   });
 
+  /**
+   * "Liste as faturas mês a mês" — o pedido que não tinha resposta possível.
+   *
+   * O total de uma fatura é fato do DOCUMENTO: é o que ele declara, ou a soma
+   * que a extração leu dele. Não existe conjunto de lançamentos que a
+   * coordenadora escolheu somar, então não há id para exigir. Enquanto não havia
+   * esta forma, as quatro que aceitariam a lista reprovavam na proveniência e a
+   * única que passaria era `commitments` — que desenha "Agenda" sobre um
+   * histórico de faturas. Entre um painel reprovado e a proibição de despejar
+   * números no chat, a pessoa não recebia nada.
+   */
+  it("histórico de faturas desenha sem proveniência — o total é fato do documento", () => {
+    const view = parseView({
+      kind: "invoices",
+      title: "Faturas mês a mês",
+      summary: "Três ciclos registrados, do mais antigo para o mais recente.",
+      rows: [
+        { label: "Nubank 07/05/26", amount: 391_040, detail: "ciclo 31/03–30/04 · vence 07/05" },
+        { label: "Nubank 07/06/26", amount: 512_310, detail: "ciclo 30/04–31/05 · vence 07/06" },
+        {
+          label: "Nubank 07/07/26",
+          amount: 438_792,
+          detail: "ciclo 31/05–30/06 · vence 07/07 · em conferência",
+          accent: "attention",
+        },
+      ],
+    });
+
+    assert.equal(view?.kind, "invoices");
+    assert.equal(view?.rows.length, 3);
+    assert.deepEqual(view === null ? null : viewTransactionIds(view), []);
+  });
+
+  it("o histórico de faturas descarta a métrica — somar faturas seria conta de modelo", () => {
+    // A forma não declara `metric`, e o schema tira o que não declarou. É de
+    // propósito: um "total das faturas" só existiria se o modelo somasse
+    // dinheiro, e é assim que um número inventado chega com cara de certo.
+    // Descartar em silêncio é melhor que reprovar o painel inteiro — a lista,
+    // que é a resposta, continua chegando.
+    const view = parseView({
+      kind: "invoices",
+      title: "Faturas",
+      metric: { label: "Total das faturas", amount: 1_342_142 },
+      rows: [{ label: "Nubank 07/07/26", amount: 438_792 }],
+    });
+
+    assert.equal(view?.kind, "invoices");
+    assert.equal("metric" in (view ?? {}), false);
+  });
+
   it("proposta exige proveniência — decidir sobre lista sem ids é decidir no escuro", () => {
     const view = parseView({
       kind: "proposal",

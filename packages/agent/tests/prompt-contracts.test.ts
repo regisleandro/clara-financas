@@ -97,6 +97,30 @@ describe("contratos de interação dos prompts", () => {
     assert.match(queue, /uncategorizedSpending/);
   });
 
+  /**
+   * "Liste as faturas mês a mês" e "quanto gastei mês a mês" são a mesma frase
+   * com dois destinos. Sem a distinção escrita, a coordenadora delegava o
+   * histórico ao analista — que não tem tool de fatura — ou tentava um painel
+   * que a validação recusa, e a resposta não saía.
+   */
+  it('"mês a mês" tem dois caminhos, e os dois estão escritos', async () => {
+    const prompt = await read("../agent/instructions.md");
+    assert.match(prompt, /`invoices` — the invoice history/);
+    assert.match(prompt, /oldestFirst: true/);
+    assert.match(prompt, /aggregate_by_month/);
+    // A saída para o painel reprovado: nunca ficar em silêncio.
+    assert.match(prompt, /never acceptable is going\s+silent/is);
+
+    const analyst = await read("../agent/subagents/analyst/instructions.md");
+    assert.match(analyst, /aggregate_by_month/);
+    assert.match(analyst, /uma chamada só/);
+
+    // É pela `description` do subagente que o pai decide delegar.
+    const agent = await read("../agent/subagents/analyst/agent.ts");
+    assert.match(agent, /month-by-month series/);
+    assert.match(agent, /list_invoices/);
+  });
+
   it("a triagem do guarda-livros carrega o valor de cada grupo", async () => {
     const prompt = await read("../agent/subagents/categorizer/instructions.md");
     assert.match(prompt, /`count` and `totalCents`/);
