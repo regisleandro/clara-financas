@@ -1,3 +1,4 @@
+import { CATEGORIZABLE_KINDS } from "@clara-financas/db/queries/review";
 import { formatCents } from "@clara-financas/ledger";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
@@ -5,6 +6,9 @@ import { z } from "zod";
 import { loadCategoryLabels } from "../../../lib/categories";
 import { ledgerCoverage, loadLedger } from "../../../lib/ledger-query";
 import { requireTenantCaller } from "../../../lib/tenant";
+
+/** O recorte de "gasto a categorizar", como Set para comparar com `kind`. */
+const CATEGORIZABLE = new Set<string>(CATEGORIZABLE_KINDS);
 
 /**
  * O gasto sem categoria, agrupado por comerciante e ordenado por impacto.
@@ -15,11 +19,13 @@ import { requireTenantCaller } from "../../../lib/tenant";
  *
  * Pagamentos e ajustes ficam de fora pela mesma razão do snapshot: não são
  * gasto a classificar, e contá-los inflaria a triagem com trabalho que não
- * existe.
+ * existe. O recorte é o predicado compartilhado (`CATEGORIZABLE_KINDS`), o
+ * mesmo do estado do razão e da fila de revisão: quando cada lugar derivava o
+ * seu, a triagem contava um número e o indicador do turno contava outro.
  */
 export default defineTool({
   description:
-    "Lists uncategorised spending grouped by merchant, largest total first, with the observed spellings and transaction ids. Use to triage what needs a category, starting where it matters most.",
+    "Lists uncategorised spending grouped by merchant, largest total first, with the count, the total, the observed spellings and the transaction ids of each group. Use to triage what needs a category, starting where it matters most — and copy each group's count and totalCents into your result, because the coordinator cannot add them up.",
   inputSchema: z.object({
     from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -34,12 +40,10 @@ export default defineTool({
       batchId: input.batchId,
     });
 
+    // Mesmo recorte do estado do razão, pelo mesmo predicado (`CATEGORIZABLE_KINDS`):
+    // a triagem e o indicador do turno têm de contar as MESMAS linhas.
     const uncategorized = ledger.filter(
-      (transaction) =>
-        transaction.category === null &&
-        (transaction.kind === "purchase" ||
-          transaction.kind === "refund" ||
-          transaction.kind === "fee"),
+      (transaction) => transaction.category === null && CATEGORIZABLE.has(transaction.kind),
     );
 
     if (uncategorized.length === 0) {

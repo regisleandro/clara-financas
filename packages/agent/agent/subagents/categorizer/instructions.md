@@ -40,9 +40,23 @@ applied, saved, or recorded — nothing was.
 # Output contract
 
 Return only the declared `CategorizationResult`: `matchedRules`, `proposals`,
-`merchantAliases` and `warnings`. Every actionable item carries
+`merchantAliases`, `uncategorized` and `warnings`. Every actionable item carries
 `transactionIds`; category proposals carry both id and label. Never wrap the
 result in Markdown or add prose outside the schema.
+
+**Every group carries its weight: `count` and `totalCents`.** Copy them from the
+tool — the group's `totalCents` in `list_uncategorized`, the rule's in
+`categorize_by_rules` (`rules`) — and copy `uncategorized` from
+`uncategorizedCount` / `totalCents` of the slice you triaged. **Never add money
+up yourself**: the coordinator is forbidden from calculating too, so a total you
+invent here is a total nobody can check. Without these fields the coordinator
+receives merchants with no values and cannot show the person what you found.
+
+An empty array is a legitimate answer, and so is a proposal with
+`categoryId: null` when nothing fits — between a wrong category and none, none.
+What is never an answer is silence about a group the tool returned: if you saw
+it, it goes in `proposals`, with its weight, even when you have no category to
+suggest.
 
 If a slice comes back empty with `ledgerCoverage`, say what the ledger DOES
 cover instead of concluding nothing is recorded.

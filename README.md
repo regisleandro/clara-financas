@@ -129,6 +129,8 @@ Documento sem operadora identificada não some da matriz: vira a linha "Sem oper
 
 `/revisar` é a fila do trabalho que a extração não concluiu. Entram lançamentos **sem categoria** (a análise por categoria fica com um buraco), de **confiança baixa** (o extrator avisou que pode ter lido errado, e o valor conta como gasto de qualquer forma) e **sem comerciante** (a linha não se agrupa com nada). Fatura cuja soma não fechou e documento sem operadora aparecem em listas próprias — são o documento inteiro, não a linha.
 
+"Sem categoria" quer dizer **gasto** sem categoria: pagamento de fatura e ajuste de saldo não esperam categoria nenhuma, e ficam fora do motivo (podem entrar pelos outros dois). O predicado é um só — `uncategorizedSpendCondition()` em `packages/db/src/queries/review.ts` —, compartilhado pela fila, pelo estado do razão que a Clara lê a cada turno e pela triagem do guarda-livros. Quando divergiam, a conversa afirmava "há 2 itens sem categoria" e, na frase seguinte, não conseguia listá-los: a fila devolvia outra contagem, e o item já atestado não aparecia em nenhuma das duas.
+
 A tela mostra a **descrição crua do documento**: é contra ela que a pessoa confere, e escondê-la transformaria a revisão em adivinhação sobre o palpite da Clara.
 
 As escritas seguem a mesma disciplina da tool `recategorize_transactions` — o caminho humano não é um atalho que escapa da auditoria. Categoria e comerciante são leitura e podem mudar, cada mudança gravando uma linha em `transaction_reclassifications` com autor `human:<id>`. Valor, data, descrição e origem seguem recusados pelo trigger; correção de valor continua sendo linha de ajuste, feita pela conversa.

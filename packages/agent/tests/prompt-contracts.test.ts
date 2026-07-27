@@ -77,6 +77,37 @@ describe("contratos de interação dos prompts", () => {
     assert.match(prompt, /the tool\s+ignores it and returns `targetIgnored`/is);
   });
 
+  /**
+   * O estado do razão diz QUANTOS estão sem categoria; nada dizia como ver
+   * QUAIS. A coordenadora delegava ao guarda-livros — que agrupa por
+   * comerciante para propor categoria, não para listar — e a conversa terminava
+   * em "a consulta não veio pronta", com a tool que responde a pergunta ao
+   * alcance dela e sem uma linha de instrução apontando para lá.
+   */
+  it("ver os lançamentos sem categoria é uma chamada da coordenadora, não uma delegação", async () => {
+    const prompt = await read("../agent/instructions.md");
+    assert.match(prompt, /list_review_queue/);
+    assert.match(prompt, /reasons: \["sem_categoria"\]/);
+    assert.match(prompt, /includeReviewed: true/);
+    assert.match(prompt, /COUNT of uncategorised spending, never the entries/i);
+    assert.match(prompt, /never say a query "não retornou"/i);
+
+    const queue = await read("../agent/tools/list_review_queue.ts");
+    assert.match(queue, /includeReviewed/);
+    assert.match(queue, /uncategorizedSpending/);
+  });
+
+  it("a triagem do guarda-livros carrega o valor de cada grupo", async () => {
+    const prompt = await read("../agent/subagents/categorizer/instructions.md");
+    assert.match(prompt, /`count` and `totalCents`/);
+    assert.match(prompt, /Never add money\s+up yourself/is);
+
+    // O valor tem de existir na TOOL antes de existir no contrato: o modelo
+    // copia, não soma.
+    const rules = await read("../agent/subagents/categorizer/tools/categorize_by_rules.ts");
+    assert.match(rules, /totalCents/);
+  });
+
   it("identificador técnico não aparece para a pessoa", async () => {
     const prompt = await read("../agent/instructions.md");
     assert.match(prompt, /Identifiers are never shown to the person/i);

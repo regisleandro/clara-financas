@@ -25,6 +25,8 @@ describe("contratos estruturados dos subagentes", () => {
           categoryId: "groceries",
           categoryLabel: "Mercado",
           reason: "Compra de alimentação.",
+          count: 1,
+          totalCents: 3_997,
           transactionIds: ["txn_1"],
         },
       ],
@@ -83,5 +85,93 @@ describe("contratos estruturados dos subagentes", () => {
     assert.equal(result.success, true);
     // `rows` era obrigatório: o modelo não tinha como dizer "vazio".
     assert.deepEqual(result.data?.rows, []);
+  });
+
+  /**
+   * O mesmo defeito de estrutura, agora no guarda-livros — e o diálogo que ele
+   * produziu, palavra por palavra:
+   *
+   *   — existem itens sem categoria
+   *   — Sim. Há 2 itens sem categoria, somando R$ 79,94.
+   *   — apresente esses itens
+   *   — a consulta não retornou os 2 itens de forma confiável.
+   *
+   * Duas causas, as duas aqui: a triagem que só tinha propostas era REPROVADA
+   * por omitir os arrays vazios, e nem a proposta válida tinha onde carregar o
+   * valor de cada grupo — a coordenadora, proibida de calcular, recebia
+   * comerciantes sem dinheiro nenhum e não tinha o que apresentar.
+   */
+  it("triagem só com propostas é válida sem os arrays vazios", () => {
+    const result = CategorizationResultSchema.safeParse({
+      proposals: [
+        {
+          merchant: "Sem identificação",
+          categoryId: null,
+          categoryLabel: null,
+          reason: "A descrição não diz o suficiente para escolher uma categoria.",
+          count: 2,
+          totalCents: 7_994,
+          transactionIds: ["txn_1", "txn_2"],
+        },
+      ],
+      uncategorized: { count: 2, totalCents: 7_994 },
+    });
+    assert.equal(result.success, true);
+    assert.deepEqual(result.data?.matchedRules, []);
+    assert.deepEqual(result.data?.merchantAliases, []);
+    assert.deepEqual(result.data?.warnings, []);
+  });
+
+  it("proposta sem o peso do grupo é recusada", () => {
+    const result = CategorizationResultSchema.safeParse({
+      proposals: [
+        {
+          merchant: "Padaria",
+          categoryId: "groceries",
+          categoryLabel: "Mercado",
+          reason: "Compra de alimentação.",
+          transactionIds: ["txn_1"],
+        },
+      ],
+    });
+    assert.equal(result.success, false);
+    const paths = result.error?.issues.map((issue) => issue.path.at(-1));
+    assert.ok(paths?.includes("count"));
+    assert.ok(paths?.includes("totalCents"));
+  });
+
+  it("regra casada também carrega quantos lançamentos e quanto somam", () => {
+    const result = CategorizationResultSchema.safeParse({
+      matchedRules: [
+        {
+          conceptId: "rules/spotify",
+          categoryId: "subscriptions",
+          categoryLabel: "Assinaturas",
+          reason: "A regra aprendida de Spotify alcança estas linhas.",
+          count: 3,
+          totalCents: 6_990,
+          transactionIds: ["txn_1", "txn_2", "txn_3"],
+        },
+      ],
+    });
+    assert.equal(result.success, true);
+    assert.equal(result.data?.matchedRules[0]?.totalCents, 6_990);
+  });
+
+  it("proposta vazia continua exigindo pelo menos uma transação", () => {
+    const result = CategorizationResultSchema.safeParse({
+      proposals: [
+        {
+          merchant: "Padaria",
+          categoryId: "groceries",
+          categoryLabel: "Mercado",
+          reason: "Compra de alimentação.",
+          count: 1,
+          totalCents: 3_997,
+          transactionIds: [],
+        },
+      ],
+    });
+    assert.equal(result.success, false);
   });
 });
