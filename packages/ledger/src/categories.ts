@@ -19,10 +19,18 @@ export type CategoryLabels = Readonly<Record<string, string>>;
  * apontar para uma categoria que foi removida depois. Mostrar o identificador
  * cru é feio, mas é honesto e não esconde a inconsistência; inventar um nome
  * bonito esconderia.
+ *
+ * A busca normaliza o que RECEBE, e não só o que o mapa guarda. O docblock de
+ * `categorySlug` já dizia que as duas formas são aceitas "porque a origem do
+ * dado não deve decidir se a tradução funciona" — mas a intenção estava só de
+ * um lado: `loadCategoryLabels` normalizava as CHAVES e esta função procurava
+ * pela string crua. Um lançamento gravado com o caminho do conceito
+ * (`categories/entertainment`, que é o que o modelo tem em mãos logo depois de
+ * criar a categoria) errava a busca e ia para a tela como caminho.
  */
 export function categoryLabel(labels: CategoryLabels, category: string | null): string {
   if (category === null) return "Sem categoria";
-  return labels[category] ?? category;
+  return labels[categorySlug(category)] ?? labels[category] ?? category;
 }
 
 /**

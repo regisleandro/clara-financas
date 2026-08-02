@@ -8,6 +8,8 @@ import { and, eq } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
+import { categoryInput } from "../lib/schema";
+
 import { notFound, refused } from "../lib/errors";
 import { recomputeBatchChecksum } from "../lib/recompute-checksum";
 import { requireTenantCaller } from "../lib/tenant";
@@ -46,7 +48,7 @@ export default defineTool({
                 "Nature of the entry. `payment` does NOT count toward the invoice total; fixing a payment read as a purchase usually closes the whole difference.",
               ),
             extractionConfidence: z.enum(CONFIDENCE).optional(),
-            category: z.string().nullable().optional(),
+            category: categoryInput(),
             merchant: z.string().nullable().optional(),
             originalDescription: z.string().min(1).optional(),
           }),
@@ -66,7 +68,7 @@ export default defineTool({
             amount: z.number().int().describe("IN CENTS, signed."),
             merchant: z.string().nullable().optional(),
             kind: z.enum(ENTRY_KINDS).optional(),
-            category: z.string().nullable().optional(),
+            category: categoryInput(),
             page: z.number().int().positive().nullable().optional(),
           }),
         )

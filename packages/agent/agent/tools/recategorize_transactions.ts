@@ -7,6 +7,7 @@ import { forTenant } from "@clara-financas/db/tenant-scope";
 import { CategorizationArtifactSchema } from "@clara-financas/views/agent-contracts";
 import { and, eq, inArray } from "drizzle-orm";
 import { defineTool } from "eve/tools";
+import { categorySlug } from "@clara-financas/ledger";
 import { z } from "zod";
 
 import { readArtifact } from "../lib/artifacts";
@@ -34,7 +35,7 @@ export default defineTool({
         .array(
           z.object({
             transactionId: z.string().min(1),
-            category: z.string().min(1),
+            category: z.string().min(1).transform(categorySlug),
             categoryLabel: z.string().min(1),
           }),
         )

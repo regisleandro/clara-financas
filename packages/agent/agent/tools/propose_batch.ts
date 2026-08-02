@@ -1,6 +1,8 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
+import { categoryInput } from "../lib/schema";
+
 import { setInvoiceFocus } from "../lib/invoice-focus";
 import { requireSessionCaller } from "../lib/tenant";
 import { writeProposedBatch } from "../lib/write-proposed-batch";
@@ -84,7 +86,7 @@ export default defineTool({
           .object({ current: z.number().int().positive(), total: z.number().int().positive() })
           .nullable()
           .optional(),
-        category: z.string().nullable().optional(),
+        category: categoryInput(),
         extractionConfidence: z.enum(["alta", "media", "baixa"]),
         page: z.number().int().positive().nullable().optional(),
       }),
