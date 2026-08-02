@@ -1,4 +1,5 @@
 import { countsTowardDeclaredTotal } from "./checksum";
+import { issuerKey } from "./issuer";
 import { clusterMerchantKeys, merchantKey } from "./merchant";
 import type { Transaction } from "./types";
 
@@ -23,8 +24,22 @@ export type Provenance = {
 export type CategoryTotal = Provenance & {
   category: string | null;
   count: number;
-  /** Fração do total do período, 0–1. Só para exibição. */
+  /** Fração das COMPRAS do período, 0–1. Só para exibição. */
   share: number;
+  /**
+   * Compras da categoria — só o que é positivo.
+   *
+   * Existe porque "quanto gastei" tem duas respostas legítimas e elas não podem
+   * conviver na mesma escala sem dizer qual é qual: compras brutas e o líquido
+   * depois dos estornos. A tela e a conversa chegaram a mostrar uma cada,
+   * respondendo à mesma pergunta com números diferentes.
+   *
+   * A separação mora AQUI, e não em cada consumidor, porque duas cópias da
+   * mesma definição é exatamente como as duas voltam a divergir.
+   */
+  gross: Provenance;
+  /** Créditos da categoria — estornos e descontos, sempre negativos. */
+  credits: Provenance;
 };
 
 /**
@@ -56,16 +71,34 @@ export function totalSpend(transactions: Transaction[]): Provenance {
  */
 export function aggregateByCategory(transactions: Transaction[]): CategoryTotal[] {
   const counted = spendable(transactions);
-  const total = counted.reduce((sum, transaction) => sum + transaction.amount, 0);
-  const buckets = new Map<string | null, { value: number; ids: string[] }>();
+  const buckets = new Map<
+    string | null,
+    { value: number; ids: string[]; gross: Provenance; credits: Provenance }
+  >();
 
   for (const transaction of counted) {
     const key = transaction.category ?? null;
-    const bucket = buckets.get(key) ?? { value: 0, ids: [] };
+    const bucket = buckets.get(key) ?? {
+      value: 0,
+      ids: [],
+      gross: { value: 0, transactionIds: [] },
+      credits: { value: 0, transactionIds: [] },
+    };
     bucket.value += transaction.amount;
     bucket.ids.push(transaction.id);
+    // A proveniência acompanha CADA figura, não só o total: abrir a origem de
+    // "R$ 100,00 em compras" precisa listar as compras, não as compras mais os
+    // estornos que somam R$ 80,00.
+    const side = transaction.amount < 0 ? bucket.credits : bucket.gross;
+    side.value += transaction.amount;
+    side.transactionIds.push(transaction.id);
     buckets.set(key, bucket);
   }
+
+  // A base da fração é o que a BARRA representa — compras. Era o líquido, e
+  // com isso uma categoria com muito estorno desenhava barra curta ao lado de
+  // um valor alto.
+  const grossTotal = [...buckets.values()].reduce((sum, bucket) => sum + bucket.gross.value, 0);
 
   return [...buckets.entries()]
     .map(([category, bucket]) => ({
@@ -73,9 +106,11 @@ export function aggregateByCategory(transactions: Transaction[]): CategoryTotal[
       value: bucket.value,
       transactionIds: bucket.ids,
       count: bucket.ids.length,
-      share: total === 0 ? 0 : bucket.value / total,
+      share: grossTotal === 0 ? 0 : bucket.gross.value / grossTotal,
+      gross: bucket.gross,
+      credits: bucket.credits,
     }))
-    .sort((a, b) => b.value - a.value);
+    .sort((a, b) => b.gross.value - a.gross.value || b.value - a.value);
 }
 
 export type CategoryComparison = {
@@ -161,6 +196,17 @@ export type IssuerMonthMatrix = {
   /** `YYYY-MM` presentes no razão, do mais recente para o mais antigo. */
   months: string[];
   issuers: Array<{
+    /**
+     * A identidade da operadora — `issuerKey`, não a grafia.
+     *
+     * O agrupamento era pela string crua, e a chave só era derivada DEPOIS, na
+     * web. Duas grafias do mesmo cartão ("Nubank" e "NuBank") viravam duas
+     * linhas na tela, cada uma com metade do total, enquanto a conversa —
+     * que já filtrava por chave — mostrava uma linha com o total inteiro. As
+     * duas ainda colidiam na `key` do React, porque a chave derivada era igual.
+     */
+    key: string;
+    /** A grafia a exibir: a mais recente vista para esta operadora. */
     issuer: string | null;
     total: Bucket;
     /**
@@ -201,17 +247,27 @@ export function aggregateByIssuerMonth(entries: IssuedTransaction[]): IssuerMont
   );
   const monthIndex = new Map(months.map((month, position) => [month, position]));
 
-  const byIssuer = new Map<string | null, Array<Bucket | null>>();
+  // Agrupa por IDENTIDADE, e guarda a grafia mais recente para exibir. Sem
+  // isto o mesmo cartão escrito de duas formas rende duas linhas com metade do
+  // total cada — e a conversa, que já filtra por chave, discorda da tela.
+  const byIssuer = new Map<string, Array<Bucket | null>>();
+  const spelling = new Map<string, { issuer: string | null; seenAt: string }>();
   const monthTotals: Bucket[] = months.map(() => emptyBucket());
   const total = emptyBucket();
 
   for (const entry of counted) {
     const position = monthIndex.get(entry.date.slice(0, 7))!;
     const issuer = entry.issuer ?? null;
+    const key = issuerKey(issuer);
 
-    const row = byIssuer.get(issuer) ?? months.map(() => null);
+    const known = spelling.get(key);
+    if (known === undefined || entry.date > known.seenAt) {
+      spelling.set(key, { issuer, seenAt: entry.date });
+    }
+
+    const row = byIssuer.get(key) ?? months.map(() => null);
     row[position] = add(row[position] ?? emptyBucket(), entry);
-    byIssuer.set(issuer, row);
+    byIssuer.set(key, row);
 
     monthTotals[position] = add(monthTotals[position]!, entry);
     add(total, entry);
@@ -220,8 +276,9 @@ export function aggregateByIssuerMonth(entries: IssuedTransaction[]): IssuerMont
   return {
     months,
     issuers: [...byIssuer.entries()]
-      .map(([issuer, byMonth]) => ({
-        issuer,
+      .map(([key, byMonth]) => ({
+        key,
+        issuer: spelling.get(key)?.issuer ?? null,
         total: byMonth.reduce<Bucket>(
           (sum, cell) =>
             cell === null

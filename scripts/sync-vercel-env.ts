@@ -27,6 +27,7 @@
  *   pnpm env:agent:production     # agente, produção
  *
  *   ... --plan                    # mostra o que iria, sem falar com a Vercel
+ *   ... --only=CHAVE_A,CHAVE_B    # envia só estas chaves da allowlist
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -80,6 +81,7 @@ const PLANES: Record<"web" | "agent", Plane> = {
       "CLARA_MODEL",
       "CLARA_EXTRACTOR_MODEL",
       "CLARA_MODEL_CONTEXT_WINDOW",
+      // Rollout reversível dos contratos opacos de análise/categorização.
       // Ausente, o eve roteia pelo AI Gateway autenticado por OIDC do projeto,
       // que é o caminho preferido em produção.
       "OPENAI_API_KEY",
@@ -106,13 +108,42 @@ function main() {
   const planeKey = args.includes("--agent") ? "agent" : "web";
   const plane = PLANES[planeKey];
   const planOnly = args.includes("--plan");
+  const onlyArg = args.find((arg) => arg.startsWith("--only="));
+  const only =
+    onlyArg === undefined
+      ? undefined
+      : new Set(
+          onlyArg
+            .slice("--only=".length)
+            .split(",")
+            .map((key) => key.trim())
+            .filter(Boolean),
+        );
 
   const environment = args.find((arg) => VALID_ENVIRONMENTS.has(arg)) ?? "preview";
   const passthrough = args.filter(
-    (arg) => arg !== "--agent" && arg !== "--plan" && !VALID_ENVIRONMENTS.has(arg),
+    (arg) =>
+      arg !== "--agent" &&
+      arg !== "--plan" &&
+      !arg.startsWith("--only=") &&
+      !VALID_ENVIRONMENTS.has(arg),
   );
 
-  for (const key of plane.allow) {
+  if (only !== undefined) {
+    const unknown = [...only].filter((key) => !plane.allow.includes(key));
+    if (only.size === 0 || unknown.length > 0) {
+      console.error(
+        only.size === 0
+          ? "--only exige ao menos uma chave."
+          : `--only contém chave(s) fora da allowlist de ${plane.label}: ${unknown.join(", ")}`,
+      );
+      process.exit(1);
+    }
+  }
+
+  const selected = only === undefined ? plane.allow : plane.allow.filter((key) => only.has(key));
+
+  for (const key of selected) {
     if (NEVER_SYNC.has(key)) {
       console.error(
         `A allowlist de ${plane.label} contém ${key}, que nunca deve sair daqui. Abortando.`,
@@ -130,7 +161,7 @@ function main() {
   const sending = new Map<string, string>();
   const missing: string[] = [];
 
-  for (const key of plane.allow) {
+  for (const key of selected) {
     const value = parsed[key];
     if (value === undefined || value === "") missing.push(key);
     else sending.set(key, value);
@@ -142,12 +173,13 @@ function main() {
 
   console.log(`\nDestino: ${plane.label} · ambiente ${environment}`);
   console.log(`Origem:  ${plane.envFile}\n`);
+  if (only !== undefined) console.log(`Filtro:  ${selected.join(", ")}\n`);
 
   console.log(`Enviando ${sending.size}:`);
   for (const key of sending.keys()) console.log(`  + ${key}`);
 
   if (skipped.length > 0) {
-    console.log(`\nNÃO enviadas (fora da allowlist deste projeto):`);
+    console.log(`\nNÃO enviadas (fora da allowlist ou do filtro desta execução):`);
     for (const key of skipped) {
       console.log(`  - ${key}${NEVER_SYNC.has(key) ? "   <- nunca sai daqui, por design" : ""}`);
     }
@@ -166,6 +198,14 @@ function main() {
       `\nAVISO: ${local.map(([key]) => key).join(", ")} aponta(m) para localhost. ` +
         `Em ${environment} isso não vai funcionar — corrija ${plane.envFile} e rode de novo.`,
     );
+
+    // Em produção um aviso não basta: a escrita ocorre chave a chave e
+    // deixaria o ambiente parcialmente sobrescrito. Recusamos antes do
+    // primeiro `vercel env add`; `--plan` continua útil para o diagnóstico.
+    if (environment === "production" && !planOnly) {
+      console.error("\nProdução recusada: nenhuma variável foi enviada.");
+      process.exit(1);
+    }
   }
 
   if (sending.size === 0) {

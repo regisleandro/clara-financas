@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 export default async function PreparandoPage() {
   const context = await getTenantContext();
   if (!context) redirect("/entrar");
-  if (context.status === "ready") redirect("/inicio");
+  if (context.status === "ready") redirect("/conversa");
 
   const job = await getProvisioningJob(context.tenantId);
   const failed = context.status === "failed" || job?.status === "failed";
@@ -40,8 +40,8 @@ export default async function PreparandoPage() {
             </p>
           ) : null}
           <Link
-            href="/inicio"
-            className="mt-8 inline-flex h-12 w-fit items-center justify-center rounded-full bg-primary px-7 text-[15px] font-medium text-primary-foreground transition-opacity hover:opacity-90"
+            href="/conversa"
+            className="mt-8 inline-flex h-12 w-fit items-center justify-center rounded-[var(--clara-radius-pill)] bg-primary px-7 text-[15px] font-medium text-primary-foreground transition-opacity hover:opacity-90"
           >
             Tentar de novo
           </Link>

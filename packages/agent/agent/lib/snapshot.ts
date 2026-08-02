@@ -5,10 +5,11 @@ import { commitments } from "@clara-financas/db/schema/commitment";
 import { concepts } from "@clara-financas/db/schema/knowledge";
 import { agentSessions } from "@clara-financas/db/schema/agent-session";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import { formatInvoiceLabel } from "@clara-financas/ledger";
-import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { formatDocumentLabel, type FinancialDocumentKind } from "@clara-financas/ledger";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
 import { todayInSaoPaulo } from "./dates";
+import { latestInvoiceOrder } from "@clara-financas/db/invoice-order";
 
 /**
  * O estado do razão, em uma consulta.
@@ -34,7 +35,9 @@ export type InvoiceSummary = {
   batchId: string;
   documentId: string;
   issuer: string | null;
+  documentKind: FinancialDocumentKind;
   invoiceLabel: string;
+  documentLabel: string;
   status: "proposed" | "confirmed" | "rejected";
   periodStart: string | null;
   periodEnd: string | null;
@@ -97,6 +100,7 @@ export async function loadSnapshot(
           documentId: batches.documentId,
           status: batches.status,
           issuer: documents.issuer,
+          documentKind: documents.kind,
           periodStart: batches.periodStart,
           periodEnd: batches.periodEnd,
           dueDate: batches.dueDate,
@@ -111,7 +115,7 @@ export async function loadSnapshot(
         .innerJoin(documents, eq(documents.id, batches.documentId))
         // Lote rejeitado não é fatura da pessoa, é tentativa descartada.
         .where(inArray(batches.status, ["proposed", "confirmed"]))
-        .orderBy(desc(batches.periodEnd), desc(batches.createdAt))
+        .orderBy(...latestInvoiceOrder())
         .limit(12);
 
       const [invoiceCount] = await tx
@@ -128,6 +132,7 @@ export async function loadSnapshot(
                 documentId: batches.documentId,
                 status: batches.status,
                 issuer: documents.issuer,
+                documentKind: documents.kind,
                 periodStart: batches.periodStart,
                 periodEnd: batches.periodEnd,
                 dueDate: batches.dueDate,
@@ -194,7 +199,10 @@ export async function loadSnapshot(
         batchId: row.batchId,
         documentId: row.documentId,
         issuer: row.issuer,
-        invoiceLabel: formatInvoiceLabel(row),
+        documentKind: row.documentKind,
+        documentLabel: formatDocumentLabel(row),
+        // Mantido como alias para prompts/consumidores da primeira versão.
+        invoiceLabel: formatDocumentLabel(row),
         status: row.status,
         periodStart: row.periodStart,
         periodEnd: row.periodEnd,
@@ -259,7 +267,8 @@ export function renderSnapshot(snapshot: LedgerSnapshot): string {
     "",
     "- `today` é a data de hoje em São Paulo. Você NÃO sabe a data por conta",
     "  própria; use esta.",
-    "- `invoices` são as faturas que ela já enviou. Nunca peça um documento que",
+    "- `invoices` são os documentos financeiros que ela já enviou (o campo",
+    "  `documentKind` distingue fatura, extrato bancário e nota fiscal). Nunca peça um documento que",
     "  já está aqui com `status: confirmed`, e nunca diga que não há nada",
     "  registrado quando `coverage.count` for maior que zero.",
     "- `invoices` traz no máximo as 12 faturas mais recentes. Se",

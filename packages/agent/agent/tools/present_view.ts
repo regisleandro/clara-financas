@@ -67,7 +67,7 @@ export default defineTool({
     // metade das linhas "declaradas" não é uma composição, e isto aparece na
     // telemetria antes de virar reclamação.
     const declared = (input.rows ?? []).filter(
-      (row) => row.basis !== undefined && row.basis !== "ledger",
+      (row) => row.basis !== undefined && row.basis !== "sum",
     ).length;
 
     return {

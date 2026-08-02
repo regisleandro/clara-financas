@@ -28,11 +28,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ]);
 
   return (
-    <div className="min-h-svh bg-background">
-      <NavBar hasAlerts={alerts} pendingReview={pendingReview} />
-      {/* pt-12 compensa a barra fixa; o padding inferior generoso é do design
-          — as telas terminam com ar, não com o rodapé colado no conteúdo. */}
-      <main className="pt-12">{children}</main>
-    </div>
+    <NavBar
+      hasAlerts={alerts}
+      pendingReview={pendingReview}
+      tenantKey={context.tenantId}
+      name={context.name}
+    >
+      {children}
+    </NavBar>
   );
 }

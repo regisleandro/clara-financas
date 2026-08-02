@@ -3,8 +3,9 @@ import { batches, documents, transactions } from "@clara-financas/db/schema/ledg
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import {
   formatCents,
-  formatInvoiceLabel,
+  formatDocumentLabel,
   type ChecksumReport,
+  type StatementBalanceReport,
 } from "@clara-financas/ledger";
 import { and, asc, eq } from "drizzle-orm";
 import { defineTool } from "eve/tools";
@@ -32,7 +33,7 @@ import { requireSessionCaller } from "../lib/tenant";
  */
 export default defineTool({
   description:
-    "Opens ONE invoice and returns its entries plus the stored verification report. Call this before fixing anything in an invoice: the entry ids you need for edit_proposed_batch or create_adjustment come from here. Works for drafts and for already recorded invoices.",
+    "Opens one financial document and returns its entries plus the stored verification report. Call this before fixing anything in an invoice or statement: the entry ids you need for edit_proposed_batch or create_adjustment come from here. Works for drafts and for already recorded documents.",
   inputSchema: z.object({
     batchId: z.string().min(1).describe("Batch id, as shown in the ledger state."),
     onlySuspects: z
@@ -62,6 +63,9 @@ export default defineTool({
             checksumResult: batches.checksumResult,
             checksumReport: batches.checksumReport,
             issuer: documents.issuer,
+            documentKind: documents.kind,
+            openingBalance: batches.openingBalance,
+            closingBalance: batches.closingBalance,
           })
           .from(batches)
           .innerJoin(documents, eq(documents.id, batches.documentId))
@@ -82,7 +86,7 @@ export default defineTool({
     );
 
     if (found === null) {
-      return notFound("lote_nao_encontrado", `Nenhuma fatura com o id ${input.batchId}.`, {
+      return notFound("lote_nao_encontrado", `Nenhum documento financeiro com o id ${input.batchId}.`, {
         hint: "Confira os batchId do estado do razão, ou chame list_invoices para o histórico.",
       });
     }
@@ -92,8 +96,12 @@ export default defineTool({
     if (!focused) {
       throw new Error("A sessão Eve não estava persistida para guardar o foco da fatura.");
     }
-    const report = batch.checksumReport as ChecksumReport | null;
-    const suspects = new Set((report?.suspectItems ?? []).map((item) => item.transactionId));
+    const report = batch.checksumReport as (ChecksumReport | StatementBalanceReport) | null;
+    const isStatementBalance = (value: ChecksumReport | StatementBalanceReport): value is StatementBalanceReport =>
+      "kind" in value && value.kind === "statement_balance";
+    const checksumReport = report !== null && !isStatementBalance(report) ? report : null;
+    const statementBalance = report !== null && isStatementBalance(report) ? report : null;
+    const suspects = new Set((checksumReport?.suspectItems ?? []).map((item) => item.transactionId));
     const labels = await loadCategoryLabels(tenantId);
 
     const selected = input.onlySuspects === true ? rows.filter((row) => suspects.has(row.id)) : rows;
@@ -101,7 +109,11 @@ export default defineTool({
     return {
       batchId: batch.batchId,
       documentId: batch.documentId,
-      invoiceLabel: formatInvoiceLabel(batch),
+      documentKind: batch.documentKind,
+      documentLabel: formatDocumentLabel(batch),
+      // Campo legado preservado para consumidores antigos; o valor agora é
+      // semanticamente correto também para extrato bancário.
+      invoiceLabel: formatDocumentLabel(batch),
       issuer: batch.issuer,
       // O estado decide o que é possível fazer, então ele vem primeiro e
       // explicado: rascunho se corrige com edit_proposed_batch; registrado
@@ -110,26 +122,29 @@ export default defineTool({
       editable: batch.status === "proposed",
       period: { start: batch.periodStart, end: batch.periodEnd, dueDate: batch.dueDate },
       declaredTotalCents: batch.declaredTotal,
+      openingBalanceCents: batch.openingBalance,
+      closingBalanceCents: batch.closingBalance,
       declaredSubtotals: batch.declaredSubtotals,
       extractedTotalCents: batch.extractedTotal,
       checksum:
-        report === null
+        checksumReport === null
           ? { result: batch.checksumResult }
           : {
-              result: report.result,
-              likelyCause: report.likelyCause,
-              localizedIn: report.localizedIn,
-              declaredTotalCents: report.declaredTotal,
-              extractedTotalCents: report.extractedTotal,
-              differenceCents: report.difference,
+              result: checksumReport.result,
+              likelyCause: checksumReport.likelyCause,
+              localizedIn: checksumReport.localizedIn,
+              declaredTotalCents: checksumReport.declaredTotal,
+              extractedTotalCents: checksumReport.extractedTotal,
+              differenceCents: checksumReport.difference,
               differenceFormatted:
-                report.difference === null ? null : formatCents(report.difference),
+                checksumReport.difference === null ? null : formatCents(checksumReport.difference),
               requiredAdjustmentCents:
-                report.difference === null ? null : -report.difference,
+                checksumReport.difference === null ? null : -checksumReport.difference,
               requiredAdjustmentFormatted:
-                report.difference === null ? null : formatCents(-report.difference),
-              suspectItems: report.suspectItems,
+                checksumReport.difference === null ? null : formatCents(-checksumReport.difference),
+              suspectItems: checksumReport.suspectItems,
             },
+      ...(statementBalance === null ? {} : { statementBalance }),
       transactionCount: rows.length,
       returned: selected.length,
       transactions: selected.map((row) => ({

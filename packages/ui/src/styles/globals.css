@@ -7,121 +7,150 @@
 @custom-variant dark (&:is(.dark *));
 
 /**
- * Sistema Clara — redesign com linguagem Apple (Clara.dc.html).
+ * Clara — sistema visual da v3.
  *
- * Duas famílias, como no macOS: Display para títulos, Text para leitura. O
- * fallback é Inter Tight / Inter, que compartilham a métrica apertada — a
- * troca de fonte não deve reescrever o layout.
- *
- * O tracking negativo em corpo e positivo em títulos grandes é da própria
- * linguagem: texto pequeno pede aperto, display pede folga.
+ * A conversa é o centro e as telas financeiras são superfícies de trabalho:
+ * papel creme, tinta verde-floresta, marcações amarelas e estados em cores
+ * suaves. Os tokens seguem o brief do protótipo e deixam os componentes
+ * existentes coerentes sem transformar cada tela em um conjunto de exceções.
  */
 :root {
   --clara-display:
-    "SF Pro Display", -apple-system, BlinkMacSystemFont, var(--font-clara-display, "Inter Tight"),
-    system-ui, sans-serif;
-  --clara-text:
-    "SF Pro Text", -apple-system, BlinkMacSystemFont, var(--font-clara-text, "Inter"), system-ui,
+    var(--font-clara-display, "Bricolage Grotesque"), "Bricolage Grotesque", system-ui,
     sans-serif;
+  --clara-text:
+    var(--font-clara-text, "Inter"), "Inter", -apple-system, BlinkMacSystemFont, system-ui,
+    sans-serif;
+  --clara-mono:
+    var(--font-clara-mono, "Roboto Mono"), "Roboto Mono", ui-monospace, SFMono-Regular,
+    Menlo, monospace;
 
-  --clara-ink: #1d1d1f;
-  --clara-fog: #f5f5f7;
-  --clara-white: #fff;
-  --clara-blue: #0071e3;
-  --clara-link: #0066cc;
-  --clara-slate: #86868b;
-  --clara-graphite: #707070;
-  --clara-ash: #e8e8ed;
-  --clara-green: #1d7f45;
-  --clara-amber: #8b5d00;
-  --clara-green-bg: #eaf7ef;
-  --clara-amber-bg: #fff3d6;
+  --clara-ink: #1a3300;
+  --clara-fog: #fcfaf5;
+  --clara-white: #fffefa;
+  --clara-cloud: #fffefa;
+  --clara-blue: #1a3300;
+  --clara-link: #1a3300;
+  --clara-slate: #68705f;
+  --clara-graphite: #4b5547;
+  --clara-ash: #b6b6b6;
+  --clara-border: #d8d9cf;
+  --clara-green: #477b3b;
+  --clara-amber: #9a571c;
+  --clara-green-bg: #d5f5c2;
+  --clara-amber-bg: #fff3b0;
+  --clara-yellow: #ffe95c;
+  --clara-teal: #a8e5e5;
+  --clara-mint: #d5f5c2;
+  --clara-blush: #f6d0ff;
+  --clara-terracotta: #cb5521;
 
-  /* Raios: cards generosos, pílulas totalmente arredondadas. */
-  --clara-radius-card: 28px;
-  --clara-radius-pill: 980px;
+  --clara-radius-card: 12px;
+  --clara-radius-pill: 6px;
   --clara-radius-chip: 999px;
   --clara-radius-tile: 12px;
+  --clara-nav-height: 64px;
+  --clara-nav-bg: #fcfaf5;
 
-  /* Barra fixa translúcida do topo. */
-  --clara-nav-height: 48px;
-  --clara-nav-bg: rgb(29 29 31 / 0.8);
+  /*
+   * Medidas do shell. Estas duas existiam escritas à mão em quatro lugares
+   * (largura do rail em `.clara-rail`, na margem do `.clara-workspace` e duas
+   * vezes na fórmula do composer), e a duplicação não era preguiça: era um
+   * fato do layout sem lugar para morar. O preço foi um desalinhamento
+   * constante de 124px entre o composer e as mensagens, porque as fórmulas
+   * centralizavam sobre larguras diferentes e ninguém tinha como notar que
+   * precisavam concordar.
+   */
+  --clara-rail-width: 232px;
+  /* A medida de leitura da conversa: mensagens, cabeçalho e composer. */
+  --clara-composer-max: 672px;
+  /* O teto da coluna de conversa — e da faixa que a contém. */
+  --clara-chat-max: 920px;
+
+  /*
+   * O piso do texto legível, em dois valores.
+   *
+   * Havia oito tamanhos abaixo de 11px espalhados pela folha, chegando a
+   * 9,12px — e três deles em fonte mono, MAIÚSCULA e com `letter-spacing`, que
+   * é a combinação mais difícil de ler que existe: caixa alta apaga o contorno
+   * das palavras, mono estreita o traço e o espaçamento desmancha o que
+   * sobrou. Nada disso é decoração desconhecida da pessoa; é rótulo de seção,
+   * data de conversa, contagem de pendências.
+   *
+   * Dois tokens porque a exigência é diferente: 11px serve para texto normal;
+   * mono em caixa alta precisa dos 12px para chegar à mesma legibilidade.
+   */
+  --clara-text-min: 0.6875rem;
+  --clara-text-min-mono: 0.75rem;
 }
 
 :root {
-  /* O app inteiro assenta sobre a névoa; branco é superfície de card, não
-     fundo de página. É o que dá a profundidade da linguagem Apple. */
   --background: var(--clara-fog);
   --foreground: var(--clara-ink);
   --card: var(--clara-white);
   --card-foreground: var(--clara-ink);
   --popover: var(--clara-white);
   --popover-foreground: var(--clara-ink);
-  --primary: var(--clara-blue);
-  --primary-foreground: var(--clara-white);
-  --secondary: var(--clara-fog);
+  --primary: var(--clara-ink);
+  --primary-foreground: var(--clara-fog);
+  --secondary: var(--clara-mint);
   --secondary-foreground: var(--clara-ink);
-  --muted: var(--clara-fog);
+  --muted: #eef0e8;
   --muted-foreground: var(--clara-slate);
-  --accent: var(--clara-fog);
+  --accent: var(--clara-yellow);
   --accent-foreground: var(--clara-ink);
-  --destructive: oklch(0.58 0.22 27);
+  --destructive: var(--clara-terracotta);
   --success: var(--clara-green);
-  --border: var(--clara-ash);
-  --input: var(--clara-ash);
-  --ring: var(--clara-blue);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --border: var(--clara-border);
+  --input: var(--clara-border);
+  --ring: var(--clara-ink);
+  --chart-1: #1a3300;
+  --chart-2: #477b3b;
+  --chart-3: #a8e5e5;
+  --chart-4: #cb5521;
+  --chart-5: #d4b900;
+  --radius: 0.75rem;
+  --sidebar: var(--clara-white);
+  --sidebar-foreground: var(--clara-ink);
+  --sidebar-primary: var(--clara-ink);
+  --sidebar-primary-foreground: var(--clara-fog);
+  --sidebar-accent: var(--clara-mint);
+  --sidebar-accent-foreground: var(--clara-ink);
+  --sidebar-border: var(--clara-border);
+  --sidebar-ring: var(--clara-ink);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.87 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.371 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #17230d;
+  --foreground: #fcfaf5;
+  --card: #223317;
+  --card-foreground: #fcfaf5;
+  --popover: #223317;
+  --popover-foreground: #fcfaf5;
+  --primary: #d5f5c2;
+  --primary-foreground: #17230d;
+  --secondary: #314a24;
+  --secondary-foreground: #fcfaf5;
+  --muted: #314a24;
+  --muted-foreground: #c2cbb9;
+  --accent: #ffe95c;
+  --accent-foreground: #17230d;
+  --border: #536349;
+  --input: #536349;
+  --ring: #d5f5c2;
+  --sidebar: #17230d;
+  --sidebar-foreground: #fcfaf5;
+  --sidebar-primary: #d5f5c2;
+  --sidebar-primary-foreground: #17230d;
+  --sidebar-accent: #314a24;
+  --sidebar-accent-foreground: #fcfaf5;
+  --sidebar-border: #536349;
+  --sidebar-ring: #d5f5c2;
 }
 
 @theme inline {
-  --font-sans: "Inter Variable", sans-serif;
+  --font-sans: var(--clara-text);
+  --font-mono: var(--clara-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -167,25 +196,62 @@
   * {
     @apply border-border outline-ring/50;
   }
+
+  /*
+   * Barra de rolagem discreta, em todo lugar.
+   *
+   * A barra padrão do sistema é larga e escura, e num app que rola por dentro
+   * de colunas ela vira o elemento de maior contraste da tela — competindo com
+   * o próprio conteúdo. Fina e translúcida ela continua legível como
+   * affordance sem virar moldura.
+   *
+   * Vale para TUDO de propósito, e não só para a conversa: a largura da barra
+   * é o que `scrollbar-gutter` reserva em `.clara-chat-measure` e
+   * `.clara-composer-wrap` para alinhar título, mensagens e composer. Se a
+   * conversa fosse `thin` e os irmãos não, os três voltariam a se desencontrar
+   * pela diferença entre as duas larguras.
+   *
+   * `color-mix` com transparente em vez de uma cor nova: o polegar escurece
+   * sobre qualquer fundo do tema sem inventar um token.
+   */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--clara-ink) 20%, transparent) transparent;
+  }
+
   html {
     font-family: var(--clara-text);
+    background: var(--background);
   }
+
   body {
     @apply bg-background text-foreground;
     font-family: var(--clara-text);
-    /* 17px é o corpo do sistema Apple, não 16 — e o tracking negativo é o que
-       impede o texto de parecer solto nesse tamanho. */
-    font-size: 17px;
-    line-height: 1.47;
-    letter-spacing: -0.019em;
+    font-size: 16px;
+    line-height: 1.5;
+    letter-spacing: -0.01em;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: var(--clara-yellow);
+    color: var(--clara-ink);
+  }
+
+  button,
+  a,
+  input,
+  textarea,
+  select {
+    -webkit-tap-highlight-color: transparent;
   }
 }
 
 @keyframes clara-dots {
   0%,
   100% {
-    opacity: 0.2;
+    opacity: 0.24;
     transform: translateY(0);
   }
   50% {
@@ -212,190 +278,1163 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
-/* ---------------------------------------------------------------------------
- * Escala tipográfica do sistema Apple.
- *
- * Definida como classes e não como utilitários soltos porque cada degrau é um
- * conjunto acoplado — tamanho, altura de linha e tracking andam juntos. Deixar
- * o autor combinar `text-5xl` com um leading qualquer é como o sistema se
- * desfaz na segunda tela.
- * ------------------------------------------------------------------------- */
 @layer components {
+  /* Shell principal: rail persistente no desktop e workspace único no mobile. */
+  .clara-app-shell {
+    background: var(--clara-fog);
+    color: var(--clara-ink);
+  }
+
+  .clara-rail {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 50;
+    display: flex;
+    width: var(--clara-rail-width);
+    flex-direction: column;
+    justify-content: space-between;
+    border-right: 1px solid var(--clara-border);
+    background: #f5f2e9;
+    color: var(--clara-ink);
+    transition: transform 180ms ease;
+  }
+
+  .clara-rail-top {
+    min-height: 0;
+    overflow-y: auto;
+    /*
+     * Explícito, e não herdado. Quando um eixo é `visible` e o outro não, o
+     * `visible` COMPUTA para `auto` — então `overflow-y: auto` sozinho já
+     * criava rolagem horizontal na lista de conversas assim que um título não
+     * cabia. E títulos não cabem: eles carregam o id do lote
+     * ("Compare a fatura bat_52513dece22e438b9ee9"), que é uma palavra só e
+     * não quebra.
+     */
+    overflow-x: hidden;
+    padding: 20px 15px 12px;
+  }
+
+  .clara-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    border-radius: 6px;
+    padding: 0 6px;
+    color: var(--clara-ink);
+    font-size: 1.2rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+  }
+
+  .clara-brand:focus-visible,
+  .clara-new-conversation:focus-visible,
+  .clara-conversation-item:focus-visible,
+  .clara-mobile-menu:focus-visible,
+  .clara-tool-button:focus-visible,
+  .clara-workspace-tab:focus-visible {
+    outline: 2px solid var(--clara-ink);
+    outline-offset: 3px;
+  }
+
+  .clara-brand-mark {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border: 1px solid var(--clara-ink);
+    border-radius: 7px;
+    background: var(--clara-yellow);
+    color: var(--clara-ink);
+  }
+
+  .clara-new-conversation {
+    display: flex;
+    width: 100%;
+    min-height: 42px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 26px;
+    border: 1px solid var(--clara-ink);
+    border-radius: 6px;
+    background: var(--clara-ink);
+    color: var(--clara-fog);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+
+  .clara-new-conversation:hover {
+    background: #2e510d;
+  }
+
+  .clara-rail-section {
+    margin-top: 31px;
+  }
+
+  .clara-rail-label {
+    margin: 0 8px 9px;
+    color: var(--clara-slate);
+    font-family: var(--clara-mono);
+    font-size: var(--clara-text-min-mono);
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .clara-conversation-list {
+    display: grid;
+    gap: 2px;
+    list-style: none;
+  }
+
+  /*
+   * O `<li>` é uma casca sem estilo — quem desenha continua sendo o botão.
+   *
+   * A lista era um `<div role="list">` com `<button role="listitem">` dentro, e
+   * o papel imposto no botão APAGAVA o papel de botão: o leitor de tela
+   * anunciava "item de lista", sem dizer que aquilo era clicável nem o que
+   * aconteceria ao ativar. Marcação de verdade (`ul`/`li`) devolve os dois
+   * papéis, o de lista e o de botão, sem que um custe o outro.
+   */
+  .clara-conversation-list > li {
+    display: block;
+    min-width: 0;
+  }
+
+  .clara-conversation-item {
+    display: flex;
+    min-height: 35px;
+    width: 100%;
+    /* Topo, e não centro: com o título em duas linhas, a data centralizada
+       flutuaria no meio do bloco em vez de acompanhar a primeira linha. */
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 7px 9px;
+    color: var(--clara-ink);
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 650;
+    transition: background-color 150ms ease, border-color 150ms ease;
+  }
+
+  /*
+   * O título quebra em até DUAS linhas.
+   *
+   * Numa linha só não dava para ler nenhuma conversa: os títulos vêm da
+   * primeira frase da pessoa e quase todos começam igual — "Compare a fatura
+   * bat_…", "Mostre a composição por categoria…" —, então a lista virava o
+   * mesmo prefixo repetido com reticências.
+   *
+   * `min-width: 0` porque item de flex nasce com `min-width: auto` e não
+   * encolhe abaixo do conteúdo; `overflow-wrap: anywhere` porque um id de lote
+   * é uma palavra só e, sem isso, ele estoura a coluna mesmo podendo quebrar.
+   */
+  .clara-conversation-item > span {
+    display: -webkit-box;
+    min-width: 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+  }
+
+  .clara-conversation-item time {
+    flex: 0 0 auto;
+    /* Acerta a data com a PRIMEIRA linha do título, que é maior. */
+    padding-top: 2px;
+    color: var(--clara-slate);
+    font-size: var(--clara-text-min);
+    font-weight: 500;
+  }
+
+  .clara-conversation-item:hover,
+  .clara-conversation-item.is-active {
+    border-color: transparent;
+    background: #e9e5da;
+  }
+
+  .clara-rail-empty {
+    margin: 0 8px;
+    color: var(--clara-slate);
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+
+  .clara-rail-bottom {
+    padding: 14px 15px 18px;
+  }
+
+  .clara-profile div {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .clara-profile strong {
+    font-size: 0.6875rem;
+    font-weight: 750;
+  }
+
+  .clara-profile small {
+    color: var(--clara-slate);
+    font-size: var(--clara-text-min);
+  }
+
+  .clara-profile {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 6px;
+  }
+
+  .clara-profile-avatar {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--clara-ink);
+    color: var(--clara-fog);
+    font-family: var(--clara-mono);
+    font-size: var(--clara-text-min);
+    font-weight: 500;
+  }
+
+  .clara-tool-button:hover,
+  .clara-mobile-menu:hover {
+    background: var(--clara-yellow);
+    color: var(--clara-ink);
+  }
+
+  .clara-workspace {
+    min-height: 100dvh;
+    margin-left: var(--clara-rail-width);
+    background: var(--clara-fog);
+  }
+
+  .clara-workspace-header {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    display: grid;
+    height: var(--clara-nav-height);
+    /* `minmax(0, 1fr)` e não `1fr`: o mínimo implícito de `1fr` é `auto`, ou
+       seja, o tamanho do CONTEÚDO. Com seis abas isso faz a faixa empurrar o
+       cabeçalho para além da tela em vez de deixar as abas rolarem por dentro. */
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: stretch;
+    border-bottom: 1px solid var(--clara-border);
+    background: color-mix(in srgb, var(--clara-fog) 96%, transparent);
+  }
+
+  /*
+   * As abas rolam por dentro — e agora DIZEM que rolam.
+   *
+   * A barra de rolagem está escondida de propósito (ela é grossa e feia sobre
+   * uma faixa de 58px), mas escondê-la sem pôr nada no lugar significava que em
+   * 360px as duas últimas áreas do produto ficavam fora da tela sem um único
+   * pixel indicando que existiam. A pessoa não deixava de ir lá por não querer:
+   * deixava por não saber.
+   *
+   * A pista é a técnica de sombra com `background-attachment`, e ela se liga e
+   * desliga sozinha, sem JavaScript e sem medir nada:
+   *
+   *  - as duas primeiras camadas são TAMPAS na cor da faixa, com
+   *    `attachment: local` — elas acompanham o conteúdo, então ficam sobre a
+   *    borda só enquanto aquele lado está no começo (ou no fim) da rolagem;
+   *  - as duas últimas são as SOMBRAS, com `attachment: scroll` — presas às
+   *    bordas visíveis do elemento.
+   *
+   * Resultado: rolou para a direita, a tampa da esquerda vai junto e descobre a
+   * sombra daquele lado; cabe tudo na tela, as duas tampas cobrem as duas
+   * sombras e nada aparece. A ordem importa — a primeira camada é a de cima.
+   */
+  .clara-workspace-tabs {
+    display: flex;
+    min-width: 0;
+    align-items: stretch;
+    gap: 3px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    background-image:
+      linear-gradient(to right, var(--clara-fog), var(--clara-fog)),
+      linear-gradient(to left, var(--clara-fog), var(--clara-fog)),
+      linear-gradient(to right, color-mix(in srgb, var(--clara-ink) 14%, transparent), transparent),
+      linear-gradient(to left, color-mix(in srgb, var(--clara-ink) 14%, transparent), transparent);
+    background-repeat: no-repeat;
+    background-position:
+      left center,
+      right center,
+      left center,
+      right center;
+    /* A tampa é MAIS LARGA que a sombra de propósito. Com 10px contra 18px
+       sobravam 8px de gradiente à mostra mesmo quando as abas cabiam todas na
+       tela — uma sombra permanente nas duas bordas, dizendo que havia mais
+       coisa onde não havia. Cobrindo os 18px inteiros, "não rola" volta a ser
+       indistinguível de "não tem sombra". */
+    background-size:
+      20px 100%,
+      20px 100%,
+      18px 100%,
+      18px 100%;
+    background-attachment: local, local, scroll, scroll;
+  }
+
+  .clara-workspace-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .clara-workspace-tab-divider {
+    width: 1px;
+    height: 24px;
+    flex: 0 0 auto;
+    align-self: center;
+    margin: 0 7px;
+    background: var(--clara-border);
+  }
+
+  .clara-workspace-tab {
+    position: relative;
+    display: inline-flex;
+    min-height: var(--clara-nav-height);
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px;
+    color: var(--clara-slate);
+    font-size: 0.8125rem;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+
+  .clara-workspace-tab:hover,
+  .clara-workspace-tab.is-active {
+    color: var(--clara-ink);
+  }
+
+  .clara-workspace-tab.is-active::after {
+    position: absolute;
+    right: 0;
+    bottom: -1px;
+    left: 0;
+    height: 2px;
+    background: var(--clara-ink);
+    content: "";
+  }
+
+  .clara-header-alert-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--clara-terracotta);
+  }
+
+  /*
+   * O número cresceu de 9,12px para o piso de 11px, e a pílula precisa
+   * acompanhar: com `min-width` fixa e sem recuo lateral, "99+" encostava nas
+   * duas bordas do círculo. O recuo é o que deixa a contagem respirar sem
+   * transformar um selo em botão.
+   */
+  .clara-review-badge {
+    display: inline-grid;
+    min-width: 18px;
+    height: 18px;
+    place-items: center;
+    border-radius: 999px;
+    padding-inline: 5px;
+    background: var(--clara-yellow);
+    color: var(--clara-ink);
+    font-family: var(--clara-mono);
+    font-size: var(--clara-text-min);
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .clara-workspace-tools {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    padding-right: 22px;
+  }
+
+  .clara-tool-button,
+  .clara-mobile-menu {
+    position: relative;
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border-radius: 6px;
+    color: var(--clara-ink);
+  }
+
+  /*
+   * A área clicável cresce; o desenho não.
+   *
+   * Estes dois botões mediam 34×34 (e 31×31 abaixo de 640px), contra os 44px
+   * que uma ponta de dedo pede. Aumentar a caixa visível resolveria o toque e
+   * estragaria a barra: numa faixa de 58px, dois quadrados de 44px pesam mais
+   * que tudo o que está em volta.
+   *
+   * O pseudo-elemento separa as duas coisas — o que se vê continua com 34px, o
+   * que se acerta passa a ter 44. É transparente e não recebe estilo nenhum;
+   * existe só para ser alvo.
+   */
+  .clara-tool-button::after,
+  .clara-mobile-menu::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+
+  .clara-mobile-menu {
+    display: none;
+    margin-left: 14px;
+    align-self: center;
+  }
+
+  .clara-workspace-main {
+    min-height: calc(100dvh - var(--clara-nav-height));
+  }
+
+  .clara-rail-backdrop {
+    display: none;
+  }
+
+  /*
+   * Grid, e não flex com porcentagens.
+   *
+   * A versão anterior media as duas colunas contra bases DIFERENTES: a coluna
+   * de conversa era `58%` do container (que já descontava o rail, porque ele é
+   * `fixed` e o workspace tem `margin-left`), e o painel era `min(42vw, 560px)`
+   * — 42% do viewport INTEIRO, rail incluído. As duas eram inencolhíveis
+   * (`flex: 0 0` e `shrink-0`), então a diferença não era absorvida: virava
+   * largura sobrando. Entre 1024px e 1333px sobravam 97,44px CONSTANTES, e sem
+   * `overflow-x: hidden` em `html`/`body` isso é uma barra horizontal no
+   * documento.
+   *
+   * E era ela que produzia o scroll VERTICAL de ~15px que não deveria existir:
+   * a barra horizontal consome altura do cliente, a altura declarada passa a
+   * exceder o que sobrou, e nasce uma segunda barra.
+   *
+   * Com grid as duas colunas dividem o MESMO espaço por construção. Não há
+   * duas fórmulas para manter de acordo, então não há como voltarem a
+   * discordar.
+   */
+  /*
+   * `height`, e não `min-height` — a conversa é a única tela com scroller
+   * próprio.
+   *
+   * Com `min-height` a caixa é indefinida: o `flex: 1` da conversa não tem
+   * contra o que se medir, o `min-h-0` não tem o que encolher, e uma conversa
+   * longa EMPURRA a coluna para além da tela. O resultado é o documento
+   * rolando por baixo de um cabeçalho `sticky` enquanto o scroller interno
+   * também rola — dois modelos de scroll no mesmo lugar, que é como um scroll
+   * vertical aparece onde ninguém pediu.
+   *
+   * Com altura definida a coluna não cresce, o `flex: 1` resolve, e o único
+   * scroll é o de dentro da conversa. As outras telas (`/inicio`,
+   * `/transacoes`, `/comparacao`) continuam rolando o documento: elas não usam
+   * esta classe.
+   */
+  .clara-chat-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    height: calc(100dvh - var(--clara-nav-height));
+    align-items: stretch;
+  }
+
+  /*
+   * A faixa da conversa tem TETO; quem absorve a sobra é o painel.
+   *
+   * Com `1fr` na conversa, ela herdava toda a largura restante — mas o texto
+   * para de crescer em 672px, então a sobra virava um vão morto de mais de
+   * 200px entre a conversa e o painel que ela está explicando. Duas colunas
+   * que falam da mesma coisa, separadas por nada.
+   *
+   * Centralizar o par resolveria o vão, mas descolaria o painel da borda
+   * direita — trocaria um vazio por outro. Deixando o painel crescer
+   * (`minmax(…, 1fr)`) a sobra vira largura útil: ele continua encostado na
+   * borda, a conversa fica ao lado, e a tabela de lançamentos ganha espaço
+   * justamente nas telas em que sobrava.
+   */
+  .clara-chat-layout.with-details {
+    grid-template-columns:
+      minmax(0, var(--clara-chat-max))
+      minmax(clamp(320px, 34%, 560px), 1fr);
+  }
+
+  .clara-chat-column {
+    position: relative;
+    display: flex;
+    width: min(100%, var(--clara-chat-max));
+    min-width: 0;
+    /* A faixa do grid já tem altura definida e `align-items: stretch`; herdar
+       essa altura é o que permite ao `flex: 1` da conversa encolher. */
+    height: 100%;
+    min-height: 0;
+    flex-direction: column;
+    margin: 0 auto;
+    /*
+     * O recuo inferior era 142px: espaço reservado à mão para um composer
+     * `fixed` que podia crescer até ~240px (o textarea vai a `max-h-48`). Com
+     * o composer em fluxo, quem reserva o espaço é o próprio composer.
+     */
+    padding: 48px 64px 24px;
+  }
+
+  /*
+   * Centralizada na própria faixa, não encostada à esquerda.
+   *
+   * Com `margin: 0` os 920px da coluna ficavam colados no rail e TODA a sobra
+   * da faixa virava um vão morto entre a conversa e o painel de Detalhes —
+   * mais de 200px em tela larga, que era a maior parte da distância que a
+   * pessoa via entre as duas colunas. Centralizar não muda a largura de
+   * leitura; distribui a sobra dos dois lados, e a conversa passa a ficar
+   * perto do painel que ela está explicando.
+   */
+  .clara-chat-layout.with-details .clara-chat-column {
+    padding-right: 44px;
+    padding-left: 44px;
+  }
+
+  .clara-chat-heading {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px 18px;
+    margin: 0 auto 36px;
+    width: 100%;
+    max-width: 672px;
+  }
+
+  .clara-chat-heading .clara-eyebrow {
+    grid-column: 1;
+    margin: 0;
+  }
+
+  .clara-chat-title {
+    grid-column: 1;
+    margin: 0;
+    font-family: var(--clara-display);
+    font-size: clamp(2.35rem, 4vw, 4rem);
+    font-weight: 800;
+    line-height: 0.99;
+    letter-spacing: -0.045em;
+    text-wrap: balance;
+  }
+
+  .clara-welcome {
+    width: 100%;
+    max-width: 672px;
+    margin: 0 auto;
+  }
+
+  .clara-welcome-title {
+    max-width: 12ch;
+    margin: 12px 0 0;
+    font-family: var(--clara-display);
+    font-size: clamp(2.8rem, 5.6vw, 5rem);
+    font-weight: 800;
+    line-height: 0.96;
+    letter-spacing: -0.05em;
+    text-wrap: balance;
+  }
+
+  .clara-welcome-intro {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
+    margin-top: 34px;
+    max-width: 600px;
+  }
+
+  .clara-welcome-intro p {
+    margin: 2px 0 0;
+    color: var(--clara-graphite);
+    font-size: 1rem;
+    line-height: 1.55;
+  }
+
+  .clara-quick-list {
+    display: grid;
+    margin-top: 38px;
+    border-top: 1px solid var(--clara-border);
+  }
+
+  .clara-quick-row {
+    display: grid;
+    min-height: 75px;
+    grid-template-columns: 38px minmax(0, 1fr) 25px;
+    gap: 12px;
+    align-items: center;
+    border-bottom: 1px solid var(--clara-border);
+    padding: 12px 2px;
+    text-align: left;
+    transition: padding 150ms ease, background-color 150ms ease;
+  }
+
+  .clara-quick-row:hover {
+    padding-right: 8px;
+    padding-left: 8px;
+    background: rgb(213 245 194 / 0.35);
+  }
+
+  .clara-quick-icon {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border-radius: 7px;
+    color: var(--clara-ink);
+    font-family: var(--clara-mono);
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+
+  .clara-quick-icon-1 { background: var(--clara-yellow); }
+  .clara-quick-icon-2 { background: var(--clara-teal); }
+  .clara-quick-icon-3 { background: var(--clara-blush); }
+  .clara-quick-icon-4 { background: var(--clara-mint); }
+
+  .clara-quick-copy {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+  }
+
+  .clara-quick-copy strong {
+    color: var(--clara-ink);
+    font-size: 0.875rem;
+    font-weight: 750;
+  }
+
+  .clara-quick-copy small {
+    overflow: hidden;
+    color: var(--clara-slate);
+    font-size: 0.75rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .clara-quick-arrow {
+    color: var(--clara-slate);
+    font-size: 1rem;
+    text-align: right;
+  }
+
+  .clara-context-status {
+    display: inline-flex;
+    align-items: center;
+    align-self: start;
+    gap: 6px;
+    padding-top: 4px;
+    color: var(--clara-slate);
+    font-family: var(--clara-mono);
+    font-size: var(--clara-text-min-mono);
+    white-space: nowrap;
+  }
+
+  .clara-context-status i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #5b9b30;
+  }
+
+  /*
+   * Uma mensagem escrita durante o turno, esperando a vez.
+   *
+   * Ela não existia na tela: o campo esvaziava e o único sinal era um texto de
+   * 12px no rodapé, escondido por CSS em telas estreitas. Desenhá-la com o
+   * mesmo recuo das mensagens da pessoa, mais discreta, diz as duas coisas ao
+   * mesmo tempo — foi recebida, ainda não foi enviada.
+   */
+  /*
+   * A linha da mensagem é um grid de duas colunas (marcador, conteúdo). Sem
+   * declarar a coluna, o bloco cai na faixa de 30px do marcador e o texto
+   * quebra letra a letra — foi o que a primeira versão fez.
+   */
+  .clara-queued {
+    grid-column: 2;
+    border: 1px dashed var(--clara-border);
+    border-radius: var(--clara-radius-card);
+    padding: 10px 14px;
+    color: var(--clara-graphite);
+    font-size: 0.9375rem;
+  }
+
+  .clara-queued small {
+    display: block;
+    margin-top: 4px;
+    color: var(--clara-slate);
+    font-size: 0.75rem;
+  }
+
+  .clara-conversation-content {
+    width: 100%;
+    max-width: 672px;
+    margin: 0 auto;
+  }
+
+  .clara-message-mark {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border: 1px solid var(--clara-ink);
+    border-radius: 6px;
+    background: var(--clara-yellow);
+    color: var(--clara-ink);
+    font-size: 0.75rem;
+    font-weight: 800;
+  }
+
+  .clara-message-row {
+    display: grid !important;
+    max-width: 100% !important;
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
+  }
+
+  .clara-message-row > [data-slot="message-content"] {
+    grid-column: 2;
+    min-width: 0;
+  }
+
+  .clara-details-link {
+    display: grid;
+    width: 100%;
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    margin-top: 18px;
+    border: 1px solid var(--clara-border);
+    border-radius: var(--clara-radius-card);
+    background: var(--clara-white);
+    padding: 13px 14px;
+    color: var(--clara-ink);
+    text-align: left;
+    transition: border-color 150ms ease, background-color 150ms ease;
+  }
+
+  .clara-details-link:hover {
+    border-color: var(--clara-ink);
+    background: #fffef8;
+  }
+
+  .clara-details-link-icon {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    border-radius: 7px;
+    background: var(--clara-yellow);
+  }
+
+  .clara-details-link-copy {
+    display: grid;
+    min-width: 0;
+    gap: 1px;
+  }
+
+  .clara-details-link-copy small {
+    color: var(--clara-slate);
+    font-family: var(--clara-mono);
+    font-size: var(--clara-text-min-mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .clara-details-link-copy strong {
+    overflow: hidden;
+    font-size: 0.8125rem;
+    font-weight: 750;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .clara-details-link-copy em {
+    overflow: hidden;
+    color: var(--clara-slate);
+    font-size: 0.6875rem;
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .clara-details-link-action {
+    font-size: 0.6875rem;
+    font-weight: 750;
+    white-space: nowrap;
+  }
+
+  /*
+   * Em FLUXO, como último item da coluna — não `fixed`.
+   *
+   * A versão anterior era `position: fixed` com
+   * `left: max(250px, calc(232px + (100vw - 232px - 920px) / 2))`, uma fórmula
+   * que centralizava sobre uma coluna de 920px enquanto as mensagens se
+   * centralizam sobre 672px (`.clara-conversation-content`). O resultado era um
+   * desalinhamento CONSTANTE de 124px entre o campo de escrever e o texto logo
+   * acima dele — o defeito que mais gritava "descuidado".
+   *
+   * Fora do fluxo ele também flutuava por cima do painel de Detalhes
+   * (`z-index: 35` contra um aside sem z-index) e cobria o fim da conversa
+   * quando o textarea crescia além dos 142px reservados à mão.
+   *
+   * Em fluxo, dentro do mesmo container das mensagens e com a mesma medida, o
+   * alinhamento deixa de ser uma coincidência que precisa ser mantida e passa a
+   * ser uma consequência. As três fórmulas somem juntas.
+   */
+  /*
+   * Os irmãos do scroller precisam da MESMA calha de barra de rolagem.
+   *
+   * Só a conversa rola, então só ela tem barra — e a barra come largura de
+   * dentro do scroller. Consequência: o texto das mensagens se centraliza numa
+   * caixa mais estreita que a do título e a do composer, que são irmãos diretos
+   * da coluna. O desencontro é de meia barra em tela larga e de uma barra
+   * inteira quando a coluna é estreita: o título começando antes do texto, o
+   * campo de escrever terminando depois.
+   *
+   * `scrollbar-gutter` vale para qualquer contêiner de rolagem, e
+   * `overflow: hidden` é um — então estes dois reservam a mesma calha sem
+   * nunca mostrar barra. Em sistemas de barra sobreposta (macOS por padrão) a
+   * calha é zero e nada muda; em Windows e Linux é a diferença entre alinhado
+   * e quase.
+   *
+   * A medida de leitura fica nos FILHOS, nunca aqui: `max-width` neste nível
+   * faria a calha comer 30px de dentro dos 672px, e a caixa ficaria mais
+   * estreita que o texto que ela deveria acompanhar.
+   */
+  .clara-chat-measure,
+  .clara-composer-wrap {
+    width: 100%;
+    overflow: hidden;
+    scrollbar-gutter: stable both-edges;
+  }
+
+  .clara-composer-wrap {
+    padding-top: 12px;
+    /* Fundo seguro do iPhone: sem isto o campo encosta no home indicator. */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* A medida de leitura, idêntica à de `.clara-conversation-content`. */
+  .clara-composer-wrap > form,
+  .clara-composer-wrap > p {
+    width: 100%;
+    max-width: var(--clara-composer-max);
+    margin-inline: auto;
+  }
+
+  .clara-composer-wrap > form {
+    border: 1px solid var(--clara-ink);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--clara-white) 96%, transparent);
+    box-shadow: 0 4px 16px rgb(26 51 0 / 0.06);
+    backdrop-filter: blur(8px);
+  }
+
+  .clara-composer-wrap [data-slot="input-group-textarea"] {
+    min-height: 45px;
+  }
+
+  .clara-composer-wrap [data-slot="input-group-textarea"]::placeholder {
+    color: var(--clara-slate);
+  }
+
+  .clara-composer-wrap > p {
+    margin-top: 6px;
+    color: var(--clara-slate);
+    font-size: var(--clara-text-min);
+    text-align: left;
+  }
+
+  /*
+   * O esqueleto de abertura (`ChatBootSkeleton`).
+   *
+   * A entrada é ATRASADA de propósito. O storage costuma responder no primeiro
+   * frame, e um esqueleto que aparece e some em 16ms é pura piscada: fica mais
+   * agitado que a tela branca que ele veio corrigir. Com 140ms de espera ele só
+   * chega quando a espera é real — hidratação lenta, aparelho fraco — que é o
+   * único caso em que ele tem algo a dizer.
+   *
+   * Nada aqui pulsa. Uma barra que respira sugere que dados estão chegando por
+   * um canal; aqui não há canal nenhum, só uma leitura local que já deveria ter
+   * terminado. A forma parada é honesta e o `aria-hidden` no elemento mantém
+   * isto fora do leitor de tela, onde moldura vazia não significa nada.
+   */
+  /*
+   * `backwards`, e não `opacity: 0` no estado base.
+   *
+   * A primeira versão nascia invisível e contava com a animação para aparecer —
+   * o que quer dizer que num ambiente onde a animação não roda o esqueleto
+   * nunca aparece, e o modo de falha é a tela branca que ele existe para
+   * cobrir. Com o estado base visível e `backwards`, o atraso é a EXCEÇÃO: quem
+   * não anima simplesmente vê o esqueleto na hora.
+   */
+  .clara-boot {
+    animation: clara-boot-in 160ms ease-out 140ms backwards;
+  }
+
+  @keyframes clara-boot-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  .clara-boot-bar {
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--clara-ink) 8%, transparent);
+  }
+
+  /* Ocupa o lugar da conversa, empurrando o composer para o rodapé — é a mesma
+     distribuição que o layout real terá, então nada se desloca na troca. */
+  .clara-boot-spacer {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .clara-boot-composer {
+    width: 100%;
+    max-width: var(--clara-composer-max);
+    height: 62px;
+    margin-inline: auto;
+    border: 1px solid color-mix(in srgb, var(--clara-ink) 18%, transparent);
+    border-radius: 12px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .clara-boot {
+      animation-duration: 1ms;
+    }
+  }
+
+  .clara-details-panel {
+    background: var(--clara-white);
+  }
+
   .clara-eyebrow {
-    font-size: 12px;
-    line-height: 1.33;
-    letter-spacing: 0.06em;
+    font-family: var(--clara-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    line-height: 1.35;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--clara-slate);
   }
 
   .clara-hero {
     font-family: var(--clara-display);
-    font-weight: 600;
-    /* 56px no celular, 96px no desktop: o design permite 56–112. */
-    font-size: clamp(2.75rem, 1.5rem + 5vw, 6rem);
-    line-height: 1.07;
-    letter-spacing: 0.005em;
+    font-weight: 800;
+    font-size: clamp(3rem, 2.25rem + 5vw, 6rem);
+    line-height: 0.98;
+    letter-spacing: -0.035em;
+    text-wrap: balance;
   }
 
   .clara-display-lg {
     font-family: var(--clara-display);
-    font-weight: 600;
-    font-size: clamp(2rem, 1.2rem + 3vw, 3.5rem);
-    line-height: 1.07;
-    letter-spacing: 0.004em;
+    font-weight: 800;
+    font-size: clamp(2.25rem, 1.5rem + 3vw, 4rem);
+    line-height: 1;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
   }
 
   .clara-display-md {
-    font-family: var(--clara-display);
-    font-weight: 600;
+    font-family: var(--clara-text);
+    font-weight: 700;
     font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2rem);
-    line-height: 1.19;
-    letter-spacing: -0.005em;
+    line-height: 1.15;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
   }
 
   .clara-display-sm {
-    font-family: var(--clara-display);
-    font-weight: 600;
-    font-size: 1.75rem;
-    line-height: 1.14;
-    letter-spacing: -0.009em;
+    font-family: var(--clara-text);
+    font-weight: 700;
+    font-size: 1.375rem;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
   }
 
   .clara-display-xs {
-    font-family: var(--clara-display);
-    font-weight: 600;
-    font-size: 1.1875rem;
+    font-family: var(--clara-text);
+    font-weight: 700;
+    font-size: 1.125rem;
+    line-height: 1.25;
     letter-spacing: -0.015em;
   }
 
-  /* Números grandes: o dado é o herói destas telas. */
   .clara-metric {
     font-family: var(--clara-display);
-    font-weight: 600;
+    font-weight: 800;
     font-size: clamp(2.5rem, 1.5rem + 4vw, 4.5rem);
-    line-height: 1.07;
-    letter-spacing: 0.005em;
+    line-height: 0.98;
+    letter-spacing: -0.035em;
     font-variant-numeric: tabular-nums;
   }
 
   .clara-lead {
-    font-size: 1.25rem;
-    line-height: 1.47;
-    letter-spacing: -0.01em;
+    font-size: 1.125rem;
+    line-height: 1.55;
+    letter-spacing: -0.012em;
     color: var(--clara-graphite);
     text-wrap: pretty;
   }
 
   .clara-small {
-    font-size: 12px;
-    letter-spacing: -0.022em;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    letter-spacing: -0.005em;
     color: var(--clara-slate);
   }
 
-  /* Superfícies */
   .clara-card {
     background: var(--clara-white);
+    border: 1px solid var(--clara-border);
     border-radius: var(--clara-radius-card);
+    box-shadow: none;
   }
 
   .clara-shell {
-    max-width: 1024px;
+    max-width: 1200px;
+    box-sizing: border-box;
     margin-inline: auto;
-    padding-inline: 24px;
+    padding-inline: clamp(1rem, 3vw, 2rem);
   }
 
-  /* Ações */
+  .clara-highlight {
+    display: inline;
+    padding-inline: 0.12em;
+    background: var(--clara-yellow);
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+
+  .clara-note {
+    border: 1px solid color-mix(in srgb, var(--clara-ink) 16%, transparent);
+    border-radius: var(--clara-radius-card);
+    background: var(--clara-mint);
+  }
+
+  .clara-note-yellow {
+    background: var(--clara-yellow);
+  }
+
+  .clara-note-teal {
+    background: var(--clara-teal);
+  }
+
   .clara-pill {
     display: inline-flex;
+    min-height: 2.625rem;
     align-items: center;
     justify-content: center;
+    gap: 0.5rem;
     border-radius: var(--clara-radius-pill);
-    padding: 11px 22px;
-    font-size: 17px;
-    letter-spacing: -0.019em;
-    transition: opacity 0.15s ease, background-color 0.15s ease;
+    padding: 0.625rem 1rem;
+    font-family: var(--clara-text);
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
   }
+
   .clara-pill:focus-visible {
-    outline: 2px solid var(--clara-blue);
-    outline-offset: 2px;
+    outline: 2px solid var(--clara-ink);
+    outline-offset: 3px;
   }
 
   .clara-pill-primary {
-    background: var(--clara-blue);
-    color: var(--clara-white);
+    background: var(--clara-ink);
+    color: var(--clara-fog);
   }
+
   .clara-pill-primary:hover {
-    opacity: 0.9;
+    background: #2e510d;
   }
 
   .clara-pill-outline {
     background: transparent;
     border: 1px solid var(--clara-ink);
-    padding: 10px 20px;
     color: var(--clara-ink);
   }
+
   .clara-pill-outline:hover {
-    background: var(--clara-ash);
+    background: var(--clara-mint);
   }
 
   .clara-chip {
     display: inline-flex;
+    min-height: 1.75rem;
     align-items: center;
+    border: 1px solid color-mix(in srgb, var(--clara-ink) 12%, transparent);
     border-radius: var(--clara-radius-chip);
-    padding: 5px 12px;
-    font-size: 12px;
-    letter-spacing: -0.022em;
+    padding: 0.25rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0;
     background: var(--clara-fog);
   }
 
   .clara-link {
     color: var(--clara-link);
-    font-size: 17px;
-    letter-spacing: -0.019em;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    text-decoration: none;
+    text-underline-offset: 0.2em;
   }
+
   .clara-link:hover {
-    color: var(--clara-ink);
+    text-decoration: underline;
   }
 }
 
-/* ---------------------------------------------------------------------------
- * AI Elements no sistema Clara.
- *
- * Os componentes vêm com a paleta shadcn padrão. Em vez de reescrevê-los —
- * o que perderia as atualizações do registry —, sobrescrevemos por token: eles
- * seguem sendo AI Elements, com a nossa linguagem.
- * ------------------------------------------------------------------------- */
 @layer components {
-  /* Fala do usuário: balão escuro à direita, como no protótipo. O padrão usa
-     `bg-secondary`, que aqui é névoa e sumia contra o fundo. */
+  /* A fala do usuário é uma marca clara de autoria; a Clara responde no papel
+     sem criar uma parede de balões. */
   .group\/message.is-user [data-slot="message-content"],
   .group.is-user > div:first-child {
     background: var(--clara-ink);
-    color: var(--clara-white);
-    border-radius: 22px 22px 8px 22px;
-    padding: 13px 19px;
-    font-size: 17px;
-    letter-spacing: -0.019em;
+    color: var(--clara-fog);
+    border-radius: 12px 12px 4px 12px;
+    padding: 0.75rem 1rem;
+    font-family: var(--clara-text);
+    font-size: 0.9375rem;
+    letter-spacing: -0.005em;
   }
 
-  /* Fala da Clara: tipografia grande, sem balão. Ela é a voz do sistema; um
-     balão a colocaria no mesmo plano de quem pergunta. */
   .group.is-assistant > div:first-child {
-    font-family: var(--clara-display);
-    font-weight: 600;
-    font-size: 1.75rem;
-    line-height: 1.14;
-    letter-spacing: -0.009em;
+    font-family: var(--clara-text);
+    font-weight: 400;
+    font-size: 1.0625rem;
+    line-height: 1.55;
+    letter-spacing: -0.012em;
     text-wrap: pretty;
     max-width: none;
   }
 
-  /* Dentro da resposta, listas e parágrafos secundários voltam ao corpo — só a
-     primeira frase carrega o peso de display. */
   .group.is-assistant ul,
   .group.is-assistant ol,
   .group.is-assistant table,
@@ -404,8 +1443,241 @@
   .group.is-assistant p + p {
     font-family: var(--clara-text);
     font-weight: 400;
-    font-size: 17px;
-    line-height: 1.47;
-    letter-spacing: -0.019em;
+    font-size: 1rem;
+    line-height: 1.55;
+    letter-spacing: -0.01em;
+  }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --clara-nav-height: 64px;
+  }
+
+  .clara-shell {
+    padding-inline: 1rem;
+    max-width: 100%;
+  }
+
+  .clara-shell p,
+  .clara-shell h1,
+  .clara-shell h2,
+  .clara-shell h3,
+  .clara-shell h4,
+  .clara-shell li {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: break-word;
+    white-space: normal;
+  }
+
+  .clara-hero {
+    font-size: clamp(2.5rem, 11vw, 4.25rem);
+  }
+}
+
+@media (max-width: 1023px) {
+  /*
+   * `visibility`, além do `transform`.
+   *
+   * Sair da tela por `translateX(-105%)` esconde dos olhos e de mais nada: o
+   * menu fechado continuava na ordem de tabulação e na árvore de
+   * acessibilidade. Quem navega por teclado dava Tab na conversa e caía em oito
+   * conversas invisíveis; quem usa leitor de tela ouvia a navegação inteira
+   * antes do conteúdo. `visibility: hidden` tira dos dois de uma vez.
+   *
+   * O atraso de 180ms na volta é o que preserva a animação de fechar: a
+   * `visibility` só some depois que o painel terminou de deslizar (transições
+   * não rodam a partir de `hidden`). Ao abrir ela vale na hora, senão o
+   * primeiro quadro do deslize aconteceria com o painel ainda invisível.
+   *
+   * Isto é CSS de propósito. A alternativa — `inert` condicionado ao viewport —
+   * dependeria de um `matchMedia` que no servidor não existe, e o HTML enviado
+   * marcaria como inerte um menu que no desktop está aberto e clicável.
+   */
+  .clara-rail {
+    box-shadow: 12px 0 30px rgb(26 51 0 / 0.12);
+    transform: translateX(-105%);
+    visibility: hidden;
+    transition:
+      transform 180ms ease,
+      visibility 0s linear 180ms;
+  }
+
+  .clara-rail.is-open {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform 180ms ease;
+  }
+
+  /*
+   * O mesmo vale para o fundo escuro: é um `<button>` de tela inteira, e
+   * fechado ele era um alvo de Tab que anunciava "Fechar menu" sem que houvesse
+   * menu aberto para fechar.
+   */
+  .clara-rail-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    display: block;
+    border: 0;
+    background: rgb(26 51 0 / 0.18);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      opacity 180ms ease,
+      visibility 0s linear 180ms;
+  }
+
+  .clara-rail-backdrop.is-open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity 180ms ease;
+  }
+
+  .clara-workspace {
+    margin-left: 0;
+  }
+
+  .clara-mobile-menu {
+    display: grid;
+  }
+
+  .clara-workspace-header {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  /*
+   * `stretch`, e não `start`. Com `justify-self: start` o item é dimensionado
+   * pelo próprio conteúdo e TRANSBORDA a faixa: medido em 390px, a barra de
+   * abas ia de 48 a 483 num viewport de 375 — 108px de rolagem horizontal no
+   * documento inteiro, e as duas últimas abas fora da tela sem nada indicando
+   * que existiam. Preenchendo a faixa, o `overflow-x` finalmente rola por
+   * dentro, que era a intenção original.
+   *
+   * As abas continuam à esquerda: o container é flex e o padrão já é
+   * `justify-content: flex-start`.
+   */
+  .clara-workspace-tabs {
+    justify-self: stretch;
+  }
+
+  .clara-workspace-tools {
+    padding-right: 12px;
+  }
+
+  /*
+   * Abaixo de `lg` o painel de Detalhes vira modal (`ArtifactAside` é
+   * `hidden lg:block`), então a segunda faixa do grid não pode ser reservada:
+   * um elemento `display: none` não é item de grid, e a coluna ficaria
+   * ocupando espaço vazio.
+   */
+  .clara-chat-layout.with-details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .clara-chat-column,
+  .clara-chat-layout.with-details .clara-chat-column {
+    width: 100%;
+    padding-right: 28px;
+    padding-left: 28px;
+  }
+}
+
+@media (max-width: 640px) {
+  /*
+   * O cabeçalho encolhe aqui, e o token precisa encolher junto. Ele valia
+   * 64px em toda largura enquanto a barra media 58px, e os 6px de diferença
+   * viajavam para tudo que subtrai a altura do cabeçalho: a altura mínima do
+   * workspace, do layout e da coluna, o `height` do painel de Detalhes e o
+   * espaço reservado durante o carregamento do chat.
+   */
+  :root {
+    --clara-nav-height: 58px;
+  }
+
+  .clara-workspace-header {
+    height: var(--clara-nav-height);
+  }
+
+  .clara-workspace-tab {
+    min-height: 58px;
+    gap: 5px;
+    padding: 0 8px;
+    font-size: 0.6875rem;
+  }
+
+  .clara-workspace-tab svg {
+    display: none;
+  }
+
+  .clara-workspace-tools {
+    gap: 0;
+    padding-right: 8px;
+  }
+
+  /* O desenho encolhe com a faixa; o alvo de 44px do `::after` não muda. */
+  .clara-tool-button {
+    width: 31px;
+    height: 31px;
+  }
+
+  /*
+   * A lista de conversas é a navegação principal do celular, e 35px de altura
+   * é menos que a ponta de um dedo. No desktop 35px basta (o ponteiro é
+   * preciso e a lista precisa caber), então a folga vale só aqui.
+   */
+  .clara-conversation-item {
+    min-height: 44px;
+  }
+
+  .clara-chat-column,
+  .clara-chat-layout.with-details .clara-chat-column {
+    /* 128px eram o espaço reservado ao composer `fixed`; ele agora ocupa o
+       próprio espaço, e o recuo herdado só criaria vão morto no fim da tela. */
+    padding: 30px 18px 16px;
+  }
+
+  .clara-chat-heading {
+    grid-template-columns: 1fr;
+    margin-bottom: 28px;
+  }
+
+  .clara-context-status {
+    grid-row: 1;
+    grid-column: 1;
+    justify-self: end;
+  }
+
+  .clara-chat-title {
+    grid-column: 1;
+    font-size: clamp(2.35rem, 13vw, 3.5rem);
+  }
+
+  .clara-details-link {
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .clara-details-link-icon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .clara-details-link-action {
+    grid-column: 2;
+    justify-self: start;
+    margin-top: 3px;
+  }
+
+  /*
+   * `bottom` e `width: calc(100vw - 24px)` eram muletas do `position: fixed`:
+   * em fluxo o composer já herda a largura e o recuo da coluna, e a largura
+   * baseada em `100vw` era justamente o que ignorava a barra de rolagem.
+   */
+  .clara-composer-wrap > p {
+    display: none;
   }
 }

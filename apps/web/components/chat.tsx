@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Paperclip, Send } from "lucide-react";
 
 import {
   Conversation,
@@ -16,13 +17,14 @@ import {
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { InputGroupAddon } from "@/components/ui/input-group";
 import { ArtifactAside, ArtifactModal } from "@/components/artifact-surface";
-import { ChatHeader, ChatWelcome, type Starter } from "@/components/chat-welcome";
+import { ChatWelcome, type Starter } from "@/components/chat-welcome";
 import { ChatMessage } from "@/components/chat-message";
 import { DecisionCard } from "@/components/decision-card";
 import { ExecutionTrace } from "@/components/execution-trace";
 import { useArtifactSelection } from "@/hooks/use-artifact-selection";
 import { useClaraAgent } from "@/hooks/use-clara-agent";
 import { deriveActivity } from "@/lib/activity";
+import { mensagemDeErro } from "@/lib/agent-error";
 import { batchArtifact, type BatchProposal } from "@/lib/artifact";
 import { deriveFollowups } from "@/lib/followups";
 import {
@@ -44,11 +46,11 @@ import {
 /**
  * A conversa, em duas colunas.
  *
- * O artefato abre à DIREITA, fixo, e a conversa segue ao lado — é assim no
- * protótipo, e a razão é de uso: o artefato é consultado enquanto se decide.
+ * Detalhes abre à DIREITA, fixo, e a conversa segue ao lado — é assim no
+ * protótipo, e a razão é de uso: Detalhes é consultado enquanto se decide.
  *
  * Este componente é o ORQUESTRADOR: protocolo do agente em `useClaraAgent`,
- * seleção de artefato em `useArtifactSelection`, renderização por parte em
+ * seleção de Detalhes em `useArtifactSelection`, renderização por parte em
  * `ChatMessage`, persistência em `lib/session-store`. O que fica aqui é
  * composição e layout.
  *
@@ -95,10 +97,24 @@ export function Chat(props: ChatProps) {
     setBoot({ key: stored === null ? "new" : sessionId, initial: stored });
   }, [props.tenantKey]);
 
+  useEffect(() => {
+    const onOpenConversation = (event: Event) => {
+      const sessionId = (event as ConversationEvent).detail?.sessionId ?? null;
+      // Mesma razão de `onSwitchConversation`: abrir uma conversa pelo menu é
+      // uma escolha desta visita, não um destino guardado para a próxima.
+      clearResume(props.tenantKey);
+      const stored = sessionId === null ? null : loadSession(props.tenantKey, sessionId);
+      setBoot({ key: sessionId ?? `new-${Date.now()}`, initial: stored });
+    };
+
+    window.addEventListener("clara:open-conversation", onOpenConversation);
+    return () => window.removeEventListener("clara:open-conversation", onOpenConversation);
+  }, [props.tenantKey]);
+
   // Antes de ler o storage não há o que desenhar além do esqueleto do layout;
   // um frame em branco evita hidratar com estado errado e piscar a boas-vindas
   // de quem tem conversa a retomar.
-  if (boot === null) return <div className="h-[calc(100svh-3rem)]" />;
+  if (boot === null) return <ChatBootSkeleton />;
 
   return (
     <ChatSession
@@ -117,6 +133,43 @@ export function Chat(props: ChatProps) {
   );
 }
 
+type ConversationEvent = CustomEvent<{ sessionId: string | null }>;
+
+/**
+ * A moldura da conversa enquanto o storage não respondeu.
+ *
+ * Antes era um `<div>` vazio com altura de tela. Na hidratação rápida isso não
+ * custa nada, mas este é também o HTML que o servidor manda: em conexão ou
+ * aparelho lento a pessoa olha para uma tela branca sem saber se abriu.
+ *
+ * O que aparece aqui é só o que é VERDADE nos dois desfechos possíveis — o
+ * cabeçalho e o campo de escrita existem tanto na conversa retomada quanto na
+ * nova. Não há bolha de mensagem falsa: metade das vezes não haveria mensagem
+ * nenhuma, e prometer conteúdo que não vem é pior que não prometer nada.
+ *
+ * A entrada tem atraso (`.clara-boot`, em `globals.css`): quando o storage
+ * responde no primeiro frame — o caso comum — o esqueleto nunca chega a ser
+ * pintado, em vez de piscar.
+ */
+function ChatBootSkeleton() {
+  return (
+    <div className="clara-chat-layout clara-boot" aria-hidden="true">
+      <div className="clara-chat-column">
+        <div className="clara-chat-heading">
+          <div>
+            <div className="clara-boot-bar" style={{ width: 132, height: 9 }} />
+            <div className="clara-boot-bar" style={{ width: 232, height: 30, marginTop: 14 }} />
+          </div>
+        </div>
+        <div className="clara-boot-spacer" />
+        <div className="clara-composer-wrap">
+          <div className="clara-boot-composer" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ChatSession({
   agentHost,
   name,
@@ -131,13 +184,25 @@ function ChatSession({
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // No celular o artefato é uma modal; no desktop, a coluna fixa à direita. O
+  // No celular Detalhes é uma modal; no desktop, a coluna fixa à direita. O
   // Radix trava a rolagem de fundo mesmo com o conteúdo escondido por CSS,
   // então a modal só pode MONTAR aberta abaixo de `lg`.
   const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   const clara = useClaraAgent({ agentHost, tenantKey, initial });
-  const { agent, busy, uploading, progress, pending, answered, isWelcome } = clara;
+  const {
+    agent,
+    busy,
+    uploading,
+    uploadingName,
+    progress,
+    pending,
+    answered,
+    isWelcome,
+    queuedMessages,
+    lastUserText,
+    retry,
+  } = clara;
   const { canCancel, cancelling } = clara;
 
   const activity = useMemo(() => deriveActivity(agent.events), [agent.events]);
@@ -170,7 +235,18 @@ function ChatSession({
     pending?.toolName === "commit_batch" &&
     answered === null &&
     pendingProposal?.batchId === proposal?.batchId;
-  const interactionLocked = busy || uploading || pending !== null || answered !== null;
+  /*
+   * Escrever nunca é bloqueado; ENVIAR é que espera.
+   *
+   * O compositor inteiro ficava indisponível durante o upload — um PDF de 20MB
+   * deixa a caixa de texto morta por dezenas de segundos, justamente quando a
+   * pessoa quer dizer o que enviou. Digitar e enfileirar não dependem de nada
+   * do servidor; só o envio depende, e a fila já cuida disso.
+   *
+   * A janela em que uma decisão foi clicada e ainda não chegou continua
+   * travando, porque ali a próxima mensagem mudaria o significado do clique.
+   */
+  const sendLocked = answered !== null;
 
   /**
    * Sair da conversa é outra coisa que digitar nela.
@@ -234,7 +310,7 @@ function ChatSession({
     // O turno é o que faz a coluna reabrir a cada pergunta — inclusive quando
     // a pergunta se repete e o painel sai idêntico.
     turnId: activity.turnId,
-    // No celular a modal cobre a conversa; lá o artefato abre pelo link.
+    // No celular a modal cobre a conversa; lá Detalhes abre pelo link.
     autoOpen: isDesktop,
   });
 
@@ -246,7 +322,7 @@ function ChatSession({
     }
   }, [invalidIssues]);
 
-  // Turno novo: a coluna volta a seguir o artefato mais recente.
+  // Turno novo: a coluna volta a seguir o Detalhes mais recente.
   clara.onTurnStart(() => setSelection({ type: "latest" }));
 
   // Follow-ups do turno (derivados do painel) na frente dos do servidor
@@ -277,33 +353,37 @@ function ChatSession({
     [tenantKey, agent.status],
   );
 
-  return (
-    <div className="flex">
-      {/* Altura FIXA, não mínima: a conversa rola por dentro em vez de
-          empurrar a página; a largura de leitura é imposta em cada faixa. */}
-      <div className="flex h-[calc(100svh-3rem)] min-w-0 flex-1 flex-col">
-        <div className="shrink-0 bg-background">
-          <div className="mx-auto w-full max-w-[720px] px-4 pb-4 pt-6 sm:px-6 sm:pt-8">
-            <ChatHeader
-              onReset={isWelcome ? null : startNewConversation}
-              onToggleArtifact={
-                !panelOpen && artifact === null && presented === null
-                  ? null
-                  : () => setSelection(panelOpen ? null : { type: "latest" })
-              }
-              artifactOpen={panelOpen}
-              conversations={conversations}
-              activeSessionId={agent.session.sessionId}
-              onSelectConversation={(sessionId) => onSwitchConversation(sessionId)}
-              navigationDisabled={navigationLocked}
-            />
-          </div>
-        </div>
+  useEffect(() => {
+    window.dispatchEvent(new Event("clara:conversation-updated"));
+  }, [agent.status, conversations.length]);
 
-        {/* `min-h-0` permite encolher abaixo do conteúdo; sem ele a rolagem
-            interna nunca acontece. */}
+  const conversationTitle = useMemo(() => {
+    const raw = conversations.find((entry) => entry.sessionId === agent.session.sessionId)?.title;
+    if (raw === undefined || raw.trim() === "") return "Sua conversa";
+    if (/fatura|nubank|extrato|\.pdf/i.test(raw)) return "Fatura de junho";
+    if (/compar/i.test(raw)) return "Comparação mensal";
+    return raw;
+  }, [agent.session.sessionId, conversations]);
+
+  return (
+    <div className={`clara-chat-layout ${active !== null ? "with-details" : ""}`}>
+      {/* A coluna central mantém o contexto e o composer no mesmo eixo visual. */}
+      <div className="clara-chat-column">
+        {!isWelcome ? (
+          // O invólucro reserva a mesma calha de barra de rolagem que o
+          // scroller da conversa (ver `.clara-chat-measure`), para o título
+          // começar exatamente onde o texto das mensagens começa.
+          <div className="clara-chat-measure">
+            <header className="clara-chat-heading">
+              <p className="clara-eyebrow">Assistente financeiro</p>
+              <span className="clara-context-status"><i aria-hidden="true" /> Contexto atualizado</span>
+              <h1 className="clara-chat-title">{conversationTitle}</h1>
+            </header>
+          </div>
+        ) : null}
+
         <Conversation className="min-h-0 flex-1">
-          <ConversationContent className="mx-auto w-full max-w-[720px] space-y-8 px-4 pb-8 pt-4 sm:px-6">
+          <ConversationContent className="clara-conversation-content space-y-8 px-0 pb-8 pt-0">
             {isWelcome ? (
               <ChatWelcome
                 name={name}
@@ -332,7 +412,7 @@ function ChatSession({
                   : linked?.kind === "view" && linked.views.at(-1)?.kind === "proposal"
                     ? "Ver proposta"
                     : linked?.kind === "view" && linked.views.at(-1)?.kind === "checksum"
-                      ? "Ver conferência"
+                      ? "Ver detalhes da conferência"
                       : "Ver detalhes";
               return (
                 <ChatMessage
@@ -389,14 +469,62 @@ function ChatSession({
               </div>
             ) : null}
 
+            {/*
+              O upload acontece ANTES de existir turno, então o `ExecutionTrace`
+              — que é derivado de eventos reais e não inventa progresso — não tem
+              o que mostrar. Sem esta linha, enviar uma fatura (o caso de uso
+              principal) dava como feedback um número de 10px dentro do botão de
+              anexo, com a tela ainda mostrando as sugestões de boas-vindas.
+            */}
+            {uploadingName !== null ? (
+              <div className="clara-message-row">
+                <p className="clara-queued">
+                  Lendo <strong>{uploadingName}</strong>
+                  <small>
+                    {progress === null ? "preparando o documento…" : `enviando · ${progress}%`}
+                  </small>
+                </p>
+              </div>
+            ) : null}
+
+            {/*
+              As mensagens que a pessoa escreveu enquanto a Clara trabalhava.
+              Elas ficavam invisíveis: o campo esvaziava e o único sinal era um
+              texto de 12px no rodapé, que o CSS esconde em telas estreitas. No
+              celular, escrever durante um turno parecia não fazer nada.
+              Desenhá-las aqui devolve o que a pessoa escreveu ao lugar onde ela
+              espera vê-lo.
+            */}
+            {queuedMessages.map((texto, indice) => (
+              <div key={`fila-${indice}`} className="clara-message-row opacity-60">
+                <p className="clara-queued">
+                  {texto}
+                  <small>aguardando a Clara terminar</small>
+                </p>
+              </div>
+            ))}
+
             {agent.error ? (
+              /*
+               * Um erro precisa SEMPRE ter uma saída clicável.
+               *
+               * Antes, a mensagem crua do eve ia para a tela — em inglês, escrita
+               * para depurar — e o botão de recomeçar só aparecia quando havia
+               * conversa retomada (`initial !== null`). Numa conversa NOVA que
+               * falhava não havia botão nenhum: só um texto âmbar, e nada a
+               * fazer além de recarregar a página sem que nada dissesse isso.
+               */
               <div className="clara-card space-y-4 p-5">
-                <p className="text-[var(--clara-amber)]">{agent.error.message}</p>
-                {/* Retomada pode falhar de forma terminal (sessão expirada no
-                    servidor, token de continuação consumido). O caminho
-                    honesto é recomeçar — o razão está no banco; o que se
-                    perde é só o fio da conversa. */}
-                {initial !== null ? (
+                <p className="text-[var(--clara-amber)]">{mensagemDeErro(agent.error.message)}</p>
+                <div className="flex flex-wrap gap-2">
+                  {lastUserText !== null ? (
+                    <button type="button" onClick={retry} className="clara-pill h-8 px-4 text-xs">
+                      Tentar de novo
+                    </button>
+                  ) : null}
+                  {/* Recomeçar é o caminho honesto quando a sessão morreu de
+                      vez: o razão está no banco; o que se perde é o fio da
+                      conversa. */}
                   <button
                     type="button"
                     onClick={startNewConversation}
@@ -404,15 +532,14 @@ function ChatSession({
                   >
                     Começar nova conversa
                   </button>
-                ) : null}
+                </div>
               </div>
             ) : null}
           </ConversationContent>
           <ConversationScrollButton />
         </Conversation>
 
-        <div className="shrink-0 bg-background">
-          <div className="mx-auto w-full max-w-[720px] px-4 pb-4 pt-2 sm:px-6 sm:pb-8">
+        <div className="clara-composer-wrap">
             {/* `items-end`, não `items-center`: o campo cresce com o conteúdo
                 (até ~6 linhas, depois rola por dentro), e os botões ficam
                 ancorados na base — centralizados, eles flutuariam no meio de
@@ -424,20 +551,12 @@ function ChatSession({
                 de 360px os três itens lado a lado não caberiam — o texto do
                 placeholder quebrava e sobrava tarja azul por cima da borda. A
                 ordem visual é dada por `order-*`, não pela ordem no DOM. */}
-            {pending !== null && answered === null ? (
-              <div
-                role="status"
-                className="clara-card px-5 py-4 text-sm text-[var(--clara-graphite)]"
-              >
-                Responda à decisão acima para continuar esta conversa.
-              </div>
-            ) : (
             <PromptInput
               className="flex-wrap items-end justify-between gap-y-1 rounded-[var(--clara-radius-card)] p-1.5 sm:flex-nowrap sm:justify-start sm:py-1.5 sm:pl-2 sm:pr-1.5"
               onSubmit={(message, event) => {
                 event.preventDefault();
                 const text = message.text?.trim();
-                if (text === undefined || text === "" || interactionLocked) return;
+                if (text === undefined || text === "" || sendLocked) return;
                 clara.send(text);
               }}
             >
@@ -445,9 +564,9 @@ function ChatSession({
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
-                  disabled={interactionLocked}
+                  disabled={navigationLocked}
                   aria-label="Anexar fatura em PDF"
-                  className="mb-1 grid size-8 place-items-center rounded-full bg-[var(--clara-fog)] text-base leading-none transition-colors hover:bg-[var(--clara-ash)] disabled:opacity-50"
+                  className="mb-1 grid size-8 place-items-center rounded-[var(--clara-radius-pill)] bg-transparent text-[var(--clara-ink)] leading-none transition-colors hover:bg-[var(--clara-yellow)] disabled:opacity-50"
                 >
                   {/* Uma fatura de 20 MB agora sobe inteira, então a espera
                       precisa ter número: "…" cobre o hash, o parser e o
@@ -459,14 +578,15 @@ function ChatSession({
                       <span className="text-[10px] font-medium tabular-nums">{progress}</span>
                     )
                   ) : (
-                    "+"
+                    <Paperclip className="size-4" aria-hidden="true" />
                   )}
                 </button>
               </InputGroupAddon>
               <PromptInputBody>
                 <PromptInputTextarea
-                  placeholder="Pergunte sobre seu dinheiro…"
-                  disabled={interactionLocked}
+                  placeholder="Pergunte sobre seus gastos ou envie um documento"
+                  // Digitar não espera o upload: só o envio depende do servidor.
+                  disabled={sendLocked}
                   rows={1}
                   className="order-1 min-h-11 basis-full px-3 py-2.5 sm:order-none sm:basis-0"
                 />
@@ -484,20 +604,32 @@ function ChatSession({
                 <PromptInputSubmit
                   status={agent.status === "error" ? "ready" : agent.status}
                   onStop={() => clara.cancel()}
-                  disabled={interactionLocked && !busy ? true : busy && !canCancel}
+                  disabled={sendLocked && !busy ? true : busy && !canCancel}
                   size="sm"
-                  className="clara-pill clara-pill-primary mb-0.5 h-10 w-auto px-4 text-sm sm:px-5"
+                  className="clara-pill clara-pill-primary mb-0.5 size-10 min-h-10 w-10 p-0 text-sm"
                 >
-                  {busy ? (cancelling ? "Parando…" : "Parar") : "Enviar"}
+                  {busy ? (cancelling ? "…" : "■") : <Send className="size-4" aria-hidden="true" />}
                 </PromptInputSubmit>
               </InputGroupAddon>
             </PromptInput>
-            )}
-          </div>
+            {/* Só o que a pessoa não consegue ver sozinha.
+                "A Clara está trabalhando" saiu daqui: o botão já virou "parar",
+                a trilha de execução já mostra o passo e a resposta já está
+                aparecendo — dizer de novo, embaixo, é legenda de algo que a
+                tela inteira estava contando. O que sobra é o que não tem outra
+                fonte: quantas mensagens esperam a vez, e que uma decisão em
+                aberto não bloqueia continuar escrevendo. */}
+            <p className="mt-2 text-center text-xs text-muted-foreground">
+              {queuedMessages.length > 0
+                ? `${queuedMessages.length} mensagem${queuedMessages.length === 1 ? "" : "ns"} aguardando a Clara terminar.`
+                : pending !== null && answered === null
+                  ? "Você pode continuar escrevendo; a decisão ficará aguardando no cartão acima."
+                  : ""}
+            </p>
         </div>
       </div>
 
-      {/* Mesmo artefato, duas molduras: coluna fixa no desktop e modal em
+      {/* Mesmo conteúdo de Detalhes, duas molduras: coluna fixa no desktop e modal em
           tela cheia no celular. */}
       {active !== null ? (
         <ArtifactAside active={active} onClose={() => setSelection(null)} />

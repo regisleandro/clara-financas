@@ -31,12 +31,16 @@ export const ProvenanceSchema = z.object({
 });
 
 /**
- * O que sustenta um número — e por que isto é campo de LINHA, não de forma.
+ * O que sustenta um número, e como ele foi construído. Um campo, duas
+ * perguntas — porque a resposta às duas é a mesma.
  *
- * A regra de proveniência morava no `kind`: uma lista `traceable = kind !==
- * "commitments" && kind !== "checksum"`, que crescia a cada forma nova. Três
- * defeitos com o mesmo desenho saíram dela, e o terceiro só apareceu porque uma
- * pessoa reclamou:
+ * Este campo nasceu duas vezes, em duas frentes, contra dois sintomas. Vale
+ * registrar os dois, porque juntos eles explicam por que o vocabulário tem esta
+ * forma e não uma mais curta.
+ *
+ * **De onde vem o valor.** A regra de proveniência morava no `kind`: uma lista
+ * `traceable = kind !== "commitments" && kind !== "checksum"` que crescia a
+ * cada forma nova. Três defeitos do mesmo desenho saíram dela:
  *
  *  - a conferência de fatura reprovava na validação justamente quando a conta
  *    não bate (corrigido pendurando `checksum` na lista);
@@ -46,28 +50,46 @@ export const ProvenanceSchema = z.object({
  *    lista nasce recusando painéis, em silêncio, no meio de uma conversa.
  *
  * A lista também não descia ao nível certo. Dentro de uma forma "rastreável"
- * existem números que não são soma de lançamento nenhum: o ajuste no nível da
- * FATURA (`prepare_invoice_resolution` devolve `targetTransactionId: null`
- * porque não há linha culpada) e a projeção anual de uma recorrência
- * (`annualizedCents` projeta o futuro; os ids são das cobranças passadas). O
- * primeiro era inexprimível; o segundo passava com ids que não somam o valor
- * exibido — proteção só na aparência.
+ * existem números que não somam lançamento nenhum: o ajuste no nível da FATURA
+ * (`prepare_invoice_resolution` devolve `targetTransactionId: null` porque não
+ * há linha culpada) e a projeção anual de uma recorrência (`annualizedCents`
+ * projeta o futuro; os ids são das cobranças passadas). O primeiro era
+ * inexprimível; o segundo passava com ids que não somam o valor exibido —
+ * proteção só na aparência.
  *
- * Agora a linha DECLARA o que está por trás do número. Quem não declara herda o
- * padrão da forma (`DEFAULT_BASIS`), que o compilador obriga a existir para
- * cada `kind` — é o que faz uma forma nova não poder nascer quebrada em
- * silêncio. E o que a linha declara chega à tela: um fato do documento deixa de
- * parecer uma agregação.
+ * **Como o valor foi construído.** Sem declarar a operação, o valor é um
+ * inteiro solto e quem o recebe precisa adivinhar o que ele significa:
+ *
+ *  - a interface decidia se um número era dinheiro por uma regex sobre o
+ *    rótulo, e `{ label: "Total de assinaturas", text: "6" }` virava R$ 0,06;
+ *  - a conferência de painel inferia a forma pelo `kind`, então uma diferença
+ *    dentro de uma composição passaria batida.
+ *
+ * As duas perguntas caem no mesmo eixo: **`sum` é o único valor que promete
+ * fechar com os próprios ids.** Todos os outros dizem, cada um à sua maneira,
+ * "não me confira somando" — e é exatamente por isso que a proveniência não é
+ * exigida deles. Uma regra, dois usos: `checkView` recusa `sum` sem ids, e
+ * `auditView` (em `save-analysis`) reconstrói a soma só dos `sum`.
+ *
+ * `sum` e não `ledger`: ao lado de `delta` e `projection`, que são operações, o
+ * nome da fonte seria um erro de categoria. Ver `@clara-financas/ledger/figure`
+ * para as equações que cada forma satisfaz.
+ *
+ * Quem não declara herda o padrão da FORMA (`DEFAULT_BASIS`), que o compilador
+ * obriga a existir para cada `kind` — é o que faz uma forma nova não poder
+ * nascer quebrada em silêncio.
  */
-export const BASIS = ["ledger", "document", "schedule", "projection"] as const;
+export const BASIS = ["sum", "delta", "projection", "document", "schedule", "count"] as const;
 export type Basis = (typeof BASIS)[number];
 
-const basis = z
+export const BasisSchema = z
   .enum(BASIS)
   .optional()
   .describe(
-    "What backs this value when it is NOT a sum of ledger entries: `document` (a total the document declares, or a delta calculated for one invoice), `schedule` (an upcoming commitment), `projection` (annualised or estimated). Omit for `ledger` — a sum of entries — and then transactionIds is required.",
+    "How this number was built, and therefore how it can be checked. `sum` — the total of its own transactionIds, which are then required. `delta` — a difference between two figures (ids are the union of both). `projection` — a real figure times a factor (ids belong to the base). `document` — a total the document declares, or a delta calculated over one invoice. `schedule` — an upcoming commitment, which left no ledger entry. `count` — not money at all, never format as currency. Omit to take the panel's default.",
   );
+
+const basis = BasisSchema;
 
 const RowSchema = z.object({
   label: z.string().min(1).describe("Row label, in Brazilian Portuguese. Use the `label` a tool returned, never the raw identifier."),
@@ -75,7 +97,16 @@ const RowSchema = z.object({
   basis,
   /** Texto livre à direita — participação, variação, contagem. */
   detail: z.string().optional(),
-  /** 0 a 1. Vira barra de proporção; ausente, não desenha barra. */
+  /**
+   * 0 a 1. Vira barra de proporção; ausente, não desenha barra.
+   *
+   * O denominador é o número em DESTAQUE do painel — é isso que a barra
+   * comunica. Uma fração de qualquer outra base não cabe aqui: numa comparação,
+   * a contribuição da categoria para o aumento tem como base só os aumentos, e
+   * desenhá-la como proporção do delta líquido produzia barra de 100% ao lado
+   * de "Diferença R$ 2,00". Fração de outra base vai por extenso no `detail`,
+   * dizendo de que é fração.
+   */
   share: z.number().min(0).max(1).optional(),
   /** `up` = piorou, `down` = melhorou. Só faz sentido em comparação. */
   trend: z.enum(["up", "down", "flat"]).optional(),
@@ -108,17 +139,32 @@ const MetricSchema = z
     transactionIds: z.array(z.string().min(1)).default([]),
   })
   .superRefine((metric, ctx) => {
+    /*
+     * Centavos em `text` viram número solto na tela — este guarda existe por
+     * isso e continua valendo. O que ele não pode mais fazer é reprovar uma
+     * CONTAGEM: "Total de assinaturas: 6" casa com a regex do rótulo e é um
+     * inteiro nu, e a versão que olhava só essas duas coisas recusava o painel
+     * inteiro — a Clara calculava certo, o schema reprovava, e a resposta
+     * apontava para um lado vazio.
+     *
+     * `basis: "count"` é a declaração de que aquele número não é dinheiro, e
+     * quem declara sai da suspeita. Sem declarar, a suspeita continua de pé:
+     * quem esquece de dizer é justamente quem está pondo centavos no lugar
+     * errado.
+     */
     const moneyLabel =
       /\b(valor|total|gasto|gastos|saldo|diferença|ajuste|custo|preço|pagamento|fatura|economia)\b/i;
     if (
       metric.text !== undefined &&
+      metric.basis !== "count" &&
       moneyLabel.test(metric.label) &&
       /^-?\d+$/.test(metric.text.trim())
     ) {
       ctx.addIssue({
         code: "custom",
         path: ["text"],
-        message: "centavos devem usar amount; text é apenas para conteúdo não monetário",
+        message:
+          'centavos devem usar amount; para um número que não é dinheiro, declare basis: "count"',
       });
     }
   });
@@ -138,7 +184,7 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
   /** Um número que responde a pergunta, com o detalhe que o sustenta. */
   z.object({
     ...base,
-    kind: z.literal("metric"),
+    kind: z.literal("metric").describe("One question, one answer: 'quanto gastei com mercado?'."),
     metric: MetricSchema,
     rows: z.array(RowSchema).max(20).default([]),
   }),
@@ -146,7 +192,7 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
   /** Composição: para onde o dinheiro foi. Barras proporcionais. */
   z.object({
     ...base,
-    kind: z.literal("breakdown"),
+    kind: z.literal("breakdown").describe("Where the money went, by category. Rows must sum to the metric."),
     metric: MetricSchema.optional(),
     rows: z.array(RowSchema).min(1).max(30),
   }),
@@ -154,24 +200,49 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
   /** Dois períodos lado a lado, com o que explica a diferença. */
   z.object({
     ...base,
-    kind: z.literal("comparison"),
+    kind: z.literal("comparison").describe("Two periods: 'por que subiu?'. Row deltas must sum to the metric delta."),
     metric: MetricSchema.optional(),
     previousLabel: z.string().min(1),
     currentLabel: z.string().min(1),
     rows: z.array(RowSchema).min(1).max(30),
   }),
 
+  /**
+   * A evolução ao longo de vários períodos — três faturas, seis meses.
+   *
+   * Existia como uma família de artefato PARALELA (`conversation_artifacts`,
+   * `present_financial_artifact`, um painel próprio no frontend), porque o
+   * vocabulário aqui não tinha uma forma para série. O custo era duas famílias
+   * de artefato incompatíveis para o mesmo trabalho, e um coordenador que
+   * precisava aprender a rotear entre elas.
+   *
+   * As linhas são os PONTOS da série, um por período, cada um somando os
+   * próprios lançamentos. O destaque é a variação entre o primeiro e o último —
+   * uma diferença, não a soma dos pontos. Por isso esta forma não é aditiva: os
+   * pontos são momentos no tempo, não partes de um todo.
+   *
+   * Os fatores que explicam a mudança vão num painel `comparison` separado, o
+   * que é possível desde que o recibo do analista passou a carregar vários
+   * artefatos.
+   */
+  z.object({
+    ...base,
+    kind: z.literal("series").describe("Evolution across three or more periods. One row per period; the metric is the change between first and last."),
+    metric: MetricSchema.optional(),
+    rows: z.array(RowSchema).min(2).max(12),
+  }),
+
   /** Assinaturas e cobranças que repetem, com custo anual. */
   z.object({
     ...base,
-    kind: z.literal("recurrences"),
+    kind: z.literal("recurrences").describe("What repeats monthly, with annual cost."),
     rows: z.array(RowSchema).min(1).max(30),
   }),
 
   /** Lista de lançamentos — o razão, rastreável até o documento. */
   z.object({
     ...base,
-    kind: z.literal("transactions"),
+    kind: z.literal("transactions").describe("Specific ledger entries, when the person asks to see them."),
     metric: MetricSchema.optional(),
     rows: z.array(RowSchema).min(1).max(50),
   }),
@@ -200,7 +271,11 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
    */
   z.object({
     ...base,
-    kind: z.literal("invoices"),
+    kind: z
+      .literal("invoices")
+      .describe(
+        "The invoice history, one row per invoice. Call it after list_invoices: `label` the invoiceLabel, `amount` the totalToShow that tool returns (the declared total, or the extracted one when the document declares none), and `detail` the cycle and due date. For 'mês a mês' pass oldestFirst: true to list_invoices and keep that order — a series read backwards is not a series. These rows carry no transactionIds: an invoice total is a fact of the document, not a sum you chose. Say in `detail` when a row is still a draft, and mark a mismatch with accent: 'attention'. To go from one invoice to its entries, read_batch and a `transactions` panel.",
+      ),
     rows: z.array(RowSchema).min(1).max(30),
   }),
 
@@ -217,7 +292,7 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
    */
   z.object({
     ...base,
-    kind: z.literal("commitments"),
+    kind: z.literal("commitments").describe("What is coming due. Use after list_commitments — a due date read out in prose cannot be scanned. Put days remaining in `detail` ('vence em 3 dias · 12/08') and urgency in `accent`: danger when overdue or within a week, attention for this month. These rows carry no transactionIds: a reminder is not a ledger entry."),
     metric: MetricSchema.optional(),
     rows: z.array(RowSchema).min(1).max(30),
   }),
@@ -236,7 +311,7 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
    */
   z.object({
     ...base,
-    kind: z.literal("proposal"),
+    kind: z.literal("proposal").describe("What you are about to change, BEFORE changing it: a categorisation triage, a reclassification, or the reach of a learned rule from apply_learned_rules with dryRun. One row per entry, `label` the merchant and `detail` the move ('Sem categoria → Assinaturas'), with the transactionIds that back it. The decision itself still opens on the corresponding tool."),
     metric: MetricSchema.optional(),
     rows: z.array(RowSchema).min(1).max(50),
   }),
@@ -253,7 +328,7 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
    */
   z.object({
     ...base,
-    kind: z.literal("checksum"),
+    kind: z.literal("checksum").describe("The verification of an invoice. When the document declares no total, pass declaredTotal: null and result: 'no_declared_total' — never invent a zero. Always pass the proposal's batchId."),
     batchId: z.string().min(1).describe("Batch that produced this verification."),
     declaredTotal: cents.nullable().describe("Null when the document declares no total."),
     extractedTotal: cents,
@@ -283,16 +358,38 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
  * passar por soma das cobranças observadas.
  */
 export const DEFAULT_BASIS: Record<z.infer<typeof ViewShapeSchema>["kind"], Basis> = {
-  metric: "ledger",
-  breakdown: "ledger",
-  comparison: "ledger",
-  recurrences: "ledger",
-  transactions: "ledger",
+  metric: "sum",
+  breakdown: "sum",
+  comparison: "sum",
+  /*
+   * Os PONTOS de uma série somam os próprios lançamentos, como em qualquer
+   * composição. O que não é soma ali é o destaque — a variação entre o
+   * primeiro e o último ponto —, e ele declara `delta` na própria métrica.
+   */
+  series: "sum",
+  recurrences: "sum",
+  transactions: "sum",
   invoices: "document",
   commitments: "schedule",
-  proposal: "ledger",
+  proposal: "sum",
   checksum: "document",
 };
+
+/**
+ * A base efetiva de uma célula: o que ela declarou, ou o padrão da forma.
+ *
+ * Existe para que a resolução aconteça em UM lugar. Ela é feita em três — a
+ * validação aqui, a conferência aritmética em `save-analysis` e a formatação na
+ * tela —, e se cada um aplicasse o próprio `?? DEFAULT_BASIS[kind]` a primeira
+ * divergência entre eles seria invisível: o painel passaria na validação com
+ * uma base e seria conferido com outra.
+ */
+export function basisOf(
+  kind: z.infer<typeof ViewShapeSchema>["kind"],
+  entry: { basis?: Basis },
+): Basis {
+  return entry.basis ?? DEFAULT_BASIS[kind];
+}
 
 /** Uma linha ou métrica afirma dinheiro? É o que exige origem. */
 function statesMoney(entry: { amount?: number; share?: number; trend?: string }): boolean {
@@ -341,13 +438,16 @@ export function checkView(view: z.infer<typeof ViewShapeSchema>): ViewIssue[] {
     }
   }
 
-  const fallback = DEFAULT_BASIS[view.kind];
-
+  /*
+   * `sum` é o único valor que promete fechar com os próprios ids — por isso é o
+   * único que os exige. Os demais dizem, cada um à sua maneira, "não me confira
+   * somando", e cobrar proveniência deles seria pedir uma prova que não existe.
+   */
   const metric = "metric" in view ? view.metric : undefined;
   if (
     metric !== undefined &&
     metric.amount !== undefined &&
-    (metric.basis ?? fallback) === "ledger" &&
+    basisOf(view.kind, metric) === "sum" &&
     metric.transactionIds.length === 0
   ) {
     issues.push({
@@ -363,14 +463,14 @@ export function checkView(view: z.infer<typeof ViewShapeSchema>): ViewIssue[] {
     // sem ids é uma afirmação que ninguém confere antes de aprovar.
     const aboutEntries =
       view.kind === "recurrences" || view.kind === "transactions" || view.kind === "proposal";
-    if ((row.basis ?? fallback) !== "ledger") continue;
+    if (basisOf(view.kind, row) !== "sum") continue;
     if (!statesMoney(row) && !aboutEntries) continue;
     if (row.transactionIds.length > 0) continue;
 
     issues.push({
       path: ["rows", index, "transactionIds"],
       message:
-        'uma linha do razão exige transactionIds — ou declare basis nesta linha ("document" para um total do documento, "projection" para um valor projetado) quando o valor não é soma de lançamentos',
+        'uma linha do razão exige transactionIds — ou declare basis nesta linha ("document" para um total do documento, "projection" para um valor projetado, "count" para o que não é dinheiro) quando o valor não é soma de lançamentos',
     });
   }
 
@@ -404,6 +504,17 @@ export const ViewSchema = ViewShapeSchema.superRefine((view, ctx) => {
 export const ViewPayloadSchema = ViewShapeSchema;
 
 export type View = z.infer<typeof ViewSchema>;
+
+/**
+ * O painel como quem o MONTA escreve, antes do parse.
+ *
+ * Difere de `View` só nos campos com default: `basis` é obrigatório na saída
+ * — todo número exibido declara como foi construído — e opcional na entrada,
+ * porque `sum` é o caso comum e repetir `basis: "sum"` em cada célula seria
+ * ruído que ninguém lê. Quem constrói uma diferença ou uma projeção declara;
+ * quem constrói uma soma não precisa dizer nada.
+ */
+export type ViewInput = z.input<typeof ViewSchema>;
 export type ViewKind = View["kind"];
 export type ViewRow = z.infer<typeof RowSchema>;
 export type ViewMetric = z.infer<typeof MetricSchema>;
@@ -461,3 +572,4 @@ export function viewTransactionIds(view: View): string[] {
   }
   return [...ids];
 }
+

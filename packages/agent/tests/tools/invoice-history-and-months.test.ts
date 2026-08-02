@@ -7,7 +7,14 @@ import commitBatch from "../../agent/tools/commit_batch";
 import listInvoices from "../../agent/tools/list_invoices";
 import proposeBatch from "../../agent/tools/propose_batch";
 import aggregateByMonth from "../../agent/subagents/analyst/tools/aggregate_by_month";
-import { closeConnections, ctxFor, dropTenant, freshTenant, seedDocument } from "../helpers/harness";
+import {
+  closeConnections,
+  ctxFor,
+  dropTenant,
+  freshTenant,
+  seedDocument,
+  viewsFromReceipt,
+} from "../helpers/harness";
 
 /**
  * "Pedi pra listar as faturas mês a mês e não tive resposta."
@@ -129,7 +136,7 @@ describe("o histórico de faturas e a série mês a mês", () => {
     // Ordem cronológica: "mês a mês" lido de trás para frente não é série.
     assert.deepEqual(
       invoices.map((invoice) => invoice.invoiceLabel),
-      ["Nubank 07/05/26", "Itaú 07/06/26"],
+      ["Nubank · Fatura 07/05/26", "Itaú · Fatura 07/06/26"],
     );
 
     const [abril, maio] = invoices;
@@ -169,70 +176,74 @@ describe("o histórico de faturas e a série mês a mês", () => {
     assert.equal(result.ok, true);
   });
 
+  /*
+   * A tool publica um ARTEFATO, não devolve números soltos.
+   *
+   * Ela nasceu devolvendo o cálculo cru para o modelo montar o painel. Aqui ela
+   * passa pelo mesmo gargalo das demais análises (`saveAnalysis`), que
+   * reconstrói cada valor a partir dos lançamentos lidos e recusa o painel que
+   * não fecha — então estas asserções provam agora mais do que provavam: não só
+   * que a conta está certa, mas que ela chega à tela tendo sido conferida.
+   */
   it("a série mês a mês vem em uma chamada, com proveniência em cada mês", async () => {
-    const series = (await aggregateByMonth.execute({}, ctx)) as {
-      months: Array<{
-        month: string;
-        label: string;
-        cents: number;
-        count: number;
-        transactionIds: string[];
-        byIssuer: Array<{ label: string; cents: number }>;
-      }>;
-      total: { cents: number };
-      note: string;
-    };
+    const recibo = await aggregateByMonth.execute({}, ctx);
+    const [serie] = await viewsFromReceipt(recibo, ctx);
 
-    // Dois meses de COMPRA, do mais antigo para o mais recente — e maio existe
-    // como mês próprio, não colado no fechamento da fatura de junho.
+    assert.equal(serie?.kind, "series");
+    const linhas = (serie?.rows ?? []) as Array<{
+      label: string;
+      amount?: number;
+      transactionIds: string[];
+    }>;
+
+    // Dois meses de COMPRA, do mais antigo para o mais recente — e abril existe
+    // como mês próprio, não colado no fechamento da fatura seguinte.
     assert.deepEqual(
-      series.months.map((month) => month.month),
-      ["2026-04", "2026-05"],
+      linhas.map((linha) => linha.label),
+      ["abril de 2026", "maio de 2026"],
     );
-    assert.equal(series.months[0]?.label, "abril de 2026");
-    assert.equal(series.months[0]?.cents, 30_000);
-    assert.equal(series.months[1]?.cents, 15_000);
+    assert.equal(linhas[0]?.amount, 30_000);
+    assert.equal(linhas[1]?.amount, 15_000);
 
     // Proveniência em toda linha: é o que permite ao painel existir.
-    assert.equal(series.months[0]?.transactionIds.length, 2);
-    assert.equal(series.months[1]?.transactionIds.length, 1);
+    assert.equal(linhas[0]?.transactionIds.length, 2);
+    assert.equal(linhas[1]?.transactionIds.length, 1);
 
-    // O pagamento de R$ 300,00 não entra em mês nenhum.
-    assert.equal(series.total.cents, 45_000);
-
-    // E a composição por operadora dentro do mês.
-    assert.deepEqual(
-      series.months[1]?.byIssuer.map((row) => row.label),
-      ["Itaú"],
-    );
+    // O pagamento de R$ 300,00 não entra em mês nenhum — e o destaque soma
+    // exatamente as linhas, porque o guard não deixaria passar de outro jeito.
+    const metrica = serie?.metric as { amount?: number; transactionIds: string[] } | undefined;
+    assert.equal(metrica?.amount, 45_000);
+    assert.equal(metrica?.transactionIds.length, 3);
   });
 
-  it("a série cabe num painel de composição, com os ids que a tool devolveu", async () => {
-    const series = (await aggregateByMonth.execute({}, ctx)) as {
-      months: Array<{ label: string; cents: number; transactionIds: string[] }>;
-    };
+  it("a composição por operadora vem no mesmo recibo, e soma o total", async () => {
+    const recibo = await aggregateByMonth.execute({}, ctx);
+    const paineis = await viewsFromReceipt(recibo, ctx);
 
-    const result = parseViewResult({
-      kind: "breakdown",
-      title: "Gasto mês a mês",
-      rows: series.months.map((month) => ({
-        label: month.label,
-        amount: month.cents,
-        transactionIds: month.transactionIds,
-      })),
-    });
+    // Duas operadoras no recorte, então o segundo painel existe.
+    assert.equal(paineis.length, 2);
+    const porOperadora = paineis[1]!;
+    assert.equal(porOperadora.kind, "breakdown");
 
-    assert.equal(result.ok, true);
+    const linhas = (porOperadora.rows ?? []) as Array<{ label: string; amount?: number }>;
+    assert.deepEqual([...linhas.map((linha) => linha.label)].sort(), ["Itaú", "Nubank"]);
+    // `breakdown` é aditivo e o guard cobra isso: se as operadoras não somassem
+    // o destaque, `saveAnalysis` teria recusado e não haveria painel aqui.
+    const soma = linhas.reduce((total, linha) => total + (linha.amount ?? 0), 0);
+    assert.equal(soma, (porOperadora.metric as { amount?: number }).amount);
   });
 
   it("recorte sem lançamentos diz o que o razão cobre, em vez de somar zero", async () => {
-    const empty = (await aggregateByMonth.execute(
-      { from: "2026-08-01", to: "2026-08-31" },
-      ctx,
-    )) as { empty?: true; message?: string; ledgerCoverage?: { count: number } };
+    const recibo = await aggregateByMonth.execute({ from: "2026-08-01", to: "2026-08-31" }, ctx);
+    const [painel] = await viewsFromReceipt(recibo, ctx);
 
-    assert.equal(empty.empty, true);
-    assert.equal(empty.ledgerCoverage?.count, 4);
-    assert.match(empty.message ?? "", /razão cobre/);
+    // Zero lançamentos não vira "R$ 0,00 gastos": vira uma contagem declarada
+    // como tal (`basis: "count"`, que impede a tela de formatar como dinheiro)
+    // e um resumo que diz de onde até onde o razão vai.
+    assert.equal(painel?.kind, "metric");
+    const metrica = painel?.metric as { text?: string; basis?: string };
+    assert.equal(metrica.text, "0");
+    assert.equal(metrica.basis, "count");
+    assert.match(painel?.summary ?? "", /razão cobre de/);
   });
 });

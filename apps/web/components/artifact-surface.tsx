@@ -8,12 +8,12 @@ import { ViewPanelInner } from "@/components/view-panel";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 /**
- * A superfície do artefato, em duas molduras a partir do MESMO conteúdo.
+ * A superfície de Detalhes, em duas molduras a partir do MESMO conteúdo.
  *
- * O artefato é consultado enquanto se decide, então precisa ficar visível ao
+ * Detalhes é consultado enquanto se decide, então precisa ficar visível ao
  * lado da conversa — no desktop, uma coluna fixa à direita. No celular não há
  * "ao lado": a tela é estreita e a coluna sumia por completo (`hidden lg:block`
- * cobria os dois painéis), deixando quem usa no telefone sem acesso ao artefato.
+ * cobria os dois painéis), deixando quem usa no telefone sem acesso a Detalhes.
  * A resposta é uma modal em tela cheia, aberta pelo link que acompanha a
  * resposta que o produziu.
  */
@@ -43,7 +43,7 @@ function ArtifactBody({
 }
 
 const titleOf = (active: ActiveArtifact) =>
-  active.kind === "batch" ? active.data.title : (active.views.at(-1)?.title ?? "Artefato");
+  active.kind === "batch" ? active.data.title : (active.views.at(-1)?.title ?? "Detalhes");
 
 /** Coluna fixa à direita — só a partir de `lg`. */
 export function ArtifactAside({
@@ -55,14 +55,19 @@ export function ArtifactAside({
 }) {
   return (
     <aside
-      className="hidden w-[480px] shrink-0 overflow-y-auto border-l bg-[var(--clara-white)] lg:block"
+      // Sem largura própria: quem a define é a faixa do grid em
+      // `.clara-chat-layout.with-details`. A classe anterior era
+      // `w-[min(42vw,560px)] shrink-0` — 42% do VIEWPORT, enquanto a coluna de
+      // conversa media 58% do CONTAINER (que já descontava o rail). Duas bases
+      // diferentes, ambas inencolhíveis, 97,44px sobrando entre 1024 e 1333px.
+      className="clara-details-panel hidden overflow-y-auto border-l border-[var(--clara-border)] lg:block"
       style={{
-        height: "calc(100svh - 3rem)",
+        height: "calc(100dvh - var(--clara-nav-height))",
         position: "sticky",
-        top: "3rem",
+        top: "var(--clara-nav-height)",
         animation: "clara-slidein 0.28s ease",
       }}
-      aria-label="Artefato"
+      aria-label="Detalhes"
     >
       <ArtifactBody active={active} onClose={onClose} />
     </aside>
@@ -89,11 +94,11 @@ export function ArtifactModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="left-0 top-0 flex h-[100svh] max-h-[100svh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-y-auto rounded-none border-0 bg-[var(--clara-white)] p-0 sm:max-w-none lg:hidden"
+        className="left-0 top-0 flex h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-y-auto rounded-none border-0 bg-[var(--clara-white)] p-0 sm:max-w-none lg:hidden"
       >
         {/* Título exigido pelo Radix para leitores de tela; o visível vem do
-            cabeçalho do próprio artefato. */}
-        <DialogTitle className="sr-only">{active ? titleOf(active) : "Artefato"}</DialogTitle>
+            cabeçalho do próprio conteúdo. */}
+        <DialogTitle className="sr-only">{active ? titleOf(active) : "Detalhes"}</DialogTitle>
         {active ? (
           <ArtifactBody active={active} onClose={() => onOpenChange(false)} />
         ) : null}
@@ -103,25 +108,38 @@ export function ArtifactModal({
 }
 
 /**
- * O link que ACOMPANHA a resposta: aparece só nas mensagens que têm um artefato
- * associado, e é o único caminho para o artefato no celular. Abre a coluna à
+ * O link que ACOMPANHA a resposta: aparece só nas mensagens que têm Detalhes
+ * associado, e é o único caminho para Detalhes no celular. Abre a coluna à
  * direita na web e a modal no telefone — a decisão de qual é do `Chat`.
  */
 export function ArtifactLink({
   onOpen,
   label = "Ver detalhes",
+  title,
+  meta,
 }: {
   onOpen: () => void;
   label?: string;
+  title?: string;
+  meta?: string;
 }) {
+  const action = label.replace(/[↗→]\s*$/u, "").trim();
+  const fallbackTitle = action.replace(/^ver\s+/i, "");
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="clara-link mt-3 inline-flex items-center gap-1.5 text-sm"
+      className="clara-details-link"
     >
-      <PanelRightOpen className="size-4" aria-hidden="true" />
-      {label}
+      <span className="clara-details-link-icon" aria-hidden="true">
+        <PanelRightOpen className="size-4" />
+      </span>
+      <span className="clara-details-link-copy">
+        <small>Detalhes</small>
+        <strong>{title ?? fallbackTitle}</strong>
+        <em>{meta ?? "Confira a origem e os números desta resposta"}</em>
+      </span>
+      <span className="clara-details-link-action">{action} ↗</span>
     </button>
   );
 }

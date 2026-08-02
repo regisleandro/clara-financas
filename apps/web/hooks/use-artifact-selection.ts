@@ -1,19 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ActiveArtifact } from "@/components/artifact-surface";
 import type { ArtifactData } from "@/components/artifact-panel";
 import {
   artifactKey,
   resolveActive,
+  shouldAutoOpen,
   type ArtifactSelection,
   type MessageArtifact,
 } from "@/lib/artifact-selection";
 import { batchHistoryArtifact, type BatchProposal } from "@/lib/artifact";
 import type { View } from "@clara-financas/views";
 import type { BatchProposalLocation } from "@clara-financas/views/hitl";
-import { findMessageViews, findPresentedViews } from "@clara-financas/views/stream";
+import {
+  findMessageViews,
+  findPresentedViews,
+} from "@clara-financas/views/stream";
 
 /**
  * Qual artefato está aberto na tela, e o que ele mostra.
@@ -133,8 +137,18 @@ export function useArtifactSelection({
     hasPresented: presented.length > 0,
     turnId,
   });
+
+  // O artefato que JÁ EXISTIA quando esta conversa foi aberta. Ref e não
+  // estado: é uma marca do instante da montagem, não algo que a tela desenha.
+  // O componente é remontado ao trocar de conversa (`key` no pai), então a
+  // marca acompanha a conversa corrente. Ver `shouldAutoOpen`.
+  const mountKeyRef = useRef<string | null | undefined>(undefined);
+  if (mountKeyRef.current === undefined) mountKeyRef.current = openKey;
+
   useEffect(() => {
-    if (openKey !== null && autoOpen) setSelection({ type: "latest" });
+    if (shouldAutoOpen({ openKey, mountKey: mountKeyRef.current, autoOpen })) {
+      setSelection({ type: "latest" });
+    }
   }, [openKey, autoOpen]);
 
   const openArtifact = (messageId: string) => {

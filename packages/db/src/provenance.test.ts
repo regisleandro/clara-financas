@@ -122,4 +122,24 @@ describe("proveniência de um número", () => {
   it("lista vazia não consulta nada", async () => {
     assert.deepEqual(await loadTransactionsByIds(TENANT_A, [], db), []);
   });
+
+  it("o teto é de PÁGINA: o offset alcança o que passa do limite", async () => {
+    /*
+     * O teto era aplicado como limite do PEDIDO, e a rota recusava com 400
+     * qualquer linha com mais de 100 lançamentos — a tela dizia "não consegui
+     * abrir os lançamentos agora". A conferência falhava exatamente onde o
+     * número era maior, que é onde alguém mais quer conferir.
+     */
+    const todos = ids[TENANT_A]!;
+    const primeira = await loadTransactionsByIds(TENANT_A, todos, db, 0);
+    const segunda = await loadTransactionsByIds(TENANT_A, todos, db, 2);
+
+    assert.equal(primeira.length, 3);
+    assert.equal(segunda.length, 1, "o offset pula o que já foi mostrado");
+    assert.equal(segunda[0]?.id, primeira[2]?.id);
+  });
+
+  it("offset além do fim devolve vazio, não erro", async () => {
+    assert.deepEqual(await loadTransactionsByIds(TENANT_A, ids[TENANT_A]!, db, 99), []);
+  });
 });

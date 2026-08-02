@@ -20,12 +20,12 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
  * chamadas de tool e anexos eram simplesmente descartados no render, e os
  * componentes `tool.tsx`/`reasoning.tsx` existiam no repo sem nenhum uso.
  * Aqui só o que pertence à pessoa vira conteúdo: texto final, anexos e o link
- * do artefato. Raciocínio, nomes de tools, inputs e outputs são detalhes de
+ * de Detalhes. Raciocínio, nomes de tools, inputs e outputs são detalhes de
  * execução; o `ExecutionTrace` os traduz para etapas humanas sem expor JSON.
  *
  * Duas exclusões deliberadas:
  * - `present_view` não vira cartão de tool: o input dela É o painel, que já
- *   aparece na coluna de artefato. Um cartão aqui seria o mesmo conteúdo
+ *   aparece na coluna de Detalhes. Um cartão aqui seria o mesmo conteúdo
  *   duas vezes.
  * - Partes em `approval-requested` não viram cartão: o gate pendente é
  *   renderizado pelo `DecisionCard`/`GenericPrompt`, que carregam os botões.
@@ -156,11 +156,12 @@ export function ChatMessage({
   if (rendered.length === 0 && !hasArtifact) return null;
 
   return (
-    <Message from={message.role}>
+    <Message from={message.role} className={message.role !== "user" ? "clara-message-row" : undefined}>
+      {message.role !== "user" ? <span className="clara-message-mark" aria-hidden="true">c.</span> : null}
       <MessageContent>
         {rendered}
-        {/* O link ACOMPANHA o artefato: só as respostas que têm um aparecem
-            com "Ver artefato" — e uma resposta que só desenhou um painel, sem
+        {/* O link ACOMPANHA Detalhes: só as respostas que têm um aparecem
+            com "Ver detalhes" — e uma resposta que só desenhou um painel, sem
             texto, ainda precisa do link para alcançá-lo. */}
         {hasArtifact ? <ArtifactLink onOpen={onOpenArtifact} label={artifactLabel} /> : null}
       </MessageContent>

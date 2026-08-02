@@ -26,10 +26,19 @@ export type ConversationContentProps = ComponentProps<
 
 export const ConversationContent = ({
   className,
+  scrollClassName,
   ...props
 }: ConversationContentProps) => (
   <StickToBottom.Content
     className={cn("flex flex-col gap-8 p-4", className)}
+    // O elemento que ROLA de verdade é criado pela biblioteca, não por nós, e
+    // `scrollClassName` é a única forma de alcançá-lo. Sem a calha reservada,
+    // a barra de rolagem come 15px da largura útil só quando ela aparece — e
+    // como o conteúdo é centralizado, o texto desliza 7,5px para a esquerda
+    // enquanto o composer, que está fora do scroller, fica onde estava. Uma
+    // conversa que se desalinha do campo de escrever conforme cresce.
+    // `both-edges` reserva dos dois lados e mantém o centro no lugar.
+    scrollClassName={cn("[scrollbar-gutter:stable_both-edges]", scrollClassName)}
     {...props}
   />
 );

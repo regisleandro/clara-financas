@@ -25,7 +25,11 @@ export type TenantCaller = { tenantId: string; userId: string };
  * que uma hora diverge.
  */
 export type AuthenticatedContext = {
-  session: { id?: string; auth: SessionContext["session"]["auth"] };
+  session: {
+    id?: string;
+    auth: SessionContext["session"]["auth"];
+    parent?: { sessionId?: string };
+  };
 };
 
 /**
@@ -38,7 +42,11 @@ export type AuthenticatedContext = {
  * `Record<string, unknown>` e os próprios exemplos da doc do eve passam arrays.
  */
 export function requireTenantCaller(ctx: AuthenticatedContext): TenantCaller {
-  const caller = ctx.session.auth.current;
+  // Declared subagents can inherit the authenticated user as the session
+  // initiator while `auth.current` is reserved for the currently executing
+  // identity. Treat both as the same caller for tenant-scoped operations,
+  // preserving the fail-closed checks below when neither is a user.
+  const caller = ctx.session.auth.current ?? ctx.session.auth.initiator;
   const tenantId = caller?.attributes?.tenantId;
 
   if (caller?.principalType !== "user" || typeof tenantId !== "string") {

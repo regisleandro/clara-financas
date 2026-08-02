@@ -142,3 +142,71 @@ describe("foco determinístico de fatura por sessão", () => {
     assert.match(exhausted.error.message, /depois da atual/);
   });
 });
+
+describe("a última FATURA é uma fatura", () => {
+  let tenantId: string;
+  let ctx: never;
+  let faturaId: string;
+
+  before(async () => {
+    tenantId = await freshTenant();
+    ctx = ctxFor(tenantId);
+
+    const criar = async (
+      kind: "credit_card_invoice" | "bank_statement",
+      periodEnd: string,
+    ): Promise<string> => {
+      const documentId = await seedDocument(tenantId, {
+        filename: `${kind}-${periodEnd}.pdf`,
+        issuer: "Nubank",
+        kind,
+      });
+      const result = (await proposeBatch.execute(
+        {
+          documentId,
+          issuer: "Nubank",
+          periodStart: `${periodEnd.slice(0, 8)}01`,
+          periodEnd,
+          dueDate: null,
+          declaredTotal: 100,
+          transactions: [
+            {
+              date: periodEnd,
+              originalDescription: "Lançamento",
+              merchant: "Teste",
+              amount: 100,
+              kind: "purchase" as const,
+              category: null,
+              extractionConfidence: "alta" as const,
+              page: 1,
+            },
+          ],
+        },
+        ctx,
+      )) as { batchId: string };
+      return result.batchId;
+    };
+
+    faturaId = await criar("credit_card_invoice", "2026-03-31");
+    // Extrato enviado DEPOIS: é o documento mais recente do razão, e não é
+    // uma fatura.
+    await criar("bank_statement", "2026-04-30");
+  });
+
+  after(async () => {
+    await dropTenant(tenantId);
+    await closeConnections();
+  });
+
+  it("um extrato mais recente não responde por 'a última fatura'", async () => {
+    // O tipo já viajava no resultado (`documentKind`) e simplesmente não era
+    // consultado: `latest` pegava o primeiro da lista, qualquer que fosse.
+    const resolvido = (await resolveInvoiceReference.execute({ reference: "latest" }, ctx)) as {
+      batchId: string;
+      documentKind: string;
+    };
+
+    assert.equal(resolvido.documentKind, "credit_card_invoice");
+    assert.equal(resolvido.batchId, faturaId);
+  });
+});

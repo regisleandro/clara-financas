@@ -1,12 +1,22 @@
-import { loadTransactionsByIds, PROVENANCE_LIMIT } from "@clara-financas/db/queries/transactions";
+import { loadTransactionsByIds } from "@clara-financas/db/queries/transactions";
 import { z } from "zod";
 
 import { getTenantContext } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * O teto é de PÁGINA, não do pedido.
+ *
+ * `ids.max(PROVENANCE_LIMIT)` transformava "esta linha tem 120 lançamentos" em
+ * 400, e a tela dizia "não consegui abrir os lançamentos agora". A conferência
+ * falhava justamente onde o número era maior — que é onde alguém mais quer
+ * conferir. O limite de 2000 continua existindo como proteção contra pedido
+ * absurdo, não como recusa de caso legítimo.
+ */
 const BodySchema = z.object({
-  ids: z.array(z.string().min(1)).min(1).max(PROVENANCE_LIMIT),
+  ids: z.array(z.string().min(1)).min(1).max(2000),
+  offset: z.number().int().nonnegative().default(0),
 });
 
 /**
@@ -35,13 +45,18 @@ export async function POST(request: Request) {
     return Response.json({ error: "invalid_transaction_request" }, { status: 400 });
   }
 
-  const entries = await loadTransactionsByIds(context.tenantId, parsed.data.ids);
+  const { ids, offset } = parsed.data;
+  const unique = [...new Set(ids)].length;
+  const entries = await loadTransactionsByIds(context.tenantId, ids, undefined, offset);
 
   return Response.json({
     entries,
     // Pedir 12 ids e receber 9 não é detalhe: significa que algo saiu do razão
     // (lote descartado, por exemplo), e a tela precisa poder dizer isso em vez
     // de mostrar uma lista mais curta como se fosse a conta inteira.
-    requested: parsed.data.ids.length,
+    requested: ids.length,
+    offset,
+    /** Quantos ids ainda faltam depois desta página. */
+    remaining: Math.max(0, unique - offset - entries.length),
   });
 }

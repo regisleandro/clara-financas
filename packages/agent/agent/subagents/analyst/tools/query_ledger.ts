@@ -1,12 +1,25 @@
-import { CONFIDENCE, ENTRY_KINDS, formatCents, totalSpend } from "@clara-financas/ledger";
+import {
+  CONFIDENCE,
+  ENTRY_KINDS,
+  entryKindLabel,
+  hasNoSpend,
+  nonSpendLabel,
+  totalSpend,
+} from "@clara-financas/ledger";
+import { AnalysisScopeSchema } from "@clara-financas/views/agent-contracts";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
+import {
+  canonicalAnalysisScope,
+  scopeFilter,
+  scopeLabel,
+} from "../../../lib/analysis-scope";
 import { loadCategoryLabels } from "../../../lib/categories";
-import { monthRange } from "../../../lib/dates";
 import { requireTenantCaller } from "../../../lib/tenant";
 import { optionalText } from "../../../lib/schema";
 import { brief, ledgerCoverage, loadLedger } from "../../../lib/ledger-query";
+import { saveAnalysis } from "../lib/save-analysis";
 
 /**
  * Consulta de transações específicas.
@@ -20,21 +33,11 @@ export default defineTool({
   description:
     "Lists ledger transactions by period, text, or ids. Use to show where a number came from, or to answer questions about specific entries.",
   inputSchema: z.object({
+    scope: AnalysisScopeSchema.optional().describe("Defaults to the whole confirmed ledger."),
     transactionIds: z
       .array(z.string())
       .optional()
       .describe("Ids returned by another analysis. Use to drill into a number."),
-    from: optionalText().describe("Start date, YYYY-MM-DD."),
-    to: optionalText().describe("End date, YYYY-MM-DD, inclusive."),
-    month: optionalText().describe(
-      "Calendar month, YYYY-MM. Shorthand for from/to covering the whole month. Remember an invoice CYCLE is not a calendar month — for 'nesta fatura' questions prefer batchId.",
-    ),
-    issuer: optionalText().describe(
-      "Card issuer/operator name as the person says it (e.g. 'Nubank'). Accent- and case-insensitive; matches the issuer of the document each transaction came from. Use for 'quanto gastei no <cartão>'.",
-    ),
-    batchId: optionalText().describe(
-      "Restrict to ONE invoice, by the batchId shown in the ledger state. Prefer this over guessing dates whenever the question is about a specific invoice or 'nesta fatura'. An invoice still awaiting approval is included and every row says which `status` it is in.",
-    ),
     search: optionalText().describe(
       "Words to look for in the raw description or the merchant. Accent- and case-insensitive, and ANY word matching brings the row — use it for 'descrição parecida com X'.",
     ),
@@ -60,23 +63,19 @@ export default defineTool({
   }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);
+    const scope = canonicalAnalysisScope(input.scope ?? ({ kind: "all" } as const));
 
     // Todo o recorte vai ao BANCO. Antes, só a data ia; o resto era filtrado em
     // memória depois de carregar o razão inteiro — e a busca por texto, sendo
     // `includes()`, exigia acerto exato de caixa e acentuação.
     // `month` é açúcar sobre from/to; datas explícitas ganham quando as duas
     // formas vierem juntas, porque são o recorte mais específico.
-    const monthDates = input.month !== undefined ? monthRange(input.month) : undefined;
-
     const rows = await loadLedger(tenantId, {
-      from: input.from ?? monthDates?.from,
-      to: input.to ?? monthDates?.to,
-      issuer: input.issuer,
-      batchId: input.batchId,
-      // Perguntar sobre UMA fatura inclui a que ainda espera decisão: é
-      // justamente a que está em conferência. Fora desse recorte, rascunho
-      // continua fora, para não virar fato numa soma.
-      includeProposed: input.batchId !== undefined,
+      // A decisão sobre rascunho mora em `scopeFilter`, não aqui. Ela vivia
+      // nesta tool e só nela, e o efeito era esta ferramenta listar a fatura em
+      // conferência enquanto as de agregação respondiam, sobre o MESMO
+      // documento e no mesmo turno, que o recorte não possui lançamentos.
+      ...scopeFilter(scope),
       ids: input.transactionIds,
       search: input.search,
       kinds: input.kinds,
@@ -87,16 +86,27 @@ export default defineTool({
     });
 
     if (rows.length === 0) {
-      return {
-        matched: 0,
-        empty: true as const,
-        // O vazio é ambíguo: razão sem dados, ou recorte que errou o alvo? A
-        // cobertura deixa o modelo distinguir em vez de concluir "não há nada
-        // registrado" e mandar reenviar um documento que já está lá.
-        ledgerCoverage: await ledgerCoverage(tenantId),
-        message:
-          "No transactions matched this slice. Check the dates or batchId against the ledger coverage before concluding nothing is recorded.",
-      };
+      const coverage = await ledgerCoverage(tenantId);
+      return saveAnalysis(
+        {
+          kind: "metric",
+          title: "Lançamentos",
+          summary: `Nenhum lançamento corresponde a ${scopeLabel(scope)} e aos filtros informados.`,
+          metric: {
+            label: "Resultado",
+            text: "Sem lançamentos",
+            detail:
+              coverage.count === 0
+                ? "O razão ainda não possui lançamentos confirmados."
+                : `A cobertura disponível vai de ${coverage.firstDate} a ${coverage.lastDate}.`,
+            transactionIds: [],
+          },
+          rows: [],
+        },
+        scope,
+        ctx,
+        [],
+      );
     }
 
     // `totalSpend` soma só GASTO (`countsTowardDeclaredTotal`): pagamento de
@@ -104,9 +114,6 @@ export default defineTool({
     // `total: R$ 0,00` com 3 linhas de pagamento na lista — e o modelo
     // repassava o zero como fato.
     const spend = totalSpend(rows);
-    const paymentsCents = rows
-      .filter((row) => row.kind === "payment")
-      .reduce((sum, row) => sum + row.amount, 0);
     const truncated = rows.length > LIMIT;
     const labels = await loadCategoryLabels(tenantId);
     // Rascunho no resultado tem de ser dito, não deduzido: apresentar como
@@ -114,31 +121,53 @@ export default defineTool({
     // `proposed` tentava evitar. Aqui ele entra — mas anunciado.
     const draftCount = rows.filter((row) => row.status === "proposed").length;
 
-    return {
-      matched: rows.length,
-      truncated,
-      ...(draftCount > 0
-        ? {
-            draftCount,
-            draftNote: `${draftCount} ${draftCount === 1 ? "lançamento pertence" : "lançamentos pertencem"} a uma fatura ainda em conferência, não ao razão confirmado. Diga isso na resposta.`,
-          }
-        : {}),
-      // Dizer que truncou importa: sem isso o modelo apresentaria um recorte
-      // parcial como se fosse o conjunto inteiro.
-      note: truncated ? `Mostrando as ${LIMIT} primeiras de ${rows.length}.` : undefined,
-      totals: {
-        spendCents: spend.value,
-        spendFormatted: formatCents(spend.value),
-        ...(paymentsCents !== 0
-          ? {
-              paymentsCents,
-              paymentsFormatted: formatCents(paymentsCents),
-              sumNote:
-                "spendCents considera apenas gastos; pagamentos de fatura estão em paymentsCents, fora da soma de gasto. Sinal segue o razão: crédito/pagamento é negativo.",
-            }
-          : {}),
+    /*
+     * "Gastos do recorte — R$ 0,00" com linhas de valor não-zero logo abaixo.
+     *
+     * O caso especial anterior perguntava se TUDO era `payment`, mas
+     * `countsTowardDeclaredTotal` exclui quatro naturezas — `payment`,
+     * `card_payment`, `transfer` e `income`. Uma consulta que trouxesse só
+     * `card_payment` (natureza que o próprio extrator emite) escapava do caso
+     * especial e caía exatamente no buraco que ele dizia ter fechado: o
+     * destaque zerado, a lista cheia, e o modelo repassando o zero como fato.
+     *
+     * Agora a pergunta é a certa — "nada aqui conta como gasto?" — e o rótulo
+     * é derivado do que está no recorte, sem lista de exceções para manter.
+     */
+    const semGasto = hasNoSpend(rows);
+    const metricIds = semGasto ? rows.map((row) => row.id) : spend.transactionIds;
+    const metricAmount = semGasto
+      ? rows.reduce((total, row) => total + row.amount, 0)
+      : spend.value;
+    const summarized = rows.slice(0, LIMIT).map((row) => brief(row, labels));
+    return saveAnalysis(
+      {
+        kind: "transactions",
+        title: "Lançamentos",
+        summary: `${rows.length} ${rows.length === 1 ? "lançamento encontrado" : "lançamentos encontrados"} em ${scopeLabel(scope)}.${truncated ? ` Exibindo os primeiros ${LIMIT}.` : ""}${draftCount > 0 ? ` ${draftCount} ainda em conferência.` : ""}`,
+        metric: {
+          label: semGasto ? nonSpendLabel(rows) : "Gastos do recorte",
+          amount: metricAmount,
+          detail: semGasto
+            ? `${scopeLabel(scope)} · nada aqui conta como gasto`
+            : scopeLabel(scope),
+          transactionIds: metricIds,
+        },
+        rows: summarized.map((row) => ({
+          label: row.merchant ?? row.description,
+          amount: row.amountCents,
+          // `entryKindLabel` e não `row.kind`: a natureza vinha crua para a
+          // tela, e a pessoa lia "card_payment" no detalhe do lançamento.
+          detail: `${row.date} · ${entryKindLabel(row.kind)} · ${row.categoryLabel} · confiança ${row.confidence}${row.status === "proposed" ? " · em conferência" : ""}`,
+          transactionIds: [row.id],
+        })),
       },
-      transactions: rows.slice(0, LIMIT).map((row) => brief(row, labels)),
-    };
+      scope,
+      ctx,
+      // Todas as linhas lidas, inclusive as que não são gasto: a lista mostra
+      // pagamentos e o destaque não os conta, então a testemunha precisa
+      // cobrir as duas coisas.
+      rows,
+    );
   },
 });

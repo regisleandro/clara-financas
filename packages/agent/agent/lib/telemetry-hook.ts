@@ -37,6 +37,19 @@ const asRecord = (value: unknown): UnknownRecord | undefined =>
 const asString = (value: unknown): string | undefined =>
   typeof value === "string" && value.length > 0 ? value : undefined;
 
+const BEHAVIOR_CRITICAL_TOOLS = new Set([
+  "aggregate_by_category",
+  "compare_periods",
+  "detect_recurrences",
+  "query_ledger",
+  "save_categorization",
+  "save_extraction",
+  "present_analysis",
+  "analyze_series",
+  "present_categorization",
+  "recategorize_transactions",
+]);
+
 /**
  * O resumo do input — e o que ele DELIBERADAMENTE não carrega.
  *
@@ -136,6 +149,15 @@ function prunePending(now: number): void {
   }
 }
 
+/**
+ * Recibo entregue e ainda não apresentado, por sessão.
+ *
+ * Mesmo teto e prazo do `pendingInputs` logo acima, e pela mesma razão: um
+ * `Map` de módulo sem limite vaza em turno cancelado. Aqui o dado é minúsculo
+ * (uma string por sessão) e some no fim do turno em qualquer caminho.
+ */
+const pendingReceipts = new Map<string, { nextAction: string; at: number }>();
+
 export function telemetryHook() {
   return defineHook({
     events: {
@@ -175,6 +197,30 @@ export function telemetryHook() {
         const structured = asRecord(error);
         const crashed = asString(data?.status) === "failed";
 
+        /*
+         * O recibo que ficou sem apresentação.
+         *
+         * `nextAction` sempre foi "control flow obrigatório" escrito em prosa, e
+         * a única verificação existente era uma regex conferindo que a FRASE
+         * estava no prompt. Quando o modelo recebia o recibo e encerrava o turno
+         * sem chamar `present_*`, o painel não aparecia, a resposta em texto
+         * dizia "veja ao lado", e o log não tinha nada: nenhuma tool falhou.
+         *
+         * Impor de verdade não é possível neste framework — hooks são
+         * observe-only e `defineDynamic` não assina `action.result`, então não
+         * há como exigir uma chamada específica. O que dá para fazer, e é o que
+         * faltava, é parar de ser invisível: a omissão vira evento com nome.
+         */
+        const sessionId = asString(ctx.session.id);
+        if (sessionId !== undefined && error === undefined) {
+          const nextAction = asString(output?.nextAction);
+          if (nextAction !== undefined) {
+            pendingReceipts.set(sessionId, { nextAction, at: Date.now() });
+          } else if (toolName.startsWith("present_")) {
+            pendingReceipts.delete(sessionId);
+          }
+        }
+
         // Três estados, e a distinção é o ponto: um pedido recusado APONTANDO a
         // saída (categoria que não existe, lote já decidido) é o sistema
         // funcionando. Contá-lo como falha faria o alerta disparar no
@@ -186,7 +232,13 @@ export function telemetryHook() {
               ? "recuperavel"
               : "ok";
 
-        if (status === "ok" && process.env.CLARA_TELEMETRY_ALL !== "1") return;
+        if (
+          status === "ok" &&
+          process.env.CLARA_TELEMETRY_ALL !== "1" &&
+          !BEHAVIOR_CRITICAL_TOOLS.has(toolName)
+        ) {
+          return;
+        }
 
         // O agente que executou entra no resumo: as tools de subagente rodam
         // na sessão filha, com o hook do próprio subagente, e sem isto os
@@ -207,6 +259,28 @@ export function telemetryHook() {
           errorMessage: asString(structured?.message) ?? asString(error),
           durationMs: pending === undefined ? undefined : Date.now() - pending.requestedAt,
           inputSummary,
+        });
+      },
+
+      "turn.completed": async (_event, ctx) => {
+        const tenantId = tenantIdOf(ctx.session.auth.current);
+        const sessionId = asString(ctx.session.id);
+        if (tenantId === undefined || sessionId === undefined) return;
+
+        const pending = pendingReceipts.get(sessionId);
+        if (pending === undefined) return;
+        pendingReceipts.delete(sessionId);
+
+        // O turno terminou com um recibo na mão e sem a apresentação que ele
+        // pedia. Recuperável, não falha: a resposta existe, o painel é que não
+        // chegou — e agora dá para contar quantas vezes isso acontece.
+        await record({
+          tenantId,
+          sessionId,
+          toolName: "turn",
+          status: "recuperavel",
+          errorCode: "recibo_nao_apresentado",
+          errorMessage: `O turno terminou sem chamar ${pending.nextAction}; o painel não chegou à tela.`,
         });
       },
 

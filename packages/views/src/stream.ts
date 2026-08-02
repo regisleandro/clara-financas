@@ -21,6 +21,10 @@ const asString = (value: unknown): string | undefined =>
   typeof value === "string" && value.length > 0 ? value : undefined;
 
 export const PRESENT_VIEW_TOOL = "present_view";
+export const PRESENT_ANALYSIS_TOOL = "present_analysis";
+export const PRESENT_CATEGORIZATION_TOOL = "present_categorization";
+
+const OUTPUT_VIEW_TOOLS = new Set([PRESENT_ANALYSIS_TOOL, PRESENT_CATEGORIZATION_TOOL]);
 
 /**
  * Chamado quando um payload COMPLETO de `present_view` falha no schema.
@@ -66,7 +70,7 @@ export function findPresentedViews(
   onInvalid?: OnInvalidView,
 ): View[] {
   let views: View[] = [];
-  let requested = new Map<string, unknown>();
+  let requested = new Map<string, { toolName: string; input: unknown }>();
 
   for (const raw of events) {
     const event = asRecord(raw);
@@ -86,8 +90,13 @@ export function findPresentedViews(
       for (const rawAction of actions) {
         const action = asRecord(rawAction);
         const callId = asString(action?.callId);
-        if (asString(action?.toolName) === PRESENT_VIEW_TOOL && callId !== undefined) {
-          requested.set(callId, action?.input);
+        const toolName = asString(action?.toolName);
+        if (
+          callId !== undefined &&
+          toolName !== undefined &&
+          (toolName === PRESENT_VIEW_TOOL || OUTPUT_VIEW_TOOLS.has(toolName))
+        ) {
+          requested.set(callId, { toolName, input: action?.input });
         }
       }
       continue;
@@ -103,14 +112,38 @@ export function findPresentedViews(
         requested.delete(callId);
         continue;
       }
-      const parsed = parseViewResult(requested.get(callId));
-      if (parsed.ok) views.push(parsed.view);
-      else onInvalid?.(parsed.issues, callId);
+      const pending = requested.get(callId)!;
+      for (const candidate of viewCandidates(pending, output)) {
+        const parsed = parseViewResult(candidate);
+        if (parsed.ok) views.push(parsed.view);
+        else onInvalid?.(parsed.issues, callId);
+      }
       requested.delete(callId);
     }
   }
 
   return views;
+}
+
+/**
+ * Os painéis que UMA chamada produziu.
+ *
+ * `present_view` traz o painel no INPUT (é a coordenadora que o desenha);
+ * `present_analysis` e `present_categorization` trazem no OUTPUT, porque o
+ * painel veio de um artefato validado que o modelo nunca tocou.
+ *
+ * A lista existe porque uma resposta pode ter mais de um painel. `view`
+ * singular continua sendo lido: artefato de sessão já persistida foi gravado
+ * assim, e uma conversa retomada não pode perder o painel por causa da forma.
+ */
+function viewCandidates(
+  pending: { toolName: string; input: unknown },
+  output: Record<string, unknown> | undefined,
+): unknown[] {
+  if (pending.toolName === PRESENT_VIEW_TOOL) return [pending.input];
+  const plural = output?.views;
+  if (Array.isArray(plural)) return plural;
+  return output?.view === undefined ? [] : [output.view];
 }
 
 /**
@@ -136,7 +169,12 @@ export function findMessageViews(message: unknown, onInvalid?: OnInvalidView): V
   const views: View[] = [];
   for (const raw of parts) {
     const part = asRecord(raw);
-    if (part?.type !== "dynamic-tool" || asString(part.toolName) !== PRESENT_VIEW_TOOL) {
+    const toolName = asString(part?.toolName);
+    if (
+      part?.type !== "dynamic-tool" ||
+      toolName === undefined ||
+      (toolName !== PRESENT_VIEW_TOOL && !OUTPUT_VIEW_TOOLS.has(toolName))
+    ) {
       continue;
     }
     const output = asRecord(part.output);
@@ -145,10 +183,15 @@ export function findMessageViews(message: unknown, onInvalid?: OnInvalidView): V
     }
     // Parte materializada já tem o input completo — aqui falha de schema é
     // definitiva, nunca efeito de streaming pela metade.
-    const parsed = parseViewResult(part.input);
-    if (parsed.ok) views.push(parsed.view);
-    else onInvalid?.(parsed.issues, asString(part.toolCallId));
+    for (const candidate of viewCandidates({ toolName, input: part.input }, output)) {
+      const parsed = parseViewResult(candidate);
+      if (parsed.ok) views.push(parsed.view);
+      else onInvalid?.(parsed.issues, asString(part.toolCallId));
+    }
   }
 
   return views;
 }
+
+
+

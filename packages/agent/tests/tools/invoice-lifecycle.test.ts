@@ -15,9 +15,15 @@ import proposeBatch from "../../agent/tools/propose_batch";
 import readBatch from "../../agent/tools/read_batch";
 import recategorize from "../../agent/tools/recategorize_transactions";
 import rejectBatch from "../../agent/tools/reject_batch";
-import setCategory from "../../agent/tools/set_transaction_category";
 import queryLedger from "../../agent/subagents/analyst/tools/query_ledger";
-import { closeConnections, ctxFor, dropTenant, freshTenant, seedDocument } from "../helpers/harness";
+import {
+  closeConnections,
+  ctxFor,
+  dropTenant,
+  freshTenant,
+  seedDocument,
+  viewFromReceipt,
+} from "../helpers/harness";
 
 /**
  * O ciclo de vida de uma fatura, ponta a ponta, contra o banco real.
@@ -216,37 +222,50 @@ describe("ciclo de vida de uma fatura", () => {
   it("o analista enxerga a fatura em rascunho quando a pergunta é sobre ela", async () => {
     // A causa raiz do sintoma de produção: `loadLedger` excluía `proposed`,
     // então perguntar sobre a fatura em conferência devolvia vazio.
-    const scoped = (await queryLedger.execute({ batchId }, ctx)) as {
-      matched: number;
-      draftCount?: number;
-      transactions: Array<{ kind: string; status: string; confidence: string }>;
-    };
+    const scoped = (await viewFromReceipt(
+      await queryLedger.execute({ scope: { kind: "invoice", batchId } }, ctx),
+      ctx,
+    )) as { summary: string; rows: Array<{ detail: string }> };
 
-    assert.equal(scoped.matched, 4);
-    assert.equal(scoped.draftCount, 4);
-    assert.ok(scoped.transactions.every((row) => row.status === "proposed"));
+    assert.equal(scoped.rows.length, 4);
+    assert.match(scoped.summary, /4 ainda em conferência/);
+    assert.ok(scoped.rows.every((row) => row.detail.includes("em conferência")));
     // Campos que antes eram amputados na fronteira e nunca chegavam ao modelo.
-    assert.ok(scoped.transactions.some((row) => row.kind === "payment"));
-    assert.ok(scoped.transactions.some((row) => row.confidence === "baixa"));
+    // A natureza chega como RÓTULO: este teste exigia a string "payment", ou
+    // seja, travava como contrato o identificador interno indo para a tela.
+    // O que importa é que a informação chegue, não em que idioma o banco a
+    // guarda.
+    assert.ok(scoped.rows.some((row) => row.detail.includes("Pagamento de fatura")));
+    assert.ok(scoped.rows.every((row) => !/\b(payment|purchase|refund)\b/.test(row.detail)));
+    assert.ok(scoped.rows.some((row) => row.detail.includes("confiança baixa")));
 
     // Fora do recorte de uma fatura, rascunho continua fora do razão.
-    const global = (await queryLedger.execute({}, ctx)) as { matched?: number; empty?: boolean };
-    assert.equal(global.empty, true);
+    const global = (await viewFromReceipt(await queryLedger.execute({}, ctx), ctx)) as {
+      metric: { text?: string };
+    };
+    assert.equal(global.metric.text, "Sem lançamentos");
   });
 
   it("busca por texto encontra o pagamento sem acerto exato de caixa", async () => {
-    const found = (await queryLedger.execute({ batchId, search: "pagamento" }, ctx)) as {
-      matched: number;
-      transactions: Array<{ id: string }>;
-    };
-    assert.equal(found.matched, 1);
-    assert.equal(found.transactions[0]?.id, paymentId);
+    const found = (await viewFromReceipt(
+      await queryLedger.execute(
+        { scope: { kind: "invoice", batchId }, search: "pagamento" },
+        ctx,
+      ),
+      ctx,
+    )) as { rows: Array<{ transactionIds: string[] }> };
+    assert.equal(found.rows.length, 1);
+    assert.equal(found.rows[0]?.transactionIds[0], paymentId);
 
     // E o filtro por natureza responde "o que é pagamento nesta fatura".
-    const payments = (await queryLedger.execute({ batchId, kinds: ["payment"] }, ctx)) as {
-      matched: number;
-    };
-    assert.equal(payments.matched, 1);
+    const payments = (await viewFromReceipt(
+      await queryLedger.execute(
+        { scope: { kind: "invoice", batchId }, kinds: ["payment"] },
+        ctx,
+      ),
+      ctx,
+    )) as { rows: unknown[] };
+    assert.equal(payments.rows.length, 1);
   });
 
   it("commit_batch registra o razão", async () => {
@@ -306,17 +325,24 @@ describe("ciclo de vida de uma fatura", () => {
     assert.equal(rows.find((row) => row.id === groceries.id)?.amount, 12_500);
   });
 
-  it("categoriza um lançamento sem cartão, com trilha e desfazer", async () => {
+  it("categoriza um lançamento pelo mesmo gate usado em lote", async () => {
     const target = (await rowsOf(batchId)).find((row) => row.merchant === "Anthropic");
     assert.ok(target);
 
-    const applied = (await setCategory.execute(
-      { transactionId: target.id, category: "subscriptions" },
+    const applied = (await recategorize.execute(
+      {
+        changes: [
+          {
+            transactionId: target.id,
+            category: "subscriptions",
+            categoryLabel: "Assinaturas",
+          },
+        ],
+      },
       ctx,
-    )) as { changed: boolean; undo: { category: string | null } };
+    )) as { changed: number };
 
-    assert.equal(applied.changed, true);
-    assert.equal(applied.undo.category, null);
+    assert.equal(applied.changed, 1);
 
     const after = (await rowsOf(batchId)).find((row) => row.id === target.id);
     assert.equal(after?.category, "subscriptions");
@@ -353,12 +379,15 @@ describe("ciclo de vida de uma fatura", () => {
     };
     assert.equal(reviewed.reviewed, ids.length);
 
-    const pending = (await queryLedger.execute({ batchId, reviewed: false }, ctx)) as {
-      matched?: number;
-      empty?: boolean;
-    };
+    const pending = (await viewFromReceipt(
+      await queryLedger.execute(
+        { scope: { kind: "invoice", batchId }, reviewed: false },
+        ctx,
+      ),
+      ctx,
+    )) as { metric: { text?: string } };
     // Só o ajuste (já nasce revisado) e nada mais: a fila esvaziou.
-    assert.equal(pending.empty, true);
+    assert.equal(pending.metric.text, "Sem lançamentos");
 
     const reopened = (await markReviewed.execute(
       { transactionIds: [ids[0]!], reopen: true },

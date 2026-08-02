@@ -16,8 +16,8 @@
     "db:migrate": "tsx src/migrate.ts",
     "db:baseline": "tsx src/baseline.ts",
     "check-types": "tsc --noEmit",
-    "test": "SKIP_ENV_VALIDATION=1 node --import tsx --env-file=../../apps/web/.env --test src/*.test.ts",
-    "test:isolation": "SKIP_ENV_VALIDATION=1 node --import tsx --env-file=../../apps/web/.env --test src/isolation.test.ts"
+    "test": "SKIP_ENV_VALIDATION=1 node --import tsx --env-file-if-exists=../../apps/web/.env --test src/*.test.ts",
+    "test:isolation": "SKIP_ENV_VALIDATION=1 node --import tsx --env-file-if-exists=../../apps/web/.env --test src/isolation.test.ts"
   },
   "dependencies": {
     "@clara-financas/env": "workspace:*",

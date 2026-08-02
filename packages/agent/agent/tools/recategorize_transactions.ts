@@ -4,10 +4,12 @@ import { getDb } from "@clara-financas/db";
 import { transactions } from "@clara-financas/db/schema/ledger";
 import { transactionReclassifications } from "@clara-financas/db/schema/reclassification";
 import { forTenant } from "@clara-financas/db/tenant-scope";
+import { CategorizationArtifactSchema } from "@clara-financas/views/agent-contracts";
 import { and, eq, inArray } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
+import { readArtifact } from "../lib/artifacts";
 import { loadValidCategories, unknownCategory } from "../lib/category-scope";
 import { toolError } from "../lib/errors";
 import { optionalText } from "../lib/schema";
@@ -25,27 +27,28 @@ import { requireTenantCaller, tenantIdOf } from "../lib/tenant";
  */
 export default defineTool({
   description:
-    "Requests approval to change categories of recorded transactions. Call with the exact affected ids and destination category when the proposal is ready; the approval card is where the person decides.",
-  inputSchema: z.object({
-    changes: z
-      .array(
-        z.object({
-          transactionId: z.string().min(1),
-          category: z
-            .string()
-            .min(1)
-            .describe("Category identifier from the constitution, e.g. 'groceries'."),
-          categoryLabel: z
-            .string()
-            .min(1)
-            .describe("Human-readable category label in Brazilian Portuguese, for the approval card."),
-        }),
-      )
-      .min(1)
-      .max(500),
-    reason: optionalText().describe("Why the reclassification is being made. Write it in Brazilian Portuguese."),
-    byConceptId: optionalText().describe("The concept that motivated this, when it came from a learned rule."),
-  }),
+    "Requests approval to change categories. Prefer artifactId + proposalIds from the bookkeeper; for one explicit correction pass one direct change. Every category write, including one entry, opens the approval card.",
+  inputSchema: z.union([
+    z.object({
+      changes: z
+        .array(
+          z.object({
+            transactionId: z.string().min(1),
+            category: z.string().min(1),
+            categoryLabel: z.string().min(1),
+          }),
+        )
+        .min(1)
+        .max(500),
+      reason: optionalText(),
+      byConceptId: optionalText(),
+    }),
+    z.object({
+      artifactId: z.string().regex(/^art_[a-z0-9]+$/),
+      proposalIds: z.array(z.string().min(1)).min(1).max(500),
+      reason: optionalText(),
+    }),
+  ]),
 
   approval: (ctx) => {
     const current = tenantIdOf(ctx.session.auth.current);
@@ -58,17 +61,87 @@ export default defineTool({
   async execute(input, ctx) {
     const { tenantId, userId } = requireTenantCaller(ctx);
     const db = getDb();
+    let changes: Array<{ transactionId: string; category: string; categoryLabel: string }>;
+    let byConceptId: string | undefined;
+
+    if ("artifactId" in input) {
+      const stored = await readArtifact<unknown>(input.artifactId, "categorization", ctx);
+      if ("error" in stored) return stored;
+      const parsed = CategorizationArtifactSchema.safeParse(stored.payload);
+      if (!parsed.success) {
+        return toolError("artefato_invalido", "A proposta de categorias está inválida.", {
+          hint: "Delegue novamente ao categorizador; não reconstrua os ids.",
+        });
+      }
+      const wanted = new Set(input.proposalIds);
+      const actionable = [
+        ...parsed.data.matchedRules.map((proposal) => ({
+          proposalId: proposal.proposalId,
+          category: proposal.categoryId,
+          categoryLabel: proposal.categoryLabel,
+          transactionIds: proposal.transactionIds,
+          conceptId: proposal.conceptId,
+        })),
+        ...parsed.data.proposals.flatMap((proposal) =>
+          proposal.categoryId === null || proposal.categoryLabel === null
+            ? []
+            : [
+                {
+                  proposalId: proposal.proposalId,
+                  category: proposal.categoryId,
+                  categoryLabel: proposal.categoryLabel,
+                  transactionIds: proposal.transactionIds,
+                  conceptId: undefined,
+                },
+              ],
+        ),
+      ];
+      const selected = actionable.filter((proposal) => wanted.has(proposal.proposalId));
+      if (selected.length !== wanted.size) {
+        return toolError(
+          "alcance_alterado",
+          "A seleção contém propostas que não existem ou não aplicam uma categoria.",
+          { hint: "Use somente actionableCategoryProposalIds retornados por present_categorization." },
+        );
+      }
+      const categoryByTransaction = new Map<string, { category: string; categoryLabel: string }>();
+      for (const proposal of selected) {
+        for (const transactionId of proposal.transactionIds) {
+          const existing = categoryByTransaction.get(transactionId);
+          if (existing !== undefined && existing.category !== proposal.category) {
+            return toolError(
+              "artefato_invalido",
+              "Duas propostas selecionadas atribuem categorias diferentes ao mesmo lançamento.",
+              { retryable: false },
+            );
+          }
+          categoryByTransaction.set(transactionId, {
+            category: proposal.category,
+            categoryLabel: proposal.categoryLabel,
+          });
+        }
+      }
+      changes = [...categoryByTransaction].map(([transactionId, category]) => ({
+        transactionId,
+        ...category,
+      }));
+      const concepts = [...new Set(selected.map((proposal) => proposal.conceptId).filter(Boolean))];
+      byConceptId = concepts.length === 1 ? concepts[0] : undefined;
+    } else {
+      changes = input.changes;
+      byConceptId = input.byConceptId;
+    }
 
     return forTenant(
       tenantId,
       async (tx) => {
         const valid = await loadValidCategories(tx, tenantId);
-        const invalid = [...new Set(input.changes.map((c) => c.category))].filter(
+        const invalid = [...new Set(changes.map((c) => c.category))].filter(
           (category) => !valid.has(category),
         );
         if (invalid.length > 0) return unknownCategory(invalid, valid);
 
-        const ids = input.changes.map((change) => change.transactionId);
+        const ids = changes.map((change) => change.transactionId);
         // Só transações do razão de verdade: um lote ainda `proposed` se
         // corrige com `edit_proposed_batch`, não por aqui — reclassificar um
         // rascunho gravaria trilha de auditoria para algo que a pessoa ainda
@@ -89,7 +162,7 @@ export default defineTool({
         let unchanged = 0;
         const notFound: string[] = [];
 
-        for (const change of input.changes) {
+        for (const change of changes) {
           if (!currentById.has(change.transactionId)) {
             notFound.push(change.transactionId);
             continue;
@@ -120,7 +193,7 @@ export default defineTool({
             newValue: change.category,
             author: `human:${userId}`,
             reason: input.reason ?? null,
-            byConceptId: input.byConceptId ?? null,
+            byConceptId: byConceptId ?? null,
           });
 
           changed += 1;

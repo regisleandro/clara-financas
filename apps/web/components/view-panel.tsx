@@ -1,7 +1,7 @@
 "use client";
 
 import { formatCents } from "@clara-financas/ledger";
-import type { View, ViewMetric, ViewRow } from "@clara-financas/views";
+import type { Basis, View, ViewMetric, ViewRow } from "@clara-financas/views";
 import { ArrowDownRight, ArrowUpRight, Check, ChevronDown, Minus, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 
@@ -30,6 +30,7 @@ const EYEBROW: Record<View["kind"], string> = {
   metric: "Resposta",
   breakdown: "Composição",
   comparison: "Comparação",
+  series: "Evolução",
   recurrences: "Recorrências",
   transactions: "Razão",
   invoices: "Faturas",
@@ -46,10 +47,11 @@ const EYEBROW: Record<View["kind"], string> = {
  * ela confere no PDF. Uma projeção passando por soma é pior ainda — é o único
  * número do painel que fala do futuro.
  */
-const BASIS_LABEL: Record<"document" | "schedule" | "projection", string> = {
+const BASIS_LABEL: Partial<Record<Basis, string>> = {
   document: "do documento",
   schedule: "agendado",
   projection: "projeção",
+  delta: "diferença",
 };
 
 /** A cor do marcador de severidade. Segue o significado, não a estética. */
@@ -213,10 +215,10 @@ function Row({ row, showBars }: { row: ViewRow; showBars: boolean }) {
   const [open, setOpen] = useState(false);
   const ids = row.transactionIds ?? [];
   const traceable = ids.length > 0;
+  // `sum` não ganha nota: é o caso comum, e anotar todo número com "soma"
+  // esconderia justamente os poucos que não são.
   const basisNote =
-    row.amount !== undefined && row.basis !== undefined && row.basis !== "ledger"
-      ? BASIS_LABEL[row.basis]
-      : undefined;
+    row.amount !== undefined && row.basis !== undefined ? BASIS_LABEL[row.basis] : undefined;
 
   return (
           <li className="border-b border-[var(--clara-fog)] py-4 last:border-0">

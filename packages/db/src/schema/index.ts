@@ -3,6 +3,7 @@ export * from "./tenant";
 export * from "./knowledge";
 export * from "./agent-session";
 export * from "./agent-event";
+export * from "./agent-artifact";
 export * from "./ledger";
 export * from "./extraction-staging";
 export * from "./reclassification";

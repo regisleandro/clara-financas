@@ -1,12 +1,18 @@
-import { aggregateByCategory, formatCents, totalSpend } from "@clara-financas/ledger";
+import { aggregateByCategory, formatCents, spendable, sumOf } from "@clara-financas/ledger";
+import { AnalysisScopeSchema } from "@clara-financas/views/agent-contracts";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { categoryLabel, loadCategoryLabels } from "../../../lib/categories";
-import { monthRange } from "../../../lib/dates";
+import {
+  canonicalAnalysisScope,
+  draftNote,
+  scopeFilter,
+  scopeLabel,
+} from "../../../lib/analysis-scope";
 import { requireTenantCaller } from "../../../lib/tenant";
-import { optionalText } from "../../../lib/schema";
 import { ledgerCoverage, loadLedger } from "../../../lib/ledger-query";
+import { saveAnalysis } from "../lib/save-analysis";
 
 /**
  * Composição do gasto por categoria.
@@ -17,74 +23,156 @@ import { ledgerCoverage, loadLedger } from "../../../lib/ledger-query";
 export default defineTool({
   description:
     "Sums spending by category over a period. Use for 'quanto gastei', 'com o quê', 'qual categoria pesa mais'.",
-  inputSchema: z.object({
-    from: optionalText().describe("Start date, YYYY-MM-DD. Omit for the whole ledger."),
-    to: optionalText().describe("End date, YYYY-MM-DD, inclusive."),
-    month: optionalText().describe(
-      "Calendar month, YYYY-MM. Shorthand for from/to covering the whole month. Remember an invoice CYCLE is not a calendar month — for 'nesta fatura' questions prefer batchId.",
-    ),
-    issuer: optionalText().describe(
-      "Card issuer/operator name as the person says it (e.g. 'Nubank'). Accent- and case-insensitive; matches the issuer of the document each transaction came from. Use for 'quanto gastei no <cartão>'.",
-    ),
-    batchId: optionalText().describe(
-      "Restrict to ONE invoice, by the batchId shown in the ledger state. Prefer this over guessing dates whenever the question is about a specific invoice or 'nesta fatura'.",
-    ),
-  }),
+  inputSchema: z.object({ scope: AnalysisScopeSchema }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);
-    const monthDates = input.month !== undefined ? monthRange(input.month) : undefined;
-    const ledger = await loadLedger(tenantId, {
-      from: input.from ?? monthDates?.from,
-      to: input.to ?? monthDates?.to,
-      issuer: input.issuer,
-      batchId: input.batchId,
-    });
+    const scope = canonicalAnalysisScope(input.scope);
+    const ledger = await loadLedger(tenantId, scopeFilter(scope));
+    const label = scopeLabel(scope);
 
     if (ledger.length === 0) {
-      // Vazio sem contexto é ambíguo: razão vazio, ou recorte errado? Dizer o
-      // que existe evita mandar a pessoa reenviar o que já está registrado.
       const coverage = await ledgerCoverage(tenantId);
-      return {
-        empty: true as const,
-        message:
-          coverage.count === 0
-            ? "The ledger has no confirmed transactions yet."
-            : `Não há transações nesse recorte, mas o razão cobre de ${coverage.firstDate} a ${coverage.lastDate} (${coverage.count} transações). Refaça a pergunta nesse intervalo.`,
-        ledgerCoverage: coverage,
-      };
+      const detail =
+        coverage.count === 0
+          ? "O razão ainda não tem lançamentos confirmados."
+          : `O razão possui dados de ${coverage.firstDate} a ${coverage.lastDate}, mas não neste recorte.`;
+      return saveAnalysis(
+        {
+          kind: "metric",
+          title: "Gastos no período",
+          summary: `O recorte ${label} não possui lançamentos.`,
+          metric: { label: "Resultado", text: "Sem lançamentos", detail, transactionIds: [] },
+          rows: [],
+        },
+        scope,
+        ctx,
+        // Recorte vazio é uma resposta completa, com testemunha vazia: não há
+        // lançamento para conferir, e é isso mesmo que o painel diz.
+        [],
+      );
     }
 
-    const total = totalSpend(ledger);
-    const categories = aggregateByCategory(ledger);
-    const uncategorized = categories.find((bucket) => bucket.category === null);
     const labels = await loadCategoryLabels(tenantId);
+    const counted = spendable(ledger);
 
-    return {
-      // O recorte de FATO usado, para a resposta dizer em relação a quê soma.
-      period: {
-        from: input.from ?? monthDates?.from ?? null,
-        to: input.to ?? monthDates?.to ?? null,
-        batchId: input.batchId ?? null,
-        issuer: input.issuer ?? null,
+    /*
+     * Bruto em tudo — topo e linhas na MESMA escala.
+     *
+     * A versão anterior somava compras brutas nas linhas e mostrava o gasto
+     * líquido no topo. Cada número estava certo isoladamente, e o painel
+     * mentia mesmo assim: somar as linhas na tela dava outro número que o
+     * destaque logo acima delas (R$ 150,00 contra R$ 130,00 no caso que estava
+     * coberto por teste). Quem confere uma fatura soma a coluna — e concluía,
+     * com razão, que nenhum dos dois merecia confiança.
+     *
+     * Agora o destaque é COMPRAS, as linhas são compras, e elas fecham. O que
+     * o líquido tinha de informação não se perde: créditos e líquido viajam no
+     * detalhe, nomeados. Ver `figure.ts` para por que a fórmula viaja junto.
+     *
+     * Só os painéis analíticos usam bruto. A CONFERÊNCIA de fatura continua
+     * líquida — ela compara com o total declarado no documento, e um estorno
+     * reduz esse total de verdade.
+     */
+    const purchases = counted.filter((transaction) => transaction.amount > 0);
+    const credits = counted.filter((transaction) => transaction.amount < 0);
+
+    const grossTotal = sumOf(purchases);
+    const creditTotal = sumOf(credits);
+    const netTotal = sumOf(counted);
+
+    // A separação bruto/créditos vem do KERNEL (`aggregateByCategory`), a mesma
+    // que `/inicio` e `/transacoes` consomem. Repeti-la aqui era como a tela e
+    // a conversa voltariam a discordar sobre a mesma pergunta.
+    const porCategoria = aggregateByCategory(counted).map((bucket) => ({
+      label: categoryLabel(labels, bucket.category),
+      gross: bucket.gross,
+      credits: bucket.credits,
+      share: bucket.share,
+    }));
+
+    /*
+     * Barra é COMPRA. Uma categoria que no período só teve estorno não tem
+     * barra — e isso é uma decisão, não um esquecimento.
+     *
+     * A versão anterior a desenhava como uma linha de R$ 0,00: tecnicamente
+     * visível, informativamente nada, e com o crédito abatendo o topo sem
+     * aparecer em lugar nenhum. Dar-lhe o valor do crédito quebraria a soma das
+     * linhas; dar-lhe zero com os ids do estorno seria um valor que os próprios
+     * lançamentos desmentem. As duas saídas erradas se parecem com honestidade
+     * e não são.
+     *
+     * O que ela teve fica dito por extenso no resumo, com o valor.
+     */
+    const soComCredito = porCategoria.filter(
+      (entry) => entry.gross.value === 0 && entry.credits.value !== 0,
+    );
+    const rows = porCategoria
+      .filter((entry) => entry.gross.value > 0)
+      .map((entry) => ({
+        label: entry.label,
+        amount: entry.gross.value,
+        detail:
+          entry.credits.value === 0
+            ? `Compras ${formatCents(entry.gross.value)}`
+            : `Compras ${formatCents(entry.gross.value)} · créditos ${formatCents(entry.credits.value)}`,
+        ...(entry.share > 0 ? { share: entry.share } : {}),
+        // A proveniência da LINHA acompanha o valor da linha: só as compras.
+        // Antes ela carregava também os créditos daquela categoria, então abrir
+        // a origem de "R$ 100,00" listava lançamentos que somavam R$ 80,00.
+        transactionIds: entry.gross.transactionIds,
+      }));
+
+    const notaDeCreditos =
+      soComCredito.length === 0
+        ? ""
+        : ` ${soComCredito
+            .map((entry) => `${entry.label} teve apenas créditos (${formatCents(entry.credits.value)})`)
+            .join("; ")}.`;
+
+    // Um recorte só de créditos não tem composição de compras para desenhar.
+    // `breakdown` exige ao menos uma linha, e forçar uma seria inventar barra.
+    if (rows.length === 0) {
+      return saveAnalysis(
+        {
+          kind: "metric",
+          title: "Composição dos gastos",
+          summary: `${label} não teve compras.${notaDeCreditos}${draftNote(ledger)}`,
+          metric: {
+            label: "Compras no período",
+            amount: 0,
+            detail: `créditos ${formatCents(creditTotal.value)} · líquido ${formatCents(netTotal.value)}`,
+            transactionIds: [],
+          },
+          rows: [],
+        },
+        scope,
+        ctx,
+        counted,
+      );
+    }
+
+    return saveAnalysis(
+      {
+        kind: "breakdown",
+        title: "Composição dos gastos",
+        summary:
+          creditTotal.value === 0
+            ? `${label}. As barras representam compras; as linhas somam o total.${draftNote(ledger)}`
+            : `${label}. As barras representam compras; os créditos do período estão no topo.${notaDeCreditos}${draftNote(ledger)}`,
+        metric: {
+          label: "Compras no período",
+          amount: grossTotal.value,
+          detail:
+            creditTotal.value === 0
+              ? label
+              : `${label} · créditos ${formatCents(creditTotal.value)} · líquido ${formatCents(netTotal.value)}`,
+          transactionIds: grossTotal.transactionIds,
+        },
+        rows,
       },
-      total: {
-        cents: total.value,
-        formatted: formatCents(total.value),
-        transactionIds: total.transactionIds,
-      },
-      categories: categories.map((bucket) => ({
-        category: bucket.category,
-        // O rótulo acompanha o id: é o que o modelo deve escrever na resposta
-        // e o que o painel deve exibir. O id fica para proveniência e regra.
-        label: categoryLabel(labels, bucket.category),
-        cents: bucket.value,
-        formatted: formatCents(bucket.value),
-        sharePercent: Math.round(bucket.share * 1000) / 10,
-        count: bucket.count,
-        transactionIds: bucket.transactionIds,
-      })),
-      // Explicitado para o modelo poder avisar que a leitura está incompleta.
-      uncategorizedCount: uncategorized?.count ?? 0,
-    };
+      scope,
+      ctx,
+      counted,
+    );
   },
 });

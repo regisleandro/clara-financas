@@ -193,7 +193,7 @@ export function ReviewQueue({ queue }: { queue: ReviewQueue }) {
               type="button"
               onClick={() => setFilter(entry.key)}
               aria-pressed={active}
-              className="rounded-full px-[15px] py-2 text-xs transition-colors"
+              className="rounded-[var(--clara-radius-pill)] border border-[var(--clara-border)] px-[15px] py-2 text-xs transition-colors"
               style={{
                 letterSpacing: "-0.022em",
                 background: active ? "var(--clara-ink)" : "var(--clara-white)",
@@ -286,7 +286,7 @@ export function ReviewQueue({ queue }: { queue: ReviewQueue }) {
                         }))
                       }
                       placeholder="Quem recebeu o dinheiro"
-                      className="w-full rounded-[var(--clara-radius-pill)] bg-[var(--clara-fog)] px-5 py-[11px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--clara-blue)]"
+                      className="w-full rounded-[var(--clara-radius-pill)] border border-[var(--clara-border)] bg-[var(--clara-fog)] px-5 py-[11px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--clara-blue)]"
                     />
                   </label>
 
@@ -300,7 +300,7 @@ export function ReviewQueue({ queue }: { queue: ReviewQueue }) {
                           [item.id]: { ...draft, category: event.target.value },
                         }))
                       }
-                      className="w-full appearance-none rounded-[var(--clara-radius-pill)] bg-[var(--clara-fog)] px-5 py-[11px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--clara-blue)]"
+                      className="w-full appearance-none rounded-[var(--clara-radius-pill)] border border-[var(--clara-border)] bg-[var(--clara-fog)] px-5 py-[11px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--clara-blue)]"
                     >
                       <option value="">Sem categoria</option>
                       {queue.categories.map((category) => (
@@ -322,7 +322,7 @@ export function ReviewQueue({ queue }: { queue: ReviewQueue }) {
                         }))
                       }
                       placeholder="Fica na trilha de auditoria com o seu nome"
-                      className="w-full rounded-[var(--clara-radius-pill)] bg-[var(--clara-fog)] px-5 py-[11px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--clara-blue)]"
+                      className="w-full rounded-[var(--clara-radius-pill)] border border-[var(--clara-border)] bg-[var(--clara-fog)] px-5 py-[11px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--clara-blue)]"
                     />
                   </label>
                 </div>
@@ -423,7 +423,7 @@ function UnnamedDocuments({
                   }
                   placeholder="Nubank, Itaú…"
                   aria-label={`Operadora de ${document.filename}`}
-                  className="w-full rounded-[var(--clara-radius-pill)] bg-[var(--clara-fog)] px-5 py-[11px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--clara-blue)] sm:w-[220px]"
+                  className="w-full rounded-[var(--clara-radius-pill)] border border-[var(--clara-border)] bg-[var(--clara-fog)] px-5 py-[11px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--clara-blue)] sm:w-[220px]"
                 />
                 <button
                   type="button"

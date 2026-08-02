@@ -312,6 +312,53 @@ describe("aggregateByIssuerMonth", () => {
     );
   });
 
+  it("duas grafias do mesmo cartão são UMA operadora", () => {
+    // O defeito: o agrupamento era pela string crua e a chave só era derivada
+    // depois, na web. "Nubank" e "NuBank" viravam duas linhas com metade do
+    // total cada — e a conversa, que já filtrava por chave, mostrava uma linha
+    // com o total inteiro. A mesma pergunta, dois números, dependendo de onde
+    // se olhava. As duas linhas ainda colidiam na `key` do React.
+    const matrix = aggregateByIssuerMonth([
+      issued({ id: "a", issuer: "Nubank", amount: 1000, date: "2026-05-03" }),
+      issued({ id: "b", issuer: "NUBANK", amount: 2000, date: "2026-06-11" }),
+      issued({ id: "c", issuer: "Nubânk", amount: 500, date: "2026-06-20" }),
+    ]);
+
+    assert.equal(matrix.issuers.length, 1, "caixa e acento não fazem operadoras diferentes");
+    assert.equal(matrix.issuers[0]?.total.value, 3500);
+    assert.equal(
+      new Set(matrix.issuers.map((row) => row.key)).size,
+      matrix.issuers.length,
+      "cada linha tem identidade própria",
+    );
+  });
+
+  it("grafia estruturalmente diferente ainda é outra operadora — limite conhecido", () => {
+    // `issuerKey` unifica caixa e acento, não espaçamento: "Nu Bank" vira
+    // `nu-bank` e continua separada de `nubank`. Não é descuido — juntar as
+    // duas exige alias por operadora (`IssuerPattern`), que é trabalho de
+    // identidade na ESCRITA. Este teste existe para que o limite seja uma
+    // decisão registrada, e não uma surpresa em produção.
+    const matrix = aggregateByIssuerMonth([
+      issued({ id: "a", issuer: "Nubank", amount: 1000 }),
+      issued({ id: "b", issuer: "Nu Bank", amount: 2000 }),
+    ]);
+
+    assert.equal(matrix.issuers.length, 2);
+  });
+
+  it("exibe a grafia mais recente da operadora", () => {
+    // Agrupar por identidade não pode significar exibir um slug: o rótulo
+    // continua sendo o que o documento escreveu, e o mais recente é o que a
+    // pessoa acabou de ver.
+    const matrix = aggregateByIssuerMonth([
+      issued({ id: "a", issuer: "NUBANK", amount: 1000, date: "2026-05-03" }),
+      issued({ id: "b", issuer: "Nubank", amount: 2000, date: "2026-06-11" }),
+    ]);
+
+    assert.equal(matrix.issuers[0]?.issuer, "Nubank");
+  });
+
   it("ordena as operadoras pelo que pesa mais", () => {
     const matrix = aggregateByIssuerMonth([
       issued({ issuer: "Itaú", amount: 500 }),

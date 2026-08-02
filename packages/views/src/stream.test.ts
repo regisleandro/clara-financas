@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { findMessageView, findMessageViews, findPresentedView, findPresentedViews } from "./stream";
+import {
+  findMessageView,
+  findMessageViews,
+  findPresentedView,
+  findPresentedViews,
+} from "./stream";
 
 /**
  * Estes testes cobrem exatamente os erros que a inferência anterior cometia em
@@ -26,6 +31,26 @@ const succeeded = (callId = "c1") => ({
 });
 
 describe("findPresentedView", () => {
+  it("lê o painel validado do output de present_analysis", () => {
+    const panel = view("Por recibo");
+    const events = [
+      { type: "turn.started", data: {} },
+      requested({ artifactId: "art_1" }, "present_analysis", "a1"),
+      {
+        type: "action.result",
+        data: {
+          status: "completed",
+          result: {
+            callId: "a1",
+            toolName: "present_analysis",
+            output: { presented: "metric", view: panel },
+          },
+        },
+      },
+    ];
+    assert.equal(findPresentedView(events)?.title, "Por recibo");
+  });
+
   it("encontra o painel que a Clara mandou desenhar", () => {
     const found = findPresentedView([requested(view("Gastos de junho")), succeeded()]);
     assert.equal(found?.title, "Gastos de junho");
@@ -138,6 +163,20 @@ const viewPart = (input: unknown, toolName = "present_view") => ({
 });
 
 describe("findMessageView", () => {
+  it("lê o painel materializado no output de present_categorization", () => {
+    const found = findMessageView({
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolName: "present_categorization",
+          input: { artifactId: "art_1" },
+          output: { presented: "proposal", view: view("Categorias sugeridas") },
+        },
+      ],
+    });
+    assert.equal(found?.title, "Categorias sugeridas");
+  });
+
   it("encontra o painel gravado na mensagem", () => {
     const found = findMessageView({
       id: "m1",

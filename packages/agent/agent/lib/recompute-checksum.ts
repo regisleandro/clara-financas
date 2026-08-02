@@ -1,6 +1,10 @@
 import type { Database } from "@clara-financas/db";
-import { batches, transactions } from "@clara-financas/db/schema/ledger";
-import { verifyChecksum, type ChecksumReport } from "@clara-financas/ledger";
+import { batches, documents, transactions } from "@clara-financas/db/schema/ledger";
+import {
+  verifyChecksum,
+  verifyStatementBalance,
+  type ChecksumReport,
+} from "@clara-financas/ledger";
 import { and, eq } from "drizzle-orm";
 
 /**
@@ -29,8 +33,15 @@ export async function recomputeBatchChecksum(
     .from(transactions)
     .where(and(eq(transactions.batchId, batch.id), eq(transactions.tenantId, tenantId)));
 
+  const [document] = await tx
+    .select({ kind: documents.kind })
+    .from(documents)
+    .where(and(eq(documents.id, batch.documentId), eq(documents.tenantId, tenantId)))
+    .limit(1);
+
   const checksum = verifyChecksum({
     documentId: batch.documentId,
+    documentKind: document?.kind ?? "unknown",
     issuer: null,
     periodStart: batch.periodStart,
     periodEnd: batch.periodEnd,
@@ -39,6 +50,8 @@ export async function recomputeBatchChecksum(
     // Persistidos no lote: sem eles, reconferir após uma correção perderia a
     // localização e voltaria a dizer só "não bate".
     declaredSubtotals: batch.declaredSubtotals ?? null,
+    openingBalance: batch.openingBalance ?? null,
+    closingBalance: batch.closingBalance ?? null,
     transactions: rows.map((row) => ({
       id: row.id,
       date: row.date,
@@ -58,12 +71,63 @@ export async function recomputeBatchChecksum(
     })),
   });
 
+  const statementBalance =
+    document?.kind === "bank_statement"
+      ? verifyStatementBalance(
+          rows.map((row) => ({
+            id: row.id,
+            date: row.date,
+            originalDescription: row.originalDescription,
+            merchant: row.merchant,
+            merchantKey: row.merchantKey,
+            amount: row.amount,
+            kind: row.kind,
+            installment:
+              row.installmentCurrent !== null && row.installmentTotal !== null
+                ? { current: row.installmentCurrent, total: row.installmentTotal }
+                : null,
+            category: row.category,
+            extractionConfidence: row.extractionConfidence,
+            sourceDocument: row.sourceDocumentId,
+            page: row.page,
+          })),
+          batch.openingBalance ?? null,
+          batch.closingBalance ?? null,
+        )
+      : undefined;
+  const persistedResult =
+    statementBalance === undefined
+      ? checksum.result
+      : statementBalance.result === "match"
+        ? "match"
+        : statementBalance.result === "mismatch"
+          ? "mismatch"
+          : "no_declared_total";
+
+  /*
+   * O total gravado precisa falar da MESMA prova que o resultado gravado.
+   *
+   * Para extrato, `checksumResult` vinha de `verifyStatementBalance` — saldo
+   * inicial menos as movimentações contra o saldo final — e `extractedTotal`
+   * vinha de `countsTowardDeclaredTotal`, que exclui `income` e `transfer`.
+   * Num extrato essas duas naturezas são metade da conta.
+   *
+   * A consequência aparecia na fila de revisão: ela calcula
+   * `extractedTotal − declaredTotal` e mostra o resultado como a divergência do
+   * documento. Para um extrato esse número não tinha relação nenhuma com a
+   * divergência de saldo que causou o `mismatch` — um número plausível,
+   * derivado de dados reais, e que não respondia à pergunta que a tela fazia.
+   *
+   * Numa fatura o total conferido é o gasto; num extrato é o movimento
+   * líquido. Cada prova grava o seu.
+   */
   await tx
     .update(batches)
     .set({
-      extractedTotal: checksum.extractedTotal,
-      checksumResult: checksum.result,
-      checksumReport: checksum,
+      extractedTotal:
+        statementBalance === undefined ? checksum.extractedTotal : statementBalance.netMovement,
+      checksumResult: persistedResult,
+      checksumReport: statementBalance ?? checksum,
     })
     .where(eq(batches.id, batch.id));
 

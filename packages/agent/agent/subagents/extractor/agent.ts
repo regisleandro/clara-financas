@@ -21,5 +21,6 @@ export default defineAgent({
   description:
     "Turns the text of a financial document (card invoice, bank statement, receipt) into proposed structured transactions, persisted server-side; returns a receipt with the extractionId. Delegate when there is a document to interpret.",
   model: extractorModel(),
+  reasoning: "medium",
   outputSchema: ExtractionReceiptSchema,
 });

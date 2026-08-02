@@ -26,6 +26,10 @@ export default defineTool({
     "Records transactions as a draft batch and checks the sum against the declared total. For a document the extractor just processed, prefer propose_batch_from_extraction (by reference, no retyping). Use this one for batches assembled in conversation. Nothing enters the ledger here — only after the person approves.",
   inputSchema: z.object({
     documentId: z.string().min(1),
+    documentKind: z
+      .enum(["unknown", "credit_card_invoice", "bank_statement", "invoice_nfe"])
+      .optional()
+      .describe("Kind of document. Use bank_statement for account statements."),
     issuer: z
       .string()
       .nullable()
@@ -52,6 +56,8 @@ export default defineTool({
       .describe(
         'Subtotals from the invoice SUMMARY block, in cents: "IOF de compras internacionais" into `fees`, "Total de compras" into `purchases`. These are what make it possible to say WHERE a discrepancy is.',
       ),
+    openingBalance: z.number().int().nullable().optional().describe("Opening bank-statement balance in cents."),
+    closingBalance: z.number().int().nullable().optional().describe("Closing bank-statement balance in cents."),
     transactions: z.array(
       z.object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -61,7 +67,19 @@ export default defineTool({
           .number()
           .int()
           .describe("IN CENTS, signed: expense > 0, credit (payment/refund) < 0."),
-        kind: z.enum(["purchase", "payment", "refund", "fee", "adjustment"]).optional(),
+        kind: z
+          .enum([
+            "purchase",
+            "payment",
+            "refund",
+            "fee",
+            "adjustment",
+            "income",
+            "transfer",
+            "card_payment",
+            "cash_withdrawal",
+          ])
+          .optional(),
         installment: z
           .object({ current: z.number().int().positive(), total: z.number().int().positive() })
           .nullable()
@@ -91,14 +109,20 @@ export default defineTool({
     return {
       batchId: result.batchId,
       status: "proposed" as const,
+      documentKind: result.documentKind,
       // O emissor volta no retorno porque é dele que a tela tira o título do
       // cartão. Calculado aqui e não devolvido é o mesmo que não calculado.
       issuer: result.issuer,
       invoiceLabel: result.invoiceLabel,
       periodEnd: result.periodEnd,
       dueDate: result.dueDate,
+      ...(input.openingBalance !== undefined ? { openingBalance: input.openingBalance } : {}),
+      ...(input.closingBalance !== undefined ? { closingBalance: input.closingBalance } : {}),
       transactionCount: result.transactionCount,
       checksum: result.checksum,
+      ...(result.statementBalance === undefined
+        ? {}
+        : { statementBalance: result.statementBalance }),
       ...(result.duplicateSuspects !== undefined
         ? {
             duplicateSuspects: result.duplicateSuspects,

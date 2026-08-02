@@ -74,7 +74,10 @@ export async function registerDocument(input: {
         .values({
           id: documentId,
           tenantId: input.tenantId,
-          kind: "credit_card_invoice",
+          // O tipo só é conhecido depois da leitura do documento. Registrar
+          // como desconhecido evita que um extrato seja tratado como fatura
+          // enquanto o extrator ainda não o identificou.
+          kind: "unknown",
           blobKey: input.blobKey,
           filename: input.filename,
           contentHash: input.contentHash,

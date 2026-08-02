@@ -54,9 +54,14 @@ const PROOFS = [
 
 export default function LandingPage() {
   return (
-    <main className="clara-shell">
+    <main className="clara-shell pb-10">
       <header className="flex items-center justify-between py-6">
-        <span className="text-lg font-semibold tracking-tight">Clara</span>
+        <Link href="/" className="inline-flex items-center gap-2 text-base font-bold tracking-[-0.03em]">
+          <span className="grid size-8 place-items-center rounded-lg bg-[var(--clara-yellow)] text-[var(--clara-ink)]">
+            <span aria-hidden="true" className="text-lg leading-none">c.</span>
+          </span>
+          clara
+        </Link>
         <Link href="/entrar" className="text-sm text-muted-foreground hover:text-foreground">
           Entrar
         </Link>
@@ -66,8 +71,8 @@ export default function LandingPage() {
         <p className="clara-eyebrow">
           ASSISTENTE FINANCEIRO
         </p>
-        <h1 className="clara-hero mt-4 max-w-3xl text-balance">
-          Seu dinheiro, explicado com clareza.
+        <h1 className="clara-hero mt-4 max-w-4xl text-balance">
+          Seu dinheiro, <span className="clara-highlight">bem explicado.</span>
         </h1>
         <p className="clara-lead mt-6 max-w-xl">
           Envie suas faturas. A Clara organiza, categoriza e explica — e nada é registrado sem a sua
@@ -83,7 +88,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="border-t py-20">
+      <section className="border-t border-[var(--clara-border)] py-20">
         <h2 className="clara-eyebrow">
           COMO FUNCIONA
         </h2>
@@ -98,8 +103,8 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {PROOFS.map((proof) => (
-        <section key={proof.eyebrow} className="border-t py-20">
+      {PROOFS.map((proof, index) => (
+        <section key={proof.eyebrow} className={`border-t border-[var(--clara-border)] py-20 ${index % 2 === 0 ? "" : "bg-[var(--clara-mint)]/25"}`}>
           <p className="clara-eyebrow">
             {proof.eyebrow}
           </p>
@@ -112,7 +117,7 @@ export default function LandingPage() {
         </section>
       ))}
 
-      <section className="border-t py-20">
+      <section className="border-t border-[var(--clara-border)] py-20">
         <p className="clara-eyebrow">PRIVACIDADE</p>
         <h2 className="clara-display-md mt-4 max-w-3xl text-balance">
           Seu espaço é uma instância e um banco só seus.
@@ -123,7 +128,7 @@ export default function LandingPage() {
         </p>
       </section>
 
-      <section className="border-t py-24">
+      <section className="clara-note clara-note-yellow my-8 border-0 px-6 py-16 sm:px-10 sm:py-24">
         <h2 className="clara-display-lg text-balance">
           Comece enviando uma fatura.
         </h2>
@@ -134,7 +139,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="flex flex-wrap items-center justify-between gap-4 border-t py-10 text-sm text-muted-foreground">
+      <footer className="flex flex-wrap items-center justify-between gap-4 border-t border-[var(--clara-border)] py-10 text-sm text-muted-foreground">
         <span>Clara</span>
         <span>
           A Clara organiza e analisa seus próprios dados. Ela não recomenda investimentos nem

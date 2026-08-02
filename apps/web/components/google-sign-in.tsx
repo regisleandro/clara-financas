@@ -13,13 +13,17 @@ export function GoogleSignIn({ label }: { label: string }) {
     try {
       await signIn.social({
         provider: "google",
-        // O onboarding decide para onde ir: /inicio se o espaço estiver
+        // O onboarding decide para onde ir: /conversa se o espaço estiver
         // pronto, /preparando enquanto provisiona.
-        callbackURL: "/inicio",
+        callbackURL: "/conversa",
       });
     } catch {
-      toast.error("Não foi possível entrar com o Google. Tente de novo.");
       setPending(false);
+      // A porta de entrada do produto: uma falha aqui sem caminho de volta é a
+      // pessoa parada na tela de login com um recado que some em segundos.
+      toast.error("Não foi possível entrar com o Google.", {
+        action: { label: "Tentar de novo", onClick: () => void handleClick() },
+      });
     }
   }
 
@@ -28,7 +32,7 @@ export function GoogleSignIn({ label }: { label: string }) {
       type="button"
       onClick={handleClick}
       disabled={pending}
-      className="inline-flex h-12 w-full items-center justify-center gap-3 rounded-full border border-border bg-background px-6 text-[15px] font-medium transition-colors hover:bg-secondary disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      className="inline-flex h-12 w-full items-center justify-center gap-3 rounded-[var(--clara-radius-pill)] border border-border bg-background px-6 text-[15px] font-medium transition-colors hover:bg-secondary disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
     >
       <GoogleMark />
       {pending ? "Abrindo o Google…" : label}

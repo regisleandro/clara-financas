@@ -126,13 +126,7 @@ export default async function InicioPage({
   );
 }
 
-/**
- * Card escuro do insight.
- *
- * O anel com gradiente é decorativo e fica atrás do texto num z-index menor —
- * é sinal visual, não informação. Se não houver insight real, o card some em
- * vez de mostrar um vazio dramático em fundo preto.
- */
+/** O insight é uma nota curta, com cor para orientar sem competir com os dados. */
 function InsightCard({ insight }: { insight: { headline: string; href: string } | null }) {
   if (insight === null) {
     return (
@@ -151,27 +145,14 @@ function InsightCard({ insight }: { insight: { headline: string; href: string } 
   }
 
   return (
-    <article className="relative flex min-h-[360px] flex-col justify-between overflow-hidden rounded-[var(--clara-radius-card)] bg-[var(--clara-ink)] p-7">
-      <span className="relative z-10 self-start rounded-full bg-white/15 px-3 py-[5px] text-xs text-[var(--clara-fog)]">
-        O que a Clara notou
-      </span>
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -right-[70px] -top-10 size-[300px] rounded-full opacity-90"
-        style={{
-          background:
-            "linear-gradient(60deg, rgb(8,148,255) 0%, rgb(201,89,221) 40%, rgb(255,46,84) 67%, rgb(255,144,3) 100%)",
-          mask: "radial-gradient(circle, transparent 58%, #000 60%, #000 76%, transparent 78%)",
-          WebkitMask:
-            "radial-gradient(circle, transparent 58%, #000 60%, #000 76%, transparent 78%)",
-        }}
-      />
-      <div className="relative z-10">
-        <p className="clara-display-md text-balance text-[var(--clara-fog)]">
+    <article className="clara-note clara-note-yellow flex min-h-[360px] flex-col justify-between p-7">
+      <span className="clara-chip self-start bg-white/50">O que a Clara notou</span>
+      <div>
+        <p className="clara-display-md text-balance text-[var(--clara-ink)]">
           {insight.headline}
         </p>
-        <Link href={insight.href} className="mt-5 inline-block text-[var(--clara-fog)]">
-          Perguntar à Clara ›
+        <Link href={insight.href} className="clara-link mt-5 inline-block">
+          Perguntar à Clara →
         </Link>
       </div>
     </article>

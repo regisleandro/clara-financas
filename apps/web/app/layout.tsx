@@ -1,33 +1,7 @@
-import type { Metadata } from "next";
-import { Inter, Inter_Tight } from "next/font/google";
+import type { Metadata, Viewport } from "next";
 import { Toaster } from "@clara-financas/ui/components/sonner";
 
 import "./globals.css";
-
-/**
- * Fallback das SF Pro.
- *
- * Em Apple as SF Pro já estão no sistema e vencem na cascata; fora dele, Inter
- * e Inter Tight assumem. Foram escolhidas por compartilharem a métrica
- * apertada das SF — trocar a fonte não deve reescrever o layout.
- *
- * `display: swap` evita texto invisível enquanto a fonte carrega: numa tela
- * cujo herói é tipografia de 96px, um flash de nada é pior que um flash de
- * fallback.
- */
-const interTight = Inter_Tight({
-  subsets: ["latin"],
-  weight: ["400", "600"],
-  variable: "--font-clara-display",
-  display: "swap",
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  weight: ["400", "600"],
-  variable: "--font-clara-text",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "Clara — Assistente Financeiro",
@@ -35,10 +9,28 @@ export const metadata: Metadata = {
     "Envie a fatura, confira o que a Clara extraiu, aprove. Cada número rastreável até a origem.",
 };
 
+/**
+ * `viewport-fit: cover` é o que faz `env(safe-area-inset-*)` valer alguma
+ * coisa: sem ele os insets são sempre zero, e o `padding-bottom` do composer
+ * não protege nada. Não havia nenhum `export const viewport` no projeto, e por
+ * isso o campo de escrever ficava dentro da área do home indicator no iPhone.
+ *
+ * `interactive-widget` declara o que o teclado virtual deve empurrar. O padrão
+ * do Chrome Android (`resizes-visual`) NÃO reduz o viewport de layout — com o
+ * composer `fixed` isso o deixava atrás do teclado. Ele agora está em fluxo, e
+ * `resizes-content` faz o shell encolher junto, mantendo o campo visível.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${interTight.variable} ${inter.variable}`}>
-      <body className="min-h-svh antialiased">
+    <html lang="pt-BR">
+      <body className="min-h-dvh antialiased">
         {children}
         <Toaster richColors position="top-center" />
       </body>

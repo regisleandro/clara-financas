@@ -1,7 +1,5 @@
 import { readFile } from "node:fs/promises";
 
-import { extractText, getDocumentProxy } from "unpdf";
-
 /**
  * Extração da camada de texto de um PDF.
  *
@@ -29,6 +27,45 @@ export type ExtractOptions = {
   fromPage?: number;
   toPage?: number;
 };
+
+type MathWithSumPrecise = Math & {
+  sumPrecise?: (values: Iterable<number>) => number;
+};
+
+/**
+ * O pdf.js empacotado pelo unpdf 1.8 usa `Math.sumPrecise`, mas o Node 24
+ * ainda não expõe essa API. Instalamos o fallback antes do import dinâmico do
+ * unpdf para manter o contrato de engine declarado pela própria dependência.
+ *
+ * O algoritmo de Neumaier preserva melhor as somas de larguras e offsets do
+ * PDF do que um `reduce` simples. Quando o runtime ganhar a API nativa, este
+ * caminho deixa de fazer qualquer alteração global.
+ */
+function ensureMathSumPrecise(): void {
+  const math = Math as MathWithSumPrecise;
+  if (typeof math.sumPrecise === "function") return;
+
+  Object.defineProperty(math, "sumPrecise", {
+    configurable: true,
+    writable: true,
+    value(values: Iterable<number>): number {
+      let sum = 0;
+      let correction = 0;
+
+      for (const value of values) {
+        const next = sum + value;
+        if (Math.abs(sum) >= Math.abs(value)) {
+          correction += sum - next + value;
+        } else {
+          correction += value - next + sum;
+        }
+        sum = next;
+      }
+
+      return sum + correction;
+    },
+  });
+}
 
 /**
  * Carrega o PDF a partir da chave de armazenamento.
@@ -69,6 +106,9 @@ export async function extractPdfText(
   options: ExtractOptions = {},
 ): Promise<ExtractedPdf> {
   const data = await loadPdf(blobKey);
+
+  ensureMathSumPrecise();
+  const { extractText, getDocumentProxy } = await import("unpdf");
 
   let pdf;
   try {

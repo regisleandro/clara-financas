@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { IssuerMonthView } from "@/components/issuer-month-view";
 import { TransactionTable } from "@/components/transaction-table";
 import { loadIssuerMonthView } from "@/lib/issuers";
-import { loadLedgerView } from "@/lib/ledger";
+import { loadLedgerPage, TRANSACTION_PAGE_SIZE } from "@/lib/ledger";
 import { countPendingReview } from "@/lib/review";
 import { getTenantContext } from "@/lib/tenant";
 
@@ -16,8 +16,8 @@ export const dynamic = "force-dynamic";
  * `?vista=operadoras` em vez de estado de componente por dois motivos: a
  * escolha vira link compartilhável e recarregável, e nenhuma das duas vistas
  * precisa de JavaScript para existir. O corpo de cada uma é renderizado no
- * servidor; a única interatividade cliente continua sendo o filtro da lista
- * plana, que é onde ela é de fato necessária.
+ * servidor; a lista plana usa paginação e filtros via URL para não carregar
+ * todos os lançamentos no navegador.
  */
 
 const VIEWS = [
@@ -28,12 +28,17 @@ const VIEWS = [
 export default async function TransacoesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ vista?: string }>;
+  searchParams: Promise<{
+    vista?: string;
+    pagina?: string;
+    busca?: string;
+    categoria?: string;
+  }>;
 }) {
   const context = await getTenantContext();
   if (!context) redirect("/entrar");
 
-  const { vista } = await searchParams;
+  const { vista, pagina, busca, categoria } = await searchParams;
   const active = vista === "operadoras" ? "operadoras" : "lista";
 
   const pending = await countPendingReview(context.tenantId);
@@ -79,7 +84,7 @@ export default async function TransacoesPage({
             key={view.key}
             href={view.href}
             aria-current={active === view.key ? "page" : undefined}
-            className="rounded-full px-[15px] py-2 text-xs transition-colors"
+            className="rounded-[var(--clara-radius-pill)] border border-[var(--clara-border)] px-[15px] py-2 text-xs transition-colors"
             style={{
               letterSpacing: "-0.022em",
               background: active === view.key ? "var(--clara-ink)" : "var(--clara-white)",
@@ -94,18 +99,43 @@ export default async function TransacoesPage({
       {active === "operadoras" ? (
         <IssuerMonthView view={await loadIssuerMonthView(context.tenantId)} />
       ) : (
-        <FlatList tenantId={context.tenantId} />
+        <FlatList
+          tenantId={context.tenantId}
+          page={parsePage(pagina)}
+          query={busca}
+          category={categoria}
+        />
       )}
     </div>
   );
 }
 
-async function FlatList({ tenantId }: { tenantId: string }) {
-  const { rows, categories } = await loadLedgerView(tenantId);
+function parsePage(value: string | undefined) {
+  const page = Number.parseInt(value ?? "1", 10);
+  return Number.isFinite(page) && page > 0 ? page : 1;
+}
+
+async function FlatList({
+  tenantId,
+  page,
+  query,
+  category,
+}: {
+  tenantId: string;
+  page: number;
+  query?: string;
+  category?: string;
+}) {
+  const result = await loadLedgerPage(tenantId, {
+    page,
+    pageSize: TRANSACTION_PAGE_SIZE,
+    query,
+    category,
+  });
 
   return (
     <TransactionTable
-      rows={rows.map((row) => ({
+      rows={result.rows.map((row) => ({
         id: row.id,
         merchant: row.merchant ?? row.originalDescription,
         date: row.date,
@@ -116,9 +146,13 @@ async function FlatList({ tenantId }: { tenantId: string }) {
         page: row.page,
         isAdjustment: row.status === "adjustment",
       }))}
-      categories={categories
-        .map((bucket) => bucket.category)
-        .filter((category): category is string => category !== null)}
+      categories={result.categories}
+      totalCount={result.total}
+      page={result.page}
+      pageCount={result.pageCount}
+      pageSize={result.pageSize}
+      query={result.query}
+      category={result.category}
     />
   );
 }

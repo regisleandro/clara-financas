@@ -4,6 +4,7 @@ export {
   sumAmounts,
   formatCents,
   countsTowardDeclaredTotal,
+  roundingTolerance,
 } from "./checksum";
 export {
   aggregateByCategory,
@@ -20,9 +21,36 @@ export {
   type IssuedTransaction,
   type IssuerMonthMatrix,
 } from "./analysis";
+export {
+  analyzeFinancialSeries,
+  type FinancialPeriod,
+  type FinancialSeries,
+  type FinancialSeriesDriver,
+  type FinancialSeriesPoint,
+} from "./series";
+export {
+  sumOf,
+  deltaOf,
+  project,
+  documentFact,
+  countOf,
+  reconcile,
+  rowsSumToMetric,
+  witnessOf,
+  type Figure,
+  type Basis,
+  type Countable,
+  type Violation,
+} from "./figure";
+export { entryKindLabel, nonSpendLabel, hasNoSpend } from "./entry-kind";
 export { categoryLabel, categorySlug, type CategoryLabels } from "./categories";
 export { issuerKey, UNKNOWN_ISSUER } from "./issuer";
-export { formatInvoiceLabel, formatMonthLabel } from "./invoice-label";
+export {
+  formatDocumentLabel,
+  formatInvoiceLabel,
+  formatMonthLabel,
+  type FinancialDocumentKind,
+} from "./invoice-label";
 export {
   merchantKey,
   isTruncationOf,
@@ -52,3 +80,4 @@ export {
   type ChecksumResult,
   type ChecksumCause,
 } from "./types";
+export { verifyStatementBalance, type StatementBalanceReport } from "./statement";

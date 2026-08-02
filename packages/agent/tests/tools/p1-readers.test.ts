@@ -8,8 +8,8 @@ import readBatch from "../../agent/tools/read_batch";
 import readConceptHistory from "../../agent/tools/read_concept_history";
 import readReclassifications from "../../agent/tools/read_reclassifications";
 import rejectBatch from "../../agent/tools/reject_batch";
+import recategorize from "../../agent/tools/recategorize_transactions";
 import saveConcept from "../../agent/tools/save_concept";
-import setCategory from "../../agent/tools/set_transaction_category";
 import { closeConnections, ctxFor, dropTenant, freshTenant, seedDocument } from "../helpers/harness";
 
 /**
@@ -107,7 +107,14 @@ describe("leitores das trilhas", () => {
     };
     const transactionId = opened.transactions[0]!.id;
 
-    await setCategory.execute({ transactionId, category: "groceries" }, ctx);
+    await recategorize.execute(
+      {
+        changes: [
+          { transactionId, category: "groceries", categoryLabel: "Mercado" },
+        ],
+      },
+      ctx,
+    );
 
     const trail = (await readReclassifications.execute({ transactionId }, ctx)) as {
       count: number;

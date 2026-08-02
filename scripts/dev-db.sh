@@ -91,6 +91,21 @@ END \\\$\\\$;\""
 psql_super -c "\"ALTER ROLE $OWNER_ROLE WITH PASSWORD '$OWNER_PASSWORD';\"" > /dev/null
 psql_super -c "\"ALTER ROLE $APP_ROLE WITH PASSWORD '$APP_PASSWORD';\"" > /dev/null
 
+# A limpeza entre testes (`dropTenant`, packages/agent/tests/helpers/harness.ts)
+# suspende os triggers de imutabilidade por sessão com `session_replication_role`
+# — é o único jeito de apagar um tenant de teste sem afrouxar o guard que
+# protege o razão confirmado, e sem o lock de tabela que o `DISABLE TRIGGER`
+# tomaria. O dono do schema não é superuser de propósito, então recebe a
+# permissão explicitamente.
+#
+# `GRANT ... ON PARAMETER` existe a partir do PostgreSQL 15; em servidor mais
+# antigo a limpeza exige que `DATABASE_ADMIN_URL` aponte para um superusuário.
+psql_super -c "\"DO \\\$\\\$ BEGIN
+  IF current_setting('server_version_num')::int >= 150000 THEN
+    EXECUTE 'GRANT SET ON PARAMETER session_replication_role TO $OWNER_ROLE';
+  END IF;
+END \\\$\\\$;\""
+
 # 3. Banco -------------------------------------------------------------------
 if [ "${1:-}" = "--reset" ]; then
   echo "Apagando o banco $DB_NAME…"

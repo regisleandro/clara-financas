@@ -12,7 +12,8 @@
     "start": "eve start",
     "info": "eve info",
     "check-types": "tsc --noEmit",
-    "test": "node --import tsx --env-file=.env --test tests/*.test.ts tests/**/*.test.ts"
+    "test": "node --import tsx --env-file-if-exists=.env --test tests/*.test.ts tests/**/*.test.ts",
+    "test:behavior": "node --import tsx --test tests/behavior-monitor.e2e.test.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.20",

@@ -11,10 +11,10 @@ import {
 import { displayArtifactValue } from "@/lib/money";
 
 /**
- * Painel lateral de artefato.
+ * Painel lateral de Detalhes.
  *
- * No protótipo o artefato NÃO fica dentro da conversa — ele abre à direita,
- * fixo, e a conversa continua ao lado. A diferença não é estética: o artefato
+ * No protótipo Detalhes NÃO fica dentro da conversa — abre à direita, fixo, e
+ * a conversa continua ao lado. A diferença não é estética: o conteúdo
  * é consultado enquanto se decide, então precisa estar visível ao mesmo tempo
  * que a pergunta e a resposta. Embutido no fluxo, ele rola para fora da tela
  * exatamente quando é mais necessário.
@@ -35,7 +35,7 @@ export type ArtifactData = {
 };
 
 /**
- * O conteúdo do artefato, sem a moldura.
+ * O conteúdo de Detalhes, sem a moldura.
  *
  * Separado do `<aside>` de propósito: a mesma composição é fixada à direita na
  * web e aberta como modal em tela cheia no celular. A moldura é escolhida por
@@ -52,7 +52,7 @@ export function ArtifactPanelInner({
     <Artifact className="h-full rounded-none border-0 bg-transparent">
         <ArtifactHeader className="min-w-0 items-start gap-3 border-0 px-7 pb-5 pt-7">
           <div className="min-w-0 flex-1">
-            <p className="clara-eyebrow">Artefato</p>
+            <p className="clara-eyebrow">Detalhes</p>
             <ArtifactTitle className="clara-display-sm mt-1.5 break-words text-foreground [overflow-wrap:anywhere]">
               {data.title}
             </ArtifactTitle>

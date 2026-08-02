@@ -19,7 +19,17 @@ export const CONFIDENCE = ["alta", "media", "baixa"] as const;
 export type Confidence = (typeof CONFIDENCE)[number];
 
 /** Natureza da linha, para leitura humana. O sinal do valor é que manda. */
-export const ENTRY_KINDS = ["purchase", "payment", "refund", "fee", "adjustment"] as const;
+export const ENTRY_KINDS = [
+  "purchase",
+  "payment",
+  "refund",
+  "fee",
+  "adjustment",
+  "income",
+  "transfer",
+  "card_payment",
+  "cash_withdrawal",
+] as const;
 export type EntryKind = (typeof ENTRY_KINDS)[number];
 
 export const InstallmentSchema = z.object({
@@ -59,6 +69,9 @@ export type Transaction = z.infer<typeof TransactionSchema>;
  */
 export const ProposedBatchSchema = z.object({
   documentId: z.string().min(1),
+  documentKind: z
+    .enum(["unknown", "credit_card_invoice", "bank_statement", "invoice_nfe"])
+    .default("credit_card_invoice"),
   issuer: z.string().nullable().default(null),
   periodStart: z.string().nullable().default(null),
   periodEnd: z.string().nullable().default(null),
@@ -81,6 +94,8 @@ export const ProposedBatchSchema = z.object({
     })
     .nullable()
     .default(null),
+  openingBalance: z.number().int().nullable().default(null),
+  closingBalance: z.number().int().nullable().default(null),
   transactions: z.array(TransactionSchema),
 });
 export type ProposedBatch = z.infer<typeof ProposedBatchSchema>;
@@ -104,6 +119,21 @@ export type ChecksumReport = {
   result: ChecksumResult;
   /** Só presente quando `result` é `mismatch`. */
   likelyCause?: ChecksumCause;
+  /**
+   * A folga aplicada, quando a causa provável foi arredondamento.
+   *
+   * "Arredondamento" era um veredito MUDO: a diferença sumia sem culpado e sem
+   * dizer por quê. E a folga cresce com o número de itens — numa fatura de 48
+   * lançamentos ela chega a 24 centavos —, então um erro de leitura pequeno o
+   * bastante era absorvido e anunciado como se não existisse.
+   *
+   * A heurística continua: numa fatura real de 48 linhas a diferença de 1
+   * centavo veio mesmo do IOF, que o emissor arredonda uma vez sobre o total
+   * enquanto nós somamos parcelas já arredondadas. Apontar um culpado ali
+   * inventaria precisão. O que muda é o silêncio — a folga passa a ser dita, e
+   * quem lê pode discordar dela.
+   */
+  tolerance?: { cents: number; itemCount: number };
   /**
    * Onde a diferença está, quando o documento declara subtotais e um deles não
    * fecha. É a diferença entre "a conta não bate" e "a conta não bate no IOF".

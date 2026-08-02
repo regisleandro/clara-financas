@@ -102,3 +102,36 @@ export function artifactKey(context: {
   if (context.hasPresented) parts.push(`view:${context.turnId}`);
   return parts.length === 0 ? null : parts.join("|");
 }
+
+/**
+ * A coluna abre sozinha por um artefato NOVO — nunca por um que já estava lá.
+ *
+ * Abrir uma conversa antiga escancarava o painel antes de qualquer pergunta: os
+ * eventos retomados do storage já contêm os `present_*` daquela conversa, então
+ * a chave nascia preenchida e o efeito disparava na montagem. A pessoa clicava
+ * numa conversa para RELER o que foi conversado e recebia meia tela ocupada por
+ * um painel que ela não pediu — e no desktop ele ainda empurrava a conversa
+ * para uma coluna estreita.
+ *
+ * A regra passa a comparar com o que existia quando esta conversa foi aberta
+ * (`mountKey`). Igual significa "é o artefato que já estava aqui": o painel fica
+ * fechado e continua a um clique de distância pelo link da resposta. Diferente
+ * significa que a Clara acabou de produzir algo, e aí abrir é o que a pessoa
+ * espera.
+ *
+ * `mountKey` é `undefined` enquanto a primeira renderização não terminou; nesse
+ * instante ainda não há com o que comparar, e não abrir é a escolha segura.
+ */
+export function shouldAutoOpen(context: {
+  /** A chave do artefato corrente. */
+  openKey: string | null;
+  /** A chave observada quando a conversa foi montada. */
+  mountKey: string | null | undefined;
+  /** Falso no celular, onde o artefato é uma modal em tela cheia. */
+  autoOpen: boolean;
+}): boolean {
+  if (!context.autoOpen) return false;
+  if (context.openKey === null) return false;
+  if (context.mountKey === undefined) return false;
+  return context.openKey !== context.mountKey;
+}

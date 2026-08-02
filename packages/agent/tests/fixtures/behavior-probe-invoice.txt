@@ -1,0 +1,8 @@
+FATURA SINTÉTICA CLARA PROBE
+Emissor: Clara Probe
+Período: 01/07/2098 a 31/07/2098
+Vencimento: 10/08/2098
+Total da fatura: R$ 12,34
+
+LANÇAMENTOS
+01/07/2098 MERCADO TESTE R$ 12,34

@@ -6,8 +6,9 @@ import { batches, documents, transactions } from "@clara-financas/db/schema/ledg
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import {
   formatCents,
-  formatInvoiceLabel,
+  formatDocumentLabel,
   type ChecksumReport,
+  type StatementBalanceReport,
 } from "@clara-financas/ledger";
 import { and, count, eq } from "drizzle-orm";
 import { defineTool } from "eve/tools";
@@ -18,7 +19,7 @@ import { requireTenantCaller } from "../lib/tenant";
 
 export default defineTool({
   description:
-    "Prepares the canonical registration proposal for one draft invoice. Call immediately before commit_batch, then pass the returned proposalId to commit_batch. This freezes the invoice revision, checksum and number of entries shown in the approval.",
+    "Prepares the canonical registration proposal for one draft financial document. Call immediately before commit_batch, then pass the returned proposalId to commit_batch. This freezes the document revision, verification and number of entries shown in the approval.",
   inputSchema: z.object({ batchId: z.string().min(1) }),
   async execute(input, ctx) {
     const { tenantId, userId } = requireTenantCaller(ctx);
@@ -32,18 +33,21 @@ export default defineTool({
             updatedAt: batches.updatedAt,
             checksumReport: batches.checksumReport,
             issuer: documents.issuer,
+            documentKind: documents.kind,
             periodEnd: batches.periodEnd,
             dueDate: batches.dueDate,
+            openingBalance: batches.openingBalance,
+            closingBalance: batches.closingBalance,
           })
           .from(batches)
           .innerJoin(documents, eq(documents.id, batches.documentId))
           .where(and(eq(batches.id, input.batchId), eq(batches.tenantId, tenantId)))
           .limit(1);
         if (found === undefined) {
-          return notFound("lote_nao_encontrado", `Nenhuma fatura com o id ${input.batchId}.`);
+          return notFound("lote_nao_encontrado", `Nenhum documento com o id ${input.batchId}.`);
         }
         if (found.status !== "proposed") {
-          return refused("lote_ja_decidido", "Esta fatura já foi decidida.");
+          return refused("lote_ja_decidido", "Este documento já foi decidido.");
         }
 
         const countRows = await tx
@@ -57,18 +61,32 @@ export default defineTool({
             ),
           );
         const transactionCount = countRows[0]?.value ?? 0;
-        const checksum = found.checksumReport as ChecksumReport | null;
+        const verification = found.checksumReport as (ChecksumReport | StatementBalanceReport) | null;
+        const statementBalance =
+          verification !== null && "kind" in verification && verification.kind === "statement_balance"
+            ? verification
+            : null;
+        const checksum = statementBalance === null ? (verification as ChecksumReport | null) : null;
         const proposalId = `act_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
         const expiresAt = new Date(Date.now() + 30 * 60_000);
-        const invoiceLabel = formatInvoiceLabel(found);
+        const invoiceLabel = formatDocumentLabel(found);
         const payload = {
           transactionCount,
-          checksumResult: checksum?.result ?? null,
+          checksumResult:
+            statementBalance?.result === "match"
+              ? "match"
+              : statementBalance?.result === "mismatch"
+                ? "mismatch"
+                : checksum?.result ?? null,
           declaredTotalCents: checksum?.declaredTotal ?? null,
           extractedTotalCents: checksum?.extractedTotal ?? null,
           differenceCents: checksum?.difference ?? null,
           issuer: found.issuer,
+          documentKind: found.documentKind,
           invoiceLabel,
+          openingBalanceCents: found.openingBalance,
+          closingBalanceCents: found.closingBalance,
+          statementBalance,
         };
         await tx.insert(financialActionProposals).values({
           id: proposalId,
@@ -89,14 +107,23 @@ export default defineTool({
           entityRevision: found.updatedAt.toISOString(),
           expiresAt: expiresAt.toISOString(),
           issuer: found.issuer,
+          documentKind: found.documentKind,
           invoiceLabel,
+          openingBalanceCents: found.openingBalance,
+          closingBalanceCents: found.closingBalance,
           transactionCount,
-          checksumResult: checksum?.result ?? null,
+          checksumResult:
+            statementBalance?.result === "match"
+              ? "match"
+              : statementBalance?.result === "mismatch"
+                ? "mismatch"
+                : checksum?.result ?? null,
           declaredTotalCents: checksum?.declaredTotal ?? null,
           extractedTotalCents: checksum?.extractedTotal ?? null,
           extractedTotalFormatted:
             checksum === null ? null : formatCents(checksum.extractedTotal),
           differenceCents: checksum?.difference ?? null,
+          ...(statementBalance === null ? {} : { statementBalance }),
           next: "Call commit_batch with this proposalId. Do not ask for a prose confirmation.",
         };
       },

@@ -1,0 +1,68 @@
+# Valida delegação e contratos contra o agente RODANDO, com o modelo real.
+#
+# Este workflow já existia atrás de `if: vars.AGENT_BEHAVIOR_MONITOR_ENABLED
+# == 'true'`, uma variável que ninguém ligou — e um monitor desligado é
+# indistinguível de um monitor verde: os runs apareciam como "success" sem ter
+# executado nada. O gate saiu. No lugar dele há uma conferência explícita de
+# pré-condições, o mesmo idioma do `db-migrate.yml`: se a configuração não
+# está lá, o job FALHA dizendo o que falta, em vez de passar sem medir.
+#
+# Custo: chama o modelo de verdade (BEHAVIOR_EVAL_RUNS=3 por cenário). Se
+# ficar caro, mude o cron para semanal — mas não volte a escondê-lo atrás de
+# uma flag desligada.
+name: agent-behavior-monitor
+
+on:
+  schedule:
+    - cron: "23 10 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: agent-behavior-monitor
+  cancel-in-progress: false
+
+jobs:
+  live-behavior:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # Falhar AQUI, com diagnóstico, e não com o probe pulando todos os
+      # cenários e reportando verde. `test:behavior` só roda de verdade com
+      # BEHAVIOR_MONITOR=1 E um agente alcançável em AGENT_BASE_URL.
+      - name: Conferir a configuração do monitor
+        env:
+          AGENT_BASE_URL: ${{ vars.AGENT_BASE_URL }}
+          PROBE_TENANT: ${{ vars.PROBE_TENANT }}
+          AGENT_TOKEN_SECRET: ${{ secrets.AGENT_TOKEN_SECRET }}
+        run: |
+          missing=""
+          [ -n "${AGENT_BASE_URL}" ]     || missing="${missing} vars.AGENT_BASE_URL"
+          [ -n "${PROBE_TENANT}" ]       || missing="${missing} vars.PROBE_TENANT"
+          [ -n "${AGENT_TOKEN_SECRET}" ] || missing="${missing} secrets.AGENT_TOKEN_SECRET"
+          if [ -n "${missing}" ]; then
+            echo "::error::O monitor de comportamento não está configurado; falta:${missing}. Defina em Settings → Environments → production. Enquanto isso, nenhum cenário de comportamento é verificado contra o modelo real."
+            exit 1
+          fi
+          echo "Configuração presente."
+
+      - run: pnpm install --frozen-lockfile --filter @clara-financas/agent...
+      - name: Validar delegação e contratos com o modelo real
+        env:
+          BEHAVIOR_MONITOR: "1"
+          BEHAVIOR_EVAL_RUNS: "3"
+          AGENT_BASE_URL: ${{ vars.AGENT_BASE_URL }}
+          APP_ORIGIN: ${{ vars.APP_ORIGIN }}
+          PROBE_TENANT: ${{ vars.PROBE_TENANT }}
+          PROBE_USER: ${{ vars.PROBE_USER }}
+          PROBE_TRANSACTION_ID: ${{ vars.PROBE_TRANSACTION_ID }}
+          PROBE_DOCUMENT_ID: ${{ vars.PROBE_DOCUMENT_ID }}
+          AGENT_TOKEN_SECRET: ${{ secrets.AGENT_TOKEN_SECRET }}
+        run: pnpm --filter @clara-financas/agent test:behavior

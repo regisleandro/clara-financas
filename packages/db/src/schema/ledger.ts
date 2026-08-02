@@ -23,7 +23,12 @@ import {
  * conviver com um gate de aprovação binário.
  */
 
-export const DOCUMENT_KINDS = ["credit_card_invoice", "bank_statement", "invoice_nfe"] as const;
+export const DOCUMENT_KINDS = [
+  "unknown",
+  "credit_card_invoice",
+  "bank_statement",
+  "invoice_nfe",
+] as const;
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
 
 export const documents = pgTable(
@@ -76,6 +81,8 @@ export const batches = pgTable(
       fees: number | null;
       purchases: number | null;
     } | null>(),
+    openingBalance: bigint("opening_balance", { mode: "number" }),
+    closingBalance: bigint("closing_balance", { mode: "number" }),
     extractedTotal: bigint("extracted_total", { mode: "number" }),
     checksumResult: text("checksum_result", { enum: CHECKSUM_RESULTS }),
     checksumReport: jsonb("checksum_report"),
@@ -100,7 +107,17 @@ export const TRANSACTION_STATUS = ["proposed", "confirmed", "adjustment"] as con
 export type TransactionStatus = (typeof TRANSACTION_STATUS)[number];
 
 export const CONFIDENCE = ["alta", "media", "baixa"] as const;
-export const ENTRY_KINDS = ["purchase", "payment", "refund", "fee", "adjustment"] as const;
+export const ENTRY_KINDS = [
+  "purchase",
+  "payment",
+  "refund",
+  "fee",
+  "adjustment",
+  "income",
+  "transfer",
+  "card_payment",
+  "cash_withdrawal",
+] as const;
 
 export const transactions = pgTable(
   "transactions",
