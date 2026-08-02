@@ -612,14 +612,19 @@ function ChatSession({
                 </PromptInputSubmit>
               </InputGroupAddon>
             </PromptInput>
+            {/* Só o que a pessoa não consegue ver sozinha.
+                "A Clara está trabalhando" saiu daqui: o botão já virou "parar",
+                a trilha de execução já mostra o passo e a resposta já está
+                aparecendo — dizer de novo, embaixo, é legenda de algo que a
+                tela inteira estava contando. O que sobra é o que não tem outra
+                fonte: quantas mensagens esperam a vez, e que uma decisão em
+                aberto não bloqueia continuar escrevendo. */}
             <p className="mt-2 text-center text-xs text-muted-foreground">
               {queuedMessages.length > 0
                 ? `${queuedMessages.length} mensagem${queuedMessages.length === 1 ? "" : "ns"} aguardando a Clara terminar.`
                 : pending !== null && answered === null
                   ? "Você pode continuar escrevendo; a decisão ficará aguardando no cartão acima."
-                  : busy
-                    ? "A Clara está trabalhando; você pode escrever a próxima pergunta."
-                    : ""}
+                  : ""}
             </p>
         </div>
       </div>
