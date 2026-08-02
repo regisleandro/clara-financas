@@ -19,19 +19,35 @@
 -- agregação passou a agrupar por slug. Esta migração fecha o terceiro lado: o
 -- que já está gravado.
 --
+-- O `NO FORCE` temporário é o mesmo de 0014, pela mesma razão — e ela quase
+-- passou batida aqui. As duas tabelas têm FORCE ROW LEVEL SECURITY, e a
+-- política exige `app.tenant_id`, que migração nenhuma define. Rodando como o
+-- dono sem BYPASSRLS — que é o papel de produção, `clara_owner`, criado
+-- NOSUPERUSER NOBYPASSRLS de propósito — o UPDATE não enxergaria linha nenhuma
+-- e a migração terminaria VERDE tendo alterado zero. É o pior desfecho
+-- possível: não falha e não corrige. No desenvolvimento local o
+-- `DATABASE_ADMIN_URL` costuma ser superuser, que ignora RLS, então rodar aqui
+-- não revelaria nada.
+--
+-- Papéis de aplicação não são o dono, então continuam sob RLS o tempo todo: a
+-- janela do NO FORCE não afrouxa o isolamento de ninguém em runtime.
+--
 -- É segura de rodar mais de uma vez: só toca linha cujo valor começa com
 -- `categories/`, e depois de rodar não existe mais nenhuma.
-update "transactions"
-set "category" = substring("category" from 12)
-where "category" like 'categories/%';
+ALTER TABLE "transactions" NO FORCE ROW LEVEL SECURITY;--> statement-breakpoint
+UPDATE "transactions"
+SET "category" = substring("category" from 12)
+WHERE "category" LIKE 'categories/%';--> statement-breakpoint
+ALTER TABLE "transactions" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 
 -- O mesmo valor viaja na trilha de auditoria da reclassificação, e ela é lida
 -- para mostrar "de X para Y" — sem isto a trilha continuaria dizendo
 -- `categories/entertainment` numa tela que agora diz "Entretenimento".
-update "transaction_reclassifications"
-set "previous_value" = substring("previous_value" from 12)
-where "previous_value" like 'categories/%';
-
-update "transaction_reclassifications"
-set "new_value" = substring("new_value" from 12)
-where "new_value" like 'categories/%';
+ALTER TABLE "transaction_reclassifications" NO FORCE ROW LEVEL SECURITY;--> statement-breakpoint
+UPDATE "transaction_reclassifications"
+SET "previous_value" = substring("previous_value" from 12)
+WHERE "previous_value" LIKE 'categories/%';--> statement-breakpoint
+UPDATE "transaction_reclassifications"
+SET "new_value" = substring("new_value" from 12)
+WHERE "new_value" LIKE 'categories/%';--> statement-breakpoint
+ALTER TABLE "transaction_reclassifications" FORCE ROW LEVEL SECURITY;
