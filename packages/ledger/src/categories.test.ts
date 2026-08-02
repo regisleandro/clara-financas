@@ -37,4 +37,29 @@ describe("categoryLabel", () => {
   it("mapa vazio não quebra — devolve o identificador", () => {
     assert.equal(categoryLabel({}, "dining"), "dining");
   });
+
+  /**
+   * Relatado em produção: *"apareceram vários itens com
+   * categories/entertainment - sem tradução"*.
+   *
+   * O razão guarda o slug, mas `propose_batch` aceitava a categoria sem
+   * normalizar e o modelo mandava o CAMINHO do conceito — que é o que ele tem
+   * fresco em mãos depois de ler ou criar a categoria. O docblock de
+   * `categorySlug` já dizia que as duas formas são aceitas; a busca só olhava
+   * uma delas.
+   */
+  it("aceita o CAMINHO do conceito, não só o slug", () => {
+    assert.equal(categoryLabel(labels, "categories/dining"), "Restaurantes");
+    assert.equal(categoryLabel(labels, "categories/groceries"), "Mercado");
+  });
+
+  it("caminho de categoria inexistente cai para o próprio caminho, sem inventar", () => {
+    assert.equal(categoryLabel(labels, "categories/petrochemicals"), "categories/petrochemicals");
+  });
+
+  it("um mapa com a chave no formato caminho continua funcionando", () => {
+    // Defesa contra a ordem inversa: se algum dia um carregador guardar a
+    // chave sem normalizar, a busca não pode deixar de encontrar.
+    assert.equal(categoryLabel({ "categories/pets": "Pets" }, "categories/pets"), "Pets");
+  });
 });

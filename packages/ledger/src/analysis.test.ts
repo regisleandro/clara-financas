@@ -82,6 +82,33 @@ describe("aggregateByCategory", () => {
     assert.ok(semCategoria, "o que falta categorizar é o que precisa de atenção");
     assert.equal(semCategoria.value, 1000);
   });
+
+  /**
+   * O defeito relatado em produção era descrito como um problema de rótulo —
+   * "categories/entertainment sem tradução" —, mas o estrago maior estava
+   * aqui: agrupando pela string crua, a mesma categoria virava DUAS fatias,
+   * cada uma com parte do dinheiro. A pessoa via Entretenimento duas vezes na
+   * composição, com valores que não eram nem um nem outro.
+   *
+   * Vale mesmo com a escrita já normalizada e os dados migrados: quem agrega
+   * não pode depender de os dois estarem certos, porque é aqui que a
+   * divergência vira número errado na tela.
+   */
+  it("caminho e slug da MESMA categoria são uma linha só, não duas", () => {
+    const result = aggregateByCategory([
+      tx({ amount: 1000, category: "entertainment" }),
+      tx({ amount: 500, category: "categories/entertainment" }),
+      tx({ amount: 300, category: "dining" }),
+    ]);
+
+    const entretenimento = result.filter(
+      (bucket) => bucket.category !== null && bucket.category.includes("entertainment"),
+    );
+    assert.equal(entretenimento.length, 1, "a mesma categoria não pode virar duas fatias");
+    assert.equal(entretenimento[0]?.category, "entertainment", "a chave é o slug");
+    assert.equal(entretenimento[0]?.value, 1500);
+    assert.equal(entretenimento[0]?.transactionIds.length, 2);
+  });
 });
 
 describe("comparePeriods", () => {

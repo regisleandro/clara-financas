@@ -42,8 +42,27 @@ export function IssuerMonthView({ view }: { view: IssuerMonthView }) {
     <>
       <div className="clara-card overflow-x-auto p-7">
         <table className="w-full min-w-[520px] border-collapse text-left">
-          <caption className="sr-only">
-            Gasto confirmado por operadora e por mês da compra
+          {/*
+           * A legenda é VISÍVEL, e não `sr-only`.
+           *
+           * A regra mais importante desta tabela — o mês é o da COMPRA, não o
+           * do fechamento da fatura — estava escrita aqui e escondida de quem
+           * enxerga. O efeito foi previsível: a coluna "Jul de 26" é lida como
+           * "a fatura de julho", os números não batem com o total daquela
+           * fatura, e a conclusão é que a tela está errada.
+           *
+           * Ela não está: uma fatura fechada em julho cobre compras de junho e
+           * julho, então ela aparece REPARTIDA entre as duas colunas. Somar a
+           * linha inteira reencontra o total das faturas daquela operadora.
+           * Classificar tudo no mês do fechamento é que seria mentira — poria
+           * em julho um dinheiro que saiu em junho e deixaria junho vazio.
+           *
+           * Uma frase na tela é mais barata que a desconfiança que ela evita.
+           */}
+          <caption className="clara-small mb-5 text-left text-[var(--clara-slate)]">
+            Gasto confirmado pelo mês da <strong className="font-semibold">compra</strong>, não pelo
+            fechamento da fatura — uma fatura que fecha em julho cobre compras de junho e julho, e
+            aparece repartida entre as duas colunas.
           </caption>
           <thead>
             <tr className="clara-small">

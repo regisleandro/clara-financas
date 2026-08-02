@@ -1,3 +1,4 @@
+import { categorySlug } from "./categories";
 import { countsTowardDeclaredTotal } from "./checksum";
 import { issuerKey } from "./issuer";
 import { clusterMerchantKeys, merchantKey } from "./merchant";
@@ -77,7 +78,18 @@ export function aggregateByCategory(transactions: Transaction[]): CategoryTotal[
   >();
 
   for (const transaction of counted) {
-    const key = transaction.category ?? null;
+    /*
+     * A chave é o SLUG, não a string crua.
+     *
+     * `entertainment` e `categories/entertainment` são a mesma categoria escrita
+     * de duas formas — e agrupar pela string crua fazia delas duas linhas no
+     * painel, cada uma com parte do dinheiro. É o mesmo defeito de identidade
+     * que `issuerKey` resolve para operadora: a grafia não pode decidir o que é
+     * uma coisa só. A escrita passou a normalizar (ver `recategorize_transactions`)
+     * e os dados antigos foram migrados, mas quem AGREGA não pode depender
+     * disso — é aqui que a divergência viraria número errado na tela.
+     */
+    const key = transaction.category === null ? null : categorySlug(transaction.category);
     const bucket = buckets.get(key) ?? {
       value: 0,
       ids: [],

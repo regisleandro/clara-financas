@@ -169,6 +169,13 @@
       "when": 1785695382448,
       "tag": "0023_huge_sabra",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1785695382449,
+      "tag": "0024_normalize_category_slug",
+      "breakpoints": true
     }
   ]
 }
