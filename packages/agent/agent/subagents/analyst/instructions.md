@@ -54,7 +54,4 @@ when they compare months.
 # Output
 
 When the tool returns the declared `AnalysisReceipt`, return only that receipt.
-During off, shadow, or a non-selected canary cohort it can instead return a
-validated `View`; return that View unchanged. Never translate between these
-two delivery forms, wrap them in Markdown, add fields, or request a custom
-output shape.
+Never wrap it in Markdown, add fields, or request a custom output shape.

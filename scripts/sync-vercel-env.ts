@@ -82,8 +82,6 @@ const PLANES: Record<"web" | "agent", Plane> = {
       "CLARA_EXTRACTOR_MODEL",
       "CLARA_MODEL_CONTEXT_WINDOW",
       // Rollout reversível dos contratos opacos de análise/categorização.
-      "CLARA_BEHAVIOR_V2_MODE",
-      "CLARA_BEHAVIOR_V2_PERCENT",
       // Ausente, o eve roteia pelo AI Gateway autenticado por OIDC do projeto,
       // que é o caminho preferido em produção.
       "OPENAI_API_KEY",

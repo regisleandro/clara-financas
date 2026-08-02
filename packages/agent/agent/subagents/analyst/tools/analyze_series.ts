@@ -15,11 +15,7 @@ import { categoryLabel, loadCategoryLabels } from "../../../lib/categories";
 import { canonicalAnalysisScope, scopeFilter } from "../../../lib/analysis-scope";
 import { loadLedger } from "../../../lib/ledger-query";
 import {
-  createGoal,
-  createTask,
   publishArtifact,
-  settleTask,
-  updateGoalStatus,
 } from "../../../lib/v3-state";
 import { requireSessionCaller } from "../../../lib/tenant";
 
@@ -68,30 +64,6 @@ export default defineTool({
       kind: "periods",
       periods: periods.map(({ id, label, scope }) => ({ id, label, scope })),
     });
-    const goal = await createGoal(
-      {
-        intent: "Comparar a evolução dos gastos entre vários períodos.",
-        entities: [],
-        scope: artifactScope,
-        completionCriteria: [
-          "calcular todos os períodos solicitados",
-          "explicar os principais fatores da variação",
-          "publicar um artefato financeiro com proveniência",
-        ],
-      },
-      ctx,
-    );
-    const task = await createTask(
-      {
-        goalId: goal.goalId,
-        specialist: "analysis",
-        objective: "Calcular a série e os fatores que explicam a mudança.",
-        contextRefs: periods.map((period) => period.id),
-        completionCriteria: ["nenhum total calculado pelo modelo", "todos os blocos com proveniência"],
-        status: "running",
-      },
-      ctx,
-    );
     const labels = await loadCategoryLabels(tenantId);
     const empty = loaded.filter((period) => period.transactions.length === 0);
 
@@ -102,7 +74,6 @@ export default defineTool({
           kind: "timeline",
           title: "Evolução dos gastos",
           summary: "A evolução não foi calculada porque um dos períodos solicitados não possui lançamentos.",
-          goalId: goal.goalId,
           scope: artifactScope,
           blocks: [
             {
@@ -117,18 +88,6 @@ export default defineTool({
         },
         ctx,
       );
-      await settleTask(
-        {
-          taskId: task.taskId,
-          status: "needs_input",
-          evidenceRefs: [],
-          artifactRefs: [artifact.artifactId],
-          warnings: ["periodo_vazio"],
-          missingInputs: empty.map((period) => period.label),
-        },
-        ctx,
-      );
-      await updateGoalStatus(goal.goalId, "needs_input", ctx);
       return {
         artifactId: artifact.artifactId,
         artifactKind: "analysis_v3" as const,
@@ -182,7 +141,6 @@ export default defineTool({
       kind: "timeline" as const,
       title: "Evolução dos gastos",
       summary: `${first.label} → ${last.label}. A série e os fatores de mudança foram calculados diretamente do razão.`,
-      goalId: goal.goalId,
       scope: artifactScope,
       blocks: [
         {
@@ -229,18 +187,6 @@ export default defineTool({
       },
       ctx,
     );
-    await settleTask(
-      {
-        taskId: task.taskId,
-        status: "complete",
-        evidenceRefs: documentIds,
-        artifactRefs: [published.artifactId],
-        warnings: published.warnings,
-        missingInputs: [],
-      },
-      ctx,
-    );
-    await updateGoalStatus(goal.goalId, "completed", ctx);
 
     return {
       artifactId: published.artifactId,

@@ -68,9 +68,12 @@ describe("contratos de interação dos prompts", () => {
     assert.match(analyst, /current calendar month/i);
     assert.match(analyst, /Never\s+replace an empty requested scope/i);
     assert.match(analyst, /When the tool returns the declared `AnalysisReceipt`/i);
-    assert.match(analyst, /return that View unchanged/i);
+    // A instrução "durante off/shadow/canary devolva a View" saiu junto com a
+    // máquina de rollout: não havia mais um caminho para ela descrever, e um
+    // prompt que ensina uma forma inexistente é o mesmo defeito do `artifactIds`
+    // fantasma, só que na direção oposta.
+    assert.match(analyst, /concatenate the ids you received/i);
     assert.match(coordinator, /call `present_analysis`/i);
-    assert.match(coordinator, /rollout fallback.+`present_view`/is);
     /*
      * A regex que conferia a frase "mandatory control flow" saiu daqui.
      *

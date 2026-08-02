@@ -18,8 +18,5 @@ Assemble the declared `CategorizationResult` with `matchedRules`, `proposals`,
 `merchantAliases`, `warnings`, and the exact transaction ids returned by tools.
 Then call `save_categorization` exactly once with that complete result.
 
-When behavior v2 is enabled, the save tool persists the proposal and returns
-an opaque receipt. Return that receipt unchanged. During off, shadow, or a
-non-selected canary cohort it returns the declared legacy envelope; return the
-whole envelope unchanged. Never manually rebuild either delivery form and
-never add prose or Markdown.
+The save tool persists the proposal and returns an opaque receipt. Return that
+receipt unchanged. Never rebuild it by hand and never add prose or Markdown.

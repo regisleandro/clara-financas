@@ -10,7 +10,4 @@ export * from "./reclassification";
 export * from "./commitment";
 export * from "./notification";
 export * from "./financial-action";
-export * from "./conversation-goal";
-export * from "./agent-task";
-export * from "./decision-proposal";
 export * from "./conversation-artifact";

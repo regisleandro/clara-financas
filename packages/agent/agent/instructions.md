@@ -99,23 +99,17 @@ devolvido pela tool: ele distingue fatura, extrato e nota fiscal (por exemplo,
 - **Analyst** — spending totals, composition, period comparison, recurrences
   and multi-period evolution. It may call more than one deterministic tool to
   complete one goal; the coordinator must not split a single user question
-  into disconnected turns. With behavior v2 it persists the complete
-  validated panels and returns `artifactIds`; call `present_analysis`
-  immediately with all of them. For an evolution of three or more
-  periods, use `analyze_series` and then call `present_financial_artifact` with
-  its receipt. During rollout fallback it returns a
-  validated `View`; pass that exact View once to `present_view`. Do not call
-  `read_batch`, repeat the query, or reconstruct numbers. Invoice
-  reconciliation is NOT analyst work: `read_batch` and the deterministic
-  workflow below own it.
+  into disconnected turns. It persists the complete validated panels and
+  returns `artifactIds`; call `present_analysis` immediately with all of them.
+  For an evolution of three or more periods, use `analyze_series` and then call
+  `present_financial_artifact` with its receipt. Do not call `read_batch`,
+  repeat the query, or reconstruct numbers. Invoice reconciliation is NOT
+  analyst work: `read_batch` and the deterministic workflow below own it.
 - **Bookkeeper (categorizer)** — categorisation coherence: triage of
   uncategorised spending, which learned rules would reach it, and merchant
-  spellings that are the same company. With behavior v2 it returns an
-  `artifactId`: call `present_categorization` and apply selected proposals with
-  `recategorize_transactions` using the artifact reference. During rollout
-  fallback it returns `categorization_legacy`: present its exact `view` once
-  and use its exact transaction ids only if the person approves a direct
-  `recategorize_transactions` card.
+  spellings that are the same company. It returns an `artifactId`: call
+  `present_categorization` and apply selected proposals with
+  `recategorize_transactions` using the artifact reference.
 
 `nextAction` in a subagent receipt is mandatory control flow, not a suggestion:
 call that exact tool immediately, passing the receipt's `artifactIds` — every

@@ -116,7 +116,7 @@ Para alterar apenas parâmetros operacionais sem copiar banco, origem e
 segredos do arquivo local, restrinja o envio à allowlist desejada:
 
 ```bash
-pnpm env:agent:production --only=CLARA_MODEL,CLARA_MODEL_CONTEXT_WINDOW,CLARA_BEHAVIOR_V2_MODE
+pnpm env:agent:production --only=CLARA_MODEL,CLARA_MODEL_CONTEXT_WINDOW
 ```
 
 O envio é por **allowlist**: só sai o que está declarado por plano em
@@ -155,8 +155,6 @@ os deriva de `VERCEL_URL`.
 | `CLARA_MODEL` | sem default no código, por decisão |
 | `CLARA_MODEL_CONTEXT_WINDOW` | o eve exige para compilar a compactação |
 | `CLARA_EXTRACTOR_MODEL` | opcional: modelo do extrator; ausente ou `gpt-5.6-terra` mantém o orçamento do Terra |
-| `CLARA_BEHAVIOR_V2_MODE` | `off`, `shadow`, `canary` ou `on`; produção usa `off` quando ausente |
-| `CLARA_BEHAVIOR_V2_PERCENT` | percentual estável de tenants (0–100) no modo `canary` |
 | `OPENAI_API_KEY` | opcional — ver abaixo |
 | `TENANT_ID` | vazio no modo pool; preenchido no silo |
 
@@ -165,7 +163,6 @@ Configuração-alvo desta versão em produção:
 ```dotenv
 CLARA_MODEL=gpt-5.6-terra
 CLARA_MODEL_CONTEXT_WINDOW=200000
-CLARA_BEHAVIOR_V2_MODE=on
 ```
 
 O Terra suporta uma janela maior, mas `200000` é um limite operacional

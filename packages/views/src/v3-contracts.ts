@@ -12,31 +12,6 @@ import { AnalysisScopeSchema, ComparableAnalysisScopeSchema } from "./analysis-s
 
 const cents = z.number().int();
 
-export const EntityReferenceSchema = z.object({
-  type: z.enum(["document", "invoice", "statement", "merchant", "category", "transaction"]),
-  id: z.string().min(1),
-  label: z.string().min(1),
-});
-
-export const GoalStatusSchema = z.enum([
-  "active",
-  "waiting",
-  "completed",
-  "needs_input",
-  "blocked",
-  "cancelled",
-]);
-
-export const TaskStatusSchema = z.enum([
-  "queued",
-  "running",
-  "complete",
-  "needs_input",
-  "blocked",
-  "failed",
-  "cancelled",
-]);
-
 export const FinancialScopeV3Schema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("invoices"),
@@ -63,33 +38,6 @@ export const FinancialScopeV3Schema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-export const GoalSpecSchema = z.object({
-  goalId: z.string().min(1),
-  intent: z.string().min(1),
-  entities: z.array(EntityReferenceSchema).default([]),
-  scope: FinancialScopeV3Schema.optional(),
-  completionCriteria: z.array(z.string().min(1)).min(1),
-  status: GoalStatusSchema,
-});
-
-export const SpecialistTaskSchema = z.object({
-  taskId: z.string().min(1),
-  goalId: z.string().min(1),
-  specialist: z.enum(["documents", "reconciliation", "categorization", "analysis"]),
-  objective: z.string().min(1),
-  contextRefs: z.array(z.string().min(1)).default([]),
-  completionCriteria: z.array(z.string().min(1)).min(1),
-  status: TaskStatusSchema,
-});
-
-export const TaskResultSchema = z.object({
-  taskId: z.string().min(1),
-  status: z.enum(["complete", "needs_input", "blocked"]),
-  evidenceRefs: z.array(z.string().min(1)).default([]),
-  artifactRefs: z.array(z.string().min(1)).default([]),
-  warnings: z.array(z.string()).default([]),
-  missingInputs: z.array(z.string()).default([]),
-});
 
 const ProvenanceSchema = z.object({
   transactionIds: z.array(z.string().min(1)).default([]),
@@ -181,32 +129,6 @@ export const FinancialArtifactSchema = z.object({
   createdAt: z.string().datetime(),
 });
 
-export const DecisionProposalSchema = z.object({
-  decisionId: z.string().min(1),
-  operation: z.string().min(1),
-  title: z.string().min(1),
-  consequence: z.string().min(1),
-  targetRef: z.string().min(1),
-  entityRevision: z.string().datetime(),
-  status: z.enum(["pending", "approved", "denied", "expired", "applied", "failed"]),
-  expiresAt: z.string().datetime(),
-});
-
-export const ExplicitDecisionAuthorizationSchema = z.object({
-  decisionId: z.string().min(1),
-  action: z.enum(["approve", "deny"]),
-  token: z.string().min(1),
-  expiresAt: z.string().datetime(),
-});
-
-export type EntityReference = z.infer<typeof EntityReferenceSchema>;
-export type GoalSpec = z.infer<typeof GoalSpecSchema>;
-export type SpecialistTask = z.infer<typeof SpecialistTaskSchema>;
-export type TaskResult = z.infer<typeof TaskResultSchema>;
 export type FinancialScopeV3 = z.infer<typeof FinancialScopeV3Schema>;
 export type FinancialArtifact = z.infer<typeof FinancialArtifactSchema>;
 export type FinancialArtifactBlock = z.infer<typeof FinancialArtifactBlockSchema>;
-export type DecisionProposal = z.infer<typeof DecisionProposalSchema>;
-export type ExplicitDecisionAuthorization = z.infer<
-  typeof ExplicitDecisionAuthorizationSchema
->;

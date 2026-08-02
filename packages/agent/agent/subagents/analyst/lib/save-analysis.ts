@@ -7,7 +7,6 @@ import { sumOf, witnessOf, type Countable } from "@clara-financas/ledger";
 
 import { canonicalAnalysisRequestScope } from "../../../lib/analysis-scope";
 import { persistArtifact } from "../../../lib/artifacts";
-import { behaviorV2Enabled, behaviorV2PersistsShadow } from "../../../lib/behavior-v2";
 import { refused } from "../../../lib/errors";
 import { requireTenantCaller } from "../../../lib/tenant";
 
@@ -36,7 +35,9 @@ export async function saveAnalysis(
   witness: readonly Countable[],
   warnings: string[] = [],
 ) {
-  const { tenantId } = requireTenantCaller(ctx);
+  // Falha fechada se não houver inquilino autenticado: `persistArtifact`
+  // depende disso, e é melhor recusar aqui que gravar sem dono.
+  requireTenantCaller(ctx);
   const view = ViewSchema.parse(viewInput);
 
   const divergences = auditView(view, witness);
@@ -62,12 +63,7 @@ export async function saveAnalysis(
     warnings,
   });
 
-  // O mesmo binário suporta rollback imediato: em off o contrato legado é
-  // preservado; shadow/canary ainda gravam o artefato para comparação offline.
-  if (!behaviorV2PersistsShadow()) return view;
-
   const { artifactId } = await persistArtifact("analysis", artifact, ctx);
-  if (!behaviorV2Enabled(tenantId)) return view;
 
   // Uma chamada produz um painel; o analista junta os recibos de várias
   // chamadas numa entrega só quando a pergunta pede mais de um. A lista existe
