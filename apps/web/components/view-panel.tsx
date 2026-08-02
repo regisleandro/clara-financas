@@ -30,6 +30,7 @@ const EYEBROW: Record<View["kind"], string> = {
   metric: "Resposta",
   breakdown: "Composição",
   comparison: "Comparação",
+  series: "Evolução",
   recurrences: "Recorrências",
   transactions: "Razão",
   commitments: "Agenda",

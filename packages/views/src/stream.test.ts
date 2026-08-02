@@ -2,10 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
-  findMessageFinancialArtifacts,
   findMessageView,
   findMessageViews,
-  findPresentedFinancialArtifacts,
   findPresentedView,
   findPresentedViews,
 } from "./stream";
@@ -272,53 +270,5 @@ describe("findMessageView", () => {
       ["Um", "Dois"],
     );
     assert.equal(findMessageView(message)?.title, "Dois");
-  });
-});
-
-const financialArtifact = (title: string) => ({
-  artifactId: "art_series1",
-  version: 1,
-  kind: "timeline",
-  title,
-  summary: "Evolução calculada pelo razão.",
-  blocks: [
-    {
-      type: "series",
-      title: "Gasto por período",
-      points: [
-        { periodId: "a", label: "Maio", amount: 100, provenance: { transactionIds: ["t1"], documentIds: ["d1"] } },
-        { periodId: "b", label: "Junho", amount: 120, provenance: { transactionIds: ["t2"], documentIds: ["d2"] } },
-      ],
-    },
-  ],
-  warnings: [],
-  createdAt: "2026-08-01T12:00:00.000Z",
-});
-
-describe("findPresentedFinancialArtifacts", () => {
-  it("lê o artefato rico da apresentação e limpa no turno seguinte", () => {
-    const artifact = financialArtifact("Evolução");
-    const events = [
-      { type: "turn.started", data: { turnId: "t1" } },
-      { type: "actions.requested", data: { actions: [{ callId: "a1", toolName: "present_financial_artifact", input: { artifactId: "art_series1" } }] } },
-      { type: "action.result", data: { status: "completed", result: { callId: "a1", toolName: "present_financial_artifact", output: { presented: "timeline", artifact } } } },
-    ];
-    assert.equal(findPresentedFinancialArtifacts(events)[0]?.title, "Evolução");
-    assert.equal(findPresentedFinancialArtifacts([...events, { type: "turn.started", data: {} }]).length, 0);
-  });
-
-  it("associa o artefato rico à mensagem", () => {
-    const found = findMessageFinancialArtifacts({
-      parts: [
-        {
-          type: "dynamic-tool",
-          toolName: "present_financial_artifact",
-          input: { artifactId: "art_series1" },
-          output: { presented: "timeline", artifact: financialArtifact("Evolução") },
-        },
-      ],
-    });
-    assert.equal(found.length, 1);
-    assert.equal(found[0]?.blocks[0]?.type, "series");
   });
 });

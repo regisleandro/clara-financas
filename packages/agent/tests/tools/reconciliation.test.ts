@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 
 import aggregateByCategory from "../../agent/subagents/analyst/tools/aggregate_by_category";
+import analyzeSeries from "../../agent/subagents/analyst/tools/analyze_series";
 import comparePeriods from "../../agent/subagents/analyst/tools/compare_periods";
 import detectRecurrences from "../../agent/subagents/analyst/tools/detect_recurrences";
 import queryLedger from "../../agent/subagents/analyst/tools/query_ledger";
@@ -473,5 +474,102 @@ describe("o guard recusa painel que não fecha", () => {
 
     assert.equal(resultado.error, undefined);
     assert.ok(resultado.artifactIds?.length);
+  });
+});
+
+describe("a série vem pela via única, em dois painéis", () => {
+  /*
+   * `analyze_series` publicava numa família de artefato PARALELA
+   * (`conversation_artifacts`, `present_financial_artifact`, painel próprio no
+   * frontend) por duas razões: não havia forma de série no vocabulário de
+   * painéis, e o recibo só cabia um id.
+   *
+   * As duas caíram — `ViewSchema` ganhou `series`, o recibo virou plural — e
+   * com isso a ferramenta entrou no MESMO guard de reconciliação que todas as
+   * outras, do qual ela era a única que escapava.
+   */
+  let tenant: string;
+  let contexto: never;
+  const faturas: string[] = [];
+
+  before(async () => {
+    tenant = await freshTenant();
+    contexto = ctxFor(tenant);
+    for (const [mes, valor] of [
+      ["2026-04-10", 8_000],
+      ["2026-05-10", 10_000],
+      ["2026-06-10", 15_000],
+    ] as const) {
+      const documentId = await seedDocument(tenant, { filename: `${mes}.pdf`, issuer: "Nubank" });
+      const proposta = (await proposeBatch.execute(
+        {
+          documentId,
+          issuer: "Nubank",
+          declaredTotal: valor,
+          transactions: [
+            {
+              date: mes,
+              originalDescription: "Mercado",
+              merchant: "Mercado",
+              amount: valor,
+              kind: "purchase" as const,
+              category: "groceries",
+              extractionConfidence: "alta" as const,
+            },
+          ],
+        },
+        contexto,
+      )) as { batchId: string };
+      await commitBatch.execute({ batchId: proposta.batchId }, contexto);
+      faturas.push(proposta.batchId);
+    }
+  });
+
+  after(async () => {
+    await dropTenant(tenant);
+    await closeConnections();
+  });
+
+  it("três períodos devolvem a evolução e o que a explica", async () => {
+    const recibo = (await analyzeSeries.execute(
+      {
+        periods: faturas.map((batchId, indice) => ({
+          id: `p${indice}`,
+          label: `Fatura ${indice + 1}`,
+          scope: { kind: "invoice" as const, batchId },
+        })),
+      },
+      contexto,
+    )) as { artifactIds: string[]; viewKinds: string[] };
+
+    assert.deepEqual(recibo.viewKinds, ["series", "comparison"]);
+
+    const paineis = await viewsFromReceipt(recibo, contexto);
+    assert.equal(paineis.length, 2);
+
+    const serie = paineis[0] as { rows: Array<{ amount: number }>; metric: { amount: number } };
+    assert.equal(serie.rows.length, 3, "um ponto por período");
+    // A variação é do primeiro ao último: 15.000 − 8.000.
+    assert.equal(serie.metric.amount, 7_000);
+
+    // Os fatores somam a variação total — invariante que o guard verifica.
+    const fatores = paineis[1] as { rows: Array<{ amount: number }>; metric: { amount: number } };
+    const soma = fatores.rows.reduce((total, linha) => total + linha.amount, 0);
+    assert.equal(soma, fatores.metric.amount);
+  });
+
+  it("período vazio não vira base de comparação", async () => {
+    const recibo = (await analyzeSeries.execute(
+      {
+        periods: [
+          { id: "vazio", label: "Março", scope: { kind: "calendar_month" as const, month: "2026-03" } },
+          { id: "cheio", label: "Junho", scope: { kind: "invoice" as const, batchId: faturas[2]! } },
+        ],
+      },
+      contexto,
+    )) as { artifactIds: string[] };
+
+    const [painel] = await viewsFromReceipt(recibo, contexto);
+    assert.match((painel as { summary: string }).summary, /não foi calculada/i);
   });
 });

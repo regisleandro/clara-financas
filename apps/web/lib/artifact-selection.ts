@@ -1,4 +1,4 @@
-import type { FinancialArtifact, View } from "@clara-financas/views";
+import type { View } from "@clara-financas/views";
 
 /**
  * Qual artefato a coluna mostra, e quando ela reabre.
@@ -16,7 +16,6 @@ export type ArtifactSelection =
 
 export type MessageArtifact =
   | { kind: "view"; views: View[] }
-  | { kind: "financial"; artifacts: FinancialArtifact[] }
   /** A conferência aberta, com os botões da decisão. */
   | { kind: "batch" }
   /** A conferência de uma fatura já decidida: mesmo conteúdo, sem ação. */
@@ -24,8 +23,7 @@ export type MessageArtifact =
 
 export type Resolved<TBatch> =
   | { kind: "batch"; data: TBatch }
-  | { kind: "view"; views: View[] }
-  | { kind: "financial"; artifacts: FinancialArtifact[] };
+  | { kind: "view"; views: View[] };
 
 /**
  * O artefato "mais recente" quando há uma fatura esperando decisão.
@@ -45,7 +43,6 @@ export function resolveActive<TBatch>(
   context: {
     batch: TBatch | null;
     presented: readonly View[];
-    financial?: readonly FinancialArtifact[];
     messageArtifacts: ReadonlyMap<string, MessageArtifact>;
     /** O lote que o cartão de conferência representa, quando há um. */
     batchId?: string | null;
@@ -57,14 +54,10 @@ export function resolveActive<TBatch>(
     context.batch !== null ? { kind: "batch", data: context.batch } : null;
   const presented: Resolved<TBatch> | null =
     context.presented.length > 0 ? { kind: "view", views: [...context.presented] } : null;
-  const financialArtifacts = context.financial ?? [];
-  const financial: Resolved<TBatch> | null =
-    financialArtifacts.length > 0 ? { kind: "financial", artifacts: [...financialArtifacts] } : null;
 
   if (selection.type === "batch") return batch;
 
   if (selection.type === "latest") {
-    if (financial !== null) return financial;
     if (batch === null) return presented;
     if (presented === null) return batch;
     // Só a conferência DAQUELA fatura foi desenhada: o cartão ganha, porque
@@ -81,7 +74,6 @@ export function resolveActive<TBatch>(
   const found = context.messageArtifacts.get(selection.id);
   if (found === undefined) return null;
   if (found.kind === "view") return { kind: "view", views: found.views };
-  if (found.kind === "financial") return { kind: "financial", artifacts: found.artifacts };
   if (found.kind === "batchHistory") return { kind: "batch", data: found.data as TBatch };
   return batch;
 }
@@ -101,7 +93,6 @@ export function artifactKey(context: {
   batchId: string | null;
   batchTitle: string | null;
   hasPresented: boolean;
-  hasFinancial?: boolean;
   turnId: string;
 }): string | null {
   const parts: string[] = [];
@@ -109,7 +100,6 @@ export function artifactKey(context: {
     parts.push(`batch:${context.batchId ?? context.batchTitle}`);
   }
   if (context.hasPresented) parts.push(`view:${context.turnId}`);
-  if (context.hasFinancial) parts.push(`financial:${context.turnId}`);
   return parts.length === 0 ? null : parts.join("|");
 }
 

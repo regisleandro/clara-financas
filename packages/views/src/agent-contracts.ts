@@ -64,6 +64,7 @@ export const AnalysisReceiptSchema = z.object({
         "metric",
         "breakdown",
         "comparison",
+        "series",
         "recurrences",
         "transactions",
         "commitments",
@@ -75,32 +76,17 @@ export const AnalysisReceiptSchema = z.object({
   warnings: z.array(z.string()).default([]),
 });
 
-/**
- * Recibo do caminho v3. Diferente do painel legado, ele aponta para um
- * artefato durável que pode conter série, composição e reconciliação na mesma
- * resposta. O coordenador não recebe números: só a referência e o próximo
- * passo de apresentação.
- */
-export const FinancialAnalysisReceiptSchema = z.object({
-  artifactId: z.string().regex(/^art_[a-z0-9]+$/),
-  artifactKind: z.literal("analysis_v3"),
-  nextAction: z.literal("present_financial_artifact"),
-  blockCount: z.number().int().positive(),
-  warnings: z.array(z.string()).default([]),
-});
 
 /**
- * As duas formas de entrega do analista.
+ * A entrega do analista — UMA forma.
  *
- * Eram três. O ramo `ViewSchema` só era alcançável com a máquina de rollout em
- * `off`/`shadow`/`canary`, que saiu — o `.env` e o `docs/deploy.md` já
- * declaravam `on` como alvo de produção, então aquele caminho era inalcançável
- * havia tempo. Uma forma a menos é uma bifurcação a menos para o modelo errar.
+ * Eram três: o recibo, um recibo v3 para a família paralela de artefatos, e a
+ * `View` crua do fallback de rollout. O fallback saiu com a flag; a família v3
+ * saiu quando a série passou a caber no vocabulário de painéis. Cada forma a
+ * menos é uma bifurcação a menos para o modelo errar — e eram justamente essas
+ * bifurcações que o prompt gastava parágrafos ensinando a distinguir.
  */
-export const AnalysisDeliverySchema = z.union([
-  AnalysisReceiptSchema,
-  FinancialAnalysisReceiptSchema,
-]);
+export const AnalysisDeliverySchema = AnalysisReceiptSchema;
 
 /**
  * O que o extrator DEVOLVE ao coordenador: um recibo, não a fatura inteira.

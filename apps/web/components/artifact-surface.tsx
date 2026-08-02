@@ -1,12 +1,10 @@
 "use client";
 
 import type { View } from "@clara-financas/views";
-import type { FinancialArtifact } from "@clara-financas/views";
 import { PanelRightOpen } from "lucide-react";
 
 import { ArtifactPanelInner, type ArtifactData } from "@/components/artifact-panel";
 import { ViewPanelInner } from "@/components/view-panel";
-import { FinancialArtifactPanelInner } from "@/components/financial-artifact-panel";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 /**
@@ -22,7 +20,6 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 export type ActiveArtifact =
   | { kind: "batch"; data: ArtifactData }
-  | { kind: "financial"; artifacts: FinancialArtifact[] }
   /**
    * Os painéis do turno, em ordem. É lista, e não um só, porque a Clara pode
    * desenhar mais de um na mesma resposta — a proposta e o resultado, a
@@ -40,19 +37,13 @@ function ArtifactBody({
 }) {
   return active.kind === "batch" ? (
     <ArtifactPanelInner data={active.data} onClose={onClose} />
-  ) : active.kind === "financial" ? (
-    <FinancialArtifactPanelInner artifacts={active.artifacts} onClose={onClose} />
   ) : (
     <ViewPanelInner views={active.views} onClose={onClose} />
   );
 }
 
 const titleOf = (active: ActiveArtifact) =>
-  active.kind === "batch"
-    ? active.data.title
-    : active.kind === "financial"
-      ? (active.artifacts.at(-1)?.title ?? "Detalhes financeiros")
-      : (active.views.at(-1)?.title ?? "Detalhes");
+  active.kind === "batch" ? active.data.title : (active.views.at(-1)?.title ?? "Detalhes");
 
 /** Coluna fixa à direita — só a partir de `lg`. */
 export function ArtifactAside({

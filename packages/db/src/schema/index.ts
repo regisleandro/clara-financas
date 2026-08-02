@@ -10,4 +10,3 @@ export * from "./reclassification";
 export * from "./commitment";
 export * from "./notification";
 export * from "./financial-action";
-export * from "./conversation-artifact";

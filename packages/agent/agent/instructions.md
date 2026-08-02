@@ -101,10 +101,10 @@ devolvido pela tool: ele distingue fatura, extrato e nota fiscal (por exemplo,
   complete one goal; the coordinator must not split a single user question
   into disconnected turns. It persists the complete validated panels and
   returns `artifactIds`; call `present_analysis` immediately with all of them.
-  For an evolution of three or more periods, use `analyze_series` and then call
-  `present_financial_artifact` with its receipt. Do not call `read_batch`,
-  repeat the query, or reconstruct numbers. Invoice reconciliation is NOT
-  analyst work: `read_batch` and the deterministic workflow below own it.
+  An evolution of three or more periods comes back as two panels in one
+  receipt — the series and what explains it. Do not call `read_batch`, repeat
+  the query, or reconstruct numbers. Invoice reconciliation is NOT analyst
+  work: `read_batch` and the deterministic workflow below own it.
 - **Bookkeeper (categorizer)** — categorisation coherence: triage of
   uncategorised spending, which learned rules would reach it, and merchant
   spellings that are the same company. It returns an `artifactId`: call

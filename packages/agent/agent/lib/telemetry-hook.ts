@@ -46,7 +46,6 @@ const BEHAVIOR_CRITICAL_TOOLS = new Set([
   "save_extraction",
   "present_analysis",
   "analyze_series",
-  "present_financial_artifact",
   "present_categorization",
   "recategorize_transactions",
 ]);

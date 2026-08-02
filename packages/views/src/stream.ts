@@ -1,9 +1,4 @@
-import {
-  FinancialArtifactSchema,
-  parseViewResult,
-  type FinancialArtifact,
-  type View,
-} from "./index";
+import { parseViewResult, type View } from "./index";
 
 /**
  * Lê do stream do eve o painel que a Clara mandou desenhar.
@@ -28,7 +23,6 @@ const asString = (value: unknown): string | undefined =>
 export const PRESENT_VIEW_TOOL = "present_view";
 export const PRESENT_ANALYSIS_TOOL = "present_analysis";
 export const PRESENT_CATEGORIZATION_TOOL = "present_categorization";
-export const PRESENT_FINANCIAL_ARTIFACT_TOOL = "present_financial_artifact";
 
 const OUTPUT_VIEW_TOOLS = new Set([PRESENT_ANALYSIS_TOOL, PRESENT_CATEGORIZATION_TOOL]);
 
@@ -199,68 +193,5 @@ export function findMessageViews(message: unknown, onInvalid?: OnInvalidView): V
   return views;
 }
 
-export type OnInvalidFinancialArtifact = (issues: string[], callId?: string) => void;
 
-/** Artefatos ricos apresentados no turno corrente. */
-export function findPresentedFinancialArtifacts(
-  events: readonly unknown[],
-  onInvalid?: OnInvalidFinancialArtifact,
-): FinancialArtifact[] {
-  let artifacts: FinancialArtifact[] = [];
-  const requested = new Map<string, string>();
 
-  for (const raw of events) {
-    const event = asRecord(raw);
-    const type = asString(event?.type);
-    if (type === "turn.started") {
-      artifacts = [];
-      requested.clear();
-      continue;
-    }
-    if (type === "actions.requested") {
-      const actions = asRecord(event?.data)?.actions;
-      if (!Array.isArray(actions)) continue;
-      for (const rawAction of actions) {
-        const action = asRecord(rawAction);
-        const callId = asString(action?.callId);
-        const toolName = asString(action?.toolName);
-        if (callId !== undefined && toolName === PRESENT_FINANCIAL_ARTIFACT_TOOL) {
-          requested.set(callId, toolName);
-        }
-      }
-      continue;
-    }
-    if (type !== "action.result") continue;
-    const data = asRecord(event?.data);
-    const result = asRecord(data?.result);
-    const callId = asString(result?.callId);
-    if (callId === undefined || !requested.has(callId)) continue;
-    const output = asRecord(result?.output);
-    requested.delete(callId);
-    if (data?.status === "failed" || output?.error !== undefined) continue;
-    const parsed = FinancialArtifactSchema.safeParse(output?.artifact);
-    if (parsed.success) artifacts.push(parsed.data);
-    else onInvalid?.(parsed.error.issues.map((issue) => `${issue.path.join(".") || "(raiz)"}: ${issue.message}`), callId);
-  }
-  return artifacts;
-}
-
-/** Artefatos ricos associados a uma mensagem já materializada. */
-export function findMessageFinancialArtifacts(
-  message: unknown,
-  onInvalid?: OnInvalidFinancialArtifact,
-): FinancialArtifact[] {
-  const parts = asRecord(message)?.parts;
-  if (!Array.isArray(parts)) return [];
-  const artifacts: FinancialArtifact[] = [];
-  for (const raw of parts) {
-    const part = asRecord(raw);
-    if (part?.type !== "dynamic-tool" || part.toolName !== PRESENT_FINANCIAL_ARTIFACT_TOOL) continue;
-    const output = asRecord(part.output);
-    if (output === undefined || output.error !== undefined || output.artifact === undefined) continue;
-    const parsed = FinancialArtifactSchema.safeParse(output.artifact);
-    if (parsed.success) artifacts.push(parsed.data);
-    else onInvalid?.(parsed.error.issues.map((issue) => `${issue.path.join(".") || "(raiz)"}: ${issue.message}`), asString(part.toolCallId));
-  }
-  return artifacts;
-}

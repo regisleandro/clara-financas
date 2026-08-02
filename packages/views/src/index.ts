@@ -140,6 +140,31 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
     rows: z.array(RowSchema).min(1).max(30),
   }),
 
+  /**
+   * A evolução ao longo de vários períodos — três faturas, seis meses.
+   *
+   * Existia como uma família de artefato PARALELA (`conversation_artifacts`,
+   * `present_financial_artifact`, um painel próprio no frontend), porque o
+   * vocabulário aqui não tinha uma forma para série. O custo era duas famílias
+   * de artefato incompatíveis para o mesmo trabalho, e um coordenador que
+   * precisava aprender a rotear entre elas.
+   *
+   * As linhas são os PONTOS da série, um por período, cada um somando os
+   * próprios lançamentos. O destaque é a variação entre o primeiro e o último —
+   * uma diferença, não a soma dos pontos. Por isso esta forma não é aditiva: os
+   * pontos são momentos no tempo, não partes de um todo.
+   *
+   * Os fatores que explicam a mudança vão num painel `comparison` separado, o
+   * que é possível desde que o recibo do analista passou a carregar vários
+   * artefatos.
+   */
+  z.object({
+    ...base,
+    kind: z.literal("series"),
+    metric: MetricSchema.optional(),
+    rows: z.array(RowSchema).min(2).max(12),
+  }),
+
   /** Assinaturas e cobranças que repetem, com custo anual. */
   z.object({
     ...base,
@@ -363,4 +388,3 @@ export function viewTransactionIds(view: View): string[] {
   return [...ids];
 }
 
-export * from "./v3-contracts";

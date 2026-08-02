@@ -342,8 +342,6 @@ function ChatSession({
               const artifactLabel =
                 linked?.kind === "batch" || linked?.kind === "batchHistory"
                   ? "Ver conferência da fatura"
-                  : linked?.kind === "financial"
-                    ? "Ver detalhes financeiros"
                   : linked?.kind === "view" && linked.views.at(-1)?.kind === "proposal"
                     ? "Ver proposta"
                     : linked?.kind === "view" && linked.views.at(-1)?.kind === "checksum"

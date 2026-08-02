@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 
-import { FinancialArtifactSchema, ViewSchema } from "@clara-financas/views";
+import { ViewSchema } from "@clara-financas/views";
 import { SignJWT } from "jose";
 
 /**
@@ -222,21 +222,19 @@ describe("monitor live dos comportamentos ponta a ponta", () => {
       (trace) => {
         assert.equal(trace.failure, undefined);
         assert.ok(trace.tools.includes("analyst"), `sem delegação: ${trace.tools.join(", ")}`);
+        // A série passou a viajar pela via ÚNICA: dois painéis (a evolução e os
+        // fatores) num recibo só, apresentados por `present_analysis`.
         assert.ok(
-          trace.tools.includes("present_financial_artifact"),
-          `sem artefato rico: ${trace.tools.join(", ")}`,
+          trace.tools.includes("present_analysis"),
+          `sem apresentação: ${trace.tools.join(", ")}`,
         );
         const output = trace.results.find(
-          (result) => result.toolName === "present_financial_artifact",
+          (result) => result.toolName === "present_analysis",
         )?.output;
-        const parsed = FinancialArtifactSchema.safeParse(output?.artifact);
-        assert.ok(parsed.success, "artefato de série inválido");
-        assert.equal(parsed.data.kind, "timeline");
-        assert.equal(parsed.data.scope.kind, "periods");
-        assert.equal(parsed.data.scope.periods.length, 3);
-        const series = parsed.data.blocks.find((block) => block.type === "series");
-        assert.ok(series, "artefato não contém a série dos períodos");
-        assert.equal(series.points.length, 3, "a série foi reduzida a menos de três pontos");
+        const views = (output?.views ?? []) as Array<{ kind: string; rows?: unknown[] }>;
+        const serie = views.find((view) => view.kind === "series");
+        assert.ok(serie, "a resposta não contém o painel de série");
+        assert.equal(serie.rows?.length, 3, "a série foi reduzida a menos de três pontos");
       },
     );
   });
