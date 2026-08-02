@@ -129,10 +129,6 @@ export async function seedDocument(
  * escrita à mão torna a omissão visível numa revisão.
  */
 const TENANT_TABLES = [
-  "conversation_artifacts",
-  "decision_proposals",
-  "agent_tasks",
-  "conversation_goals",
   "agent_sessions",
   "agent_artifacts",
   "transaction_reclassifications",
