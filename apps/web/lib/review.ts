@@ -142,10 +142,12 @@ export async function loadReviewQueue(tenantId: string): Promise<ReviewQueue> {
           issuer,
           filename,
           periodLabel: periodLabel(batch.periodStart, batch.periodEnd),
-          difference:
-            batch.declaredTotal === null || batch.extractedTotal === null
-              ? null
-              : batch.extractedTotal - batch.declaredTotal,
+          // A diferença vem da PROVA que rodou, não de uma subtração feita
+          // aqui. Fatura e extrato são conferidos por caminhos distintos —
+          // total declarado num caso, saldo inicial contra saldo final no
+          // outro — e recalcular por fora produzia, para extrato, um número
+          // plausível que não respondia à pergunta que a tela faz.
+          difference: reportedDifference(batch.checksumReport, batch),
           declaredTotal: batch.declaredTotal,
           extractedTotal: batch.extractedTotal,
         })),
@@ -180,4 +182,32 @@ function periodLabel(start: string | null, end: string | null): string | null {
   if (start === null) return `até ${format(end!)}`;
   if (end === null) return `de ${format(start)}`;
   return `${format(start)} – ${format(end)}`;
+}
+
+/**
+ * A diferença que a conferência REGISTROU, e não uma recalculada aqui.
+ *
+ * Fatura e extrato são provados por caminhos distintos: a fatura compara a soma
+ * do gasto com o total declarado; o extrato compara saldo inicial menos as
+ * movimentações com o saldo final. As duas gravam `difference` no relatório, e
+ * é esse número que explica o `mismatch` que colocou o lote nesta fila.
+ *
+ * Subtrair `extractedTotal − declaredTotal` funcionava para fatura e mentia
+ * para extrato — um número plausível, derivado de dados reais, e que não
+ * respondia à pergunta que a tela faz.
+ *
+ * A queda para o cálculo antigo existe para lotes gravados antes do relatório
+ * passar a ser persistido.
+ */
+function reportedDifference(
+  report: unknown,
+  batch: { declaredTotal: number | null; extractedTotal: number | null },
+): number | null {
+  if (typeof report === "object" && report !== null && "difference" in report) {
+    const { difference } = report as { difference: unknown };
+    if (typeof difference === "number") return difference;
+    if (difference === null) return null;
+  }
+  if (batch.declaredTotal === null || batch.extractedTotal === null) return null;
+  return batch.extractedTotal - batch.declaredTotal;
 }

@@ -1,5 +1,7 @@
 import {
   aggregateByCategory,
+  countsTowardDeclaredTotal,
+  sumOf,
   categoryLabel,
   comparePeriods,
   issuerKey,
@@ -20,7 +22,12 @@ export type Overview = {
   issuers: Array<{ value: string; label: string }>;
   periodLabel: string;
   originLabel: string;
+  /** Compras do período — a mesma escala do painel da conversa. */
   total: number;
+  /** Estornos e descontos, sempre negativos. Zero quando não houve. */
+  credits: number;
+  /** `total + credits`. O que sobra depois dos estornos. */
+  net: number;
   comparison: {
     deltaPercent: number;
     delta: number;
@@ -102,6 +109,8 @@ export function buildOverview(
       periodLabel: "—",
       originLabel,
       total: 0,
+      credits: 0,
+      net: 0,
       comparison: null,
       spark: [],
       rangeLabels: { from: "", to: "" },
@@ -117,8 +126,24 @@ export function buildOverview(
   const current = originRows.filter((row) => row.date.startsWith(selectedMonth));
   const previousMonth = shiftMonth(selectedMonth, -1);
   const previous = originRows.filter((row) => row.date.startsWith(previousMonth));
-  const total = totalSpend(current).value;
-  const previousTotal = totalSpend(previous).value;
+  /*
+   * Compras, e não o líquido — a mesma escala que a conversa usa.
+   *
+   * O destaque desta tela era `totalSpend` (líquido, com estornos abatidos)
+   * enquanto o painel da conversa passou a mostrar compras. A mesma pergunta
+   * respondida por dois números, dependendo de onde a pessoa olhava. E a
+   * curva ao lado do número já acumulava só positivos, então nem com ele mesmo
+   * o destaque batia.
+   *
+   * Créditos e líquido não se perdem: vão nomeados, como no painel.
+   */
+  const compras = sumOf(current.filter((row) => countsTowardDeclaredTotal(row) && row.amount > 0));
+  const creditos = sumOf(current.filter((row) => countsTowardDeclaredTotal(row) && row.amount < 0));
+  const total = compras.value;
+  const liquido = totalSpend(current).value;
+  const previousTotal = sumOf(
+    previous.filter((row) => countsTowardDeclaredTotal(row) && row.amount > 0),
+  ).value;
   const currentDates = current.map((row) => row.date).sort();
 
   return {
@@ -129,6 +154,8 @@ export function buildOverview(
     periodLabel: longMonthLabel(selectedMonth),
     originLabel,
     total,
+    credits: creditos.value,
+    net: liquido,
     comparison:
       previousTotal === 0
         ? null
@@ -148,10 +175,12 @@ export function buildOverview(
             to: dayLabel(currentDates[currentDates.length - 1]!),
           },
     categories: aggregateByCategory(current)
+      .filter((bucket) => bucket.gross.value > 0)
       .slice(0, 6)
       .map((bucket) => ({
         label: categoryLabel(labels, bucket.category),
-        value: bucket.value,
+        // Compras, como o destaque acima e como as barras do painel.
+        value: bucket.gross.value,
         share: bucket.share,
         countLabel: `${bucket.count} ${
           bucket.count === 1 ? "lançamento" : "lançamentos"

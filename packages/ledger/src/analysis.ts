@@ -24,8 +24,22 @@ export type Provenance = {
 export type CategoryTotal = Provenance & {
   category: string | null;
   count: number;
-  /** Fração do total do período, 0–1. Só para exibição. */
+  /** Fração das COMPRAS do período, 0–1. Só para exibição. */
   share: number;
+  /**
+   * Compras da categoria — só o que é positivo.
+   *
+   * Existe porque "quanto gastei" tem duas respostas legítimas e elas não podem
+   * conviver na mesma escala sem dizer qual é qual: compras brutas e o líquido
+   * depois dos estornos. A tela e a conversa chegaram a mostrar uma cada,
+   * respondendo à mesma pergunta com números diferentes.
+   *
+   * A separação mora AQUI, e não em cada consumidor, porque duas cópias da
+   * mesma definição é exatamente como as duas voltam a divergir.
+   */
+  gross: Provenance;
+  /** Créditos da categoria — estornos e descontos, sempre negativos. */
+  credits: Provenance;
 };
 
 /**
@@ -57,16 +71,34 @@ export function totalSpend(transactions: Transaction[]): Provenance {
  */
 export function aggregateByCategory(transactions: Transaction[]): CategoryTotal[] {
   const counted = spendable(transactions);
-  const total = counted.reduce((sum, transaction) => sum + transaction.amount, 0);
-  const buckets = new Map<string | null, { value: number; ids: string[] }>();
+  const buckets = new Map<
+    string | null,
+    { value: number; ids: string[]; gross: Provenance; credits: Provenance }
+  >();
 
   for (const transaction of counted) {
     const key = transaction.category ?? null;
-    const bucket = buckets.get(key) ?? { value: 0, ids: [] };
+    const bucket = buckets.get(key) ?? {
+      value: 0,
+      ids: [],
+      gross: { value: 0, transactionIds: [] },
+      credits: { value: 0, transactionIds: [] },
+    };
     bucket.value += transaction.amount;
     bucket.ids.push(transaction.id);
+    // A proveniência acompanha CADA figura, não só o total: abrir a origem de
+    // "R$ 100,00 em compras" precisa listar as compras, não as compras mais os
+    // estornos que somam R$ 80,00.
+    const side = transaction.amount < 0 ? bucket.credits : bucket.gross;
+    side.value += transaction.amount;
+    side.transactionIds.push(transaction.id);
     buckets.set(key, bucket);
   }
+
+  // A base da fração é o que a BARRA representa — compras. Era o líquido, e
+  // com isso uma categoria com muito estorno desenhava barra curta ao lado de
+  // um valor alto.
+  const grossTotal = [...buckets.values()].reduce((sum, bucket) => sum + bucket.gross.value, 0);
 
   return [...buckets.entries()]
     .map(([category, bucket]) => ({
@@ -74,9 +106,11 @@ export function aggregateByCategory(transactions: Transaction[]): CategoryTotal[
       value: bucket.value,
       transactionIds: bucket.ids,
       count: bucket.ids.length,
-      share: total === 0 ? 0 : bucket.value / total,
+      share: grossTotal === 0 ? 0 : bucket.gross.value / grossTotal,
+      gross: bucket.gross,
+      credits: bucket.credits,
     }))
-    .sort((a, b) => b.value - a.value);
+    .sort((a, b) => b.gross.value - a.gross.value || b.value - a.value);
 }
 
 export type CategoryComparison = {

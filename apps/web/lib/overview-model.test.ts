@@ -79,3 +79,49 @@ describe("buildOverview", () => {
     assert.equal(overview.total, 20_000);
   });
 });
+
+describe("paridade com o painel da conversa", () => {
+  /*
+   * "Mesma pergunta, duas telas, dois números."
+   *
+   * O destaque desta tela era o gasto LÍQUIDO (estornos abatidos) enquanto o
+   * painel da conversa passou a mostrar COMPRAS. Perguntar "quanto gastei em
+   * junho" na conversa e olhar `/inicio` dava valores diferentes, ambos
+   * corretos pela sua própria definição e nenhum dos dois explicando o outro.
+   *
+   * A escala agora é a mesma nos dois lugares, e o que o líquido tinha de
+   * informação vai nomeado ao lado.
+   */
+  const comEstorno = [
+    row("2026-06-10", 10_000, "Nubank"),
+    row("2026-06-11", -2_000, "Nubank"),
+    row("2026-06-12", 5_000, "Itaú", "groceries"),
+  ];
+
+  it("o destaque são as compras, com créditos e líquido nomeados", () => {
+    const overview = buildOverview(comEstorno, labels, { month: "2026-06", issuer: ALL_ISSUERS });
+
+    assert.equal(overview.total, 15_000, "compras, como o painel");
+    assert.equal(overview.credits, -2_000);
+    assert.equal(overview.net, 13_000);
+    assert.equal(overview.total + overview.credits, overview.net);
+  });
+
+  it("as categorias somam o destaque", () => {
+    // A mesma invariante que o painel: somar a coluna tem de dar o número
+    // grande em cima dela.
+    const overview = buildOverview(comEstorno, labels, { month: "2026-06", issuer: ALL_ISSUERS });
+    const soma = overview.categories.reduce((total, category) => total + category.value, 0);
+
+    assert.equal(soma, overview.total);
+  });
+
+  it("a curva acumula a mesma coisa que o destaque", () => {
+    // A sparkline já acumulava só positivos sob um total líquido: a curva
+    // terminava em 100% de um número que não era o exibido.
+    const overview = buildOverview(comEstorno, labels, { month: "2026-06", issuer: ALL_ISSUERS });
+
+    assert.equal(overview.spark.at(-1), 100);
+    assert.equal(overview.total, 15_000, "e o 100% da curva é este total");
+  });
+});

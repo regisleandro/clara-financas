@@ -1,4 +1,4 @@
-import { formatCents, spendable, sumOf, type Countable } from "@clara-financas/ledger";
+import { aggregateByCategory, formatCents, spendable, sumOf } from "@clara-financas/ledger";
 import { AnalysisScopeSchema } from "@clara-financas/views/agent-contracts";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
@@ -80,21 +80,15 @@ export default defineTool({
     const creditTotal = sumOf(credits);
     const netTotal = sumOf(counted);
 
-    const buckets = new Map<string | null, { purchases: Countable[]; credits: Countable[] }>();
-    for (const transaction of counted) {
-      const key = transaction.category ?? null;
-      const bucket = buckets.get(key) ?? { purchases: [], credits: [] };
-      (transaction.amount < 0 ? bucket.credits : bucket.purchases).push(transaction);
-      buckets.set(key, bucket);
-    }
-
-    const porCategoria = [...buckets.entries()]
-      .map(([category, bucket]) => ({
-        label: categoryLabel(labels, category),
-        gross: sumOf(bucket.purchases),
-        credits: sumOf(bucket.credits),
-      }))
-      .sort((left, right) => right.gross.value - left.gross.value);
+    // A separação bruto/créditos vem do KERNEL (`aggregateByCategory`), a mesma
+    // que `/inicio` e `/transacoes` consomem. Repeti-la aqui era como a tela e
+    // a conversa voltariam a discordar sobre a mesma pergunta.
+    const porCategoria = aggregateByCategory(counted).map((bucket) => ({
+      label: categoryLabel(labels, bucket.category),
+      gross: bucket.gross,
+      credits: bucket.credits,
+      share: bucket.share,
+    }));
 
     /*
      * Barra é COMPRA. Uma categoria que no período só teve estorno não tem
@@ -121,7 +115,7 @@ export default defineTool({
           entry.credits.value === 0
             ? `Compras ${formatCents(entry.gross.value)}`
             : `Compras ${formatCents(entry.gross.value)} · créditos ${formatCents(entry.credits.value)}`,
-        ...(grossTotal.value > 0 ? { share: entry.gross.value / grossTotal.value } : {}),
+        ...(entry.share > 0 ? { share: entry.share } : {}),
         // A proveniência da LINHA acompanha o valor da linha: só as compras.
         // Antes ela carregava também os créditos daquela categoria, então abrir
         // a origem de "R$ 100,00" listava lançamentos que somavam R$ 80,00.
