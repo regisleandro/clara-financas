@@ -3,8 +3,11 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "@clara-financas/db";
 import { batches, documents, transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
+
+import { loadValidCategories } from "./category-scope";
 import {
   ProposedBatchSchema,
+  categorySlug,
   formatDocumentLabel,
   merchantKey,
   verifyChecksum,
@@ -101,6 +104,8 @@ export type ProposedBatchWriteResult =
       checksum: ChecksumReport;
       statementBalance?: StatementBalanceReport;
       duplicateSuspects?: { count: number; sample: DuplicateSuspect[] };
+      /** Categorias que o documento trouxe e a pessoa não tem. Ver o corpo. */
+      droppedCategories?: { categories: string[]; note: string; hint: string };
     };
 
 const id = (prefix: string) => `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
@@ -119,7 +124,7 @@ export async function writeProposedBatch(
         .from(documents)
         .where(and(eq(documents.id, input.documentId), eq(documents.tenantId, tenantId)))
         .limit(1);
-      return { document };
+      return { document, categorias: await loadValidCategories(tx, tenantId) };
     },
     db,
   );
@@ -130,6 +135,40 @@ export async function writeProposedBatch(
     });
   }
   const document = found.document;
+
+  /*
+   * Categoria que não existe não entra no razão. Vira `null`.
+   *
+   * O extrator já tinha a regra certa escrita — "you never invent a category;
+   * if none fits, leave it null, because an invented category looks resolved
+   * and contaminates every analysis built on it". Só que nada a impunha: o
+   * campo era um `z.string()` cru e o que viesse era gravado.
+   *
+   * O preço apareceu em produção como categoria em inglês na tela. `services`,
+   * `other` e `education` nunca foram criadas como conceito — foram inventadas
+   * na extração e escritas direto. Sem conceito não há `title` em português, e
+   * `categoryLabel` cai no próprio identificador, que é inglês. Pior que o
+   * nome: `aggregateByCategory` passa a somar uma categoria que a pessoa nunca
+   * aprovou, e a composição vira uma fatia que ninguém sabe de onde saiu.
+   *
+   * `null` é a resposta certa e já é a regra do produto — "entre uma categoria
+   * errada e nenhuma, deixe nenhuma". A linha aparece como "Sem categoria",
+   * entra na fila de revisão, e o guarda-livros propõe: é ali que uma categoria
+   * NASCE, pelo gate, com nome em português escolhido por quem gasta. Gravar a
+   * invenção pula justamente a etapa em que a pessoa decide.
+   *
+   * Recusar o lote inteiro seria pior: uma categoria estranha não invalida a
+   * leitura das outras quarenta linhas, e uma fatura recusada é uma fatura que
+   * não entra.
+   */
+  const inventadas = [
+    ...new Set(
+      input.transactions
+        .map((transaction) => transaction.category)
+        .filter((category): category is string => typeof category === "string" && category !== "")
+        .filter((category) => !found.categorias.has(categorySlug(category))),
+    ),
+  ].sort();
 
   const prepared = input.transactions.map((transaction) => ({
     ...transaction,
@@ -146,7 +185,12 @@ export async function writeProposedBatch(
     }),
     kind: transaction.kind ?? ("purchase" as const),
     installment: transaction.installment ?? null,
-    category: transaction.category ?? null,
+    category:
+      transaction.category === undefined || transaction.category === null
+        ? null
+        : found.categorias.has(categorySlug(transaction.category))
+          ? categorySlug(transaction.category)
+          : null,
     page: transaction.page ?? null,
     sourceDocument: document.id,
   }));
@@ -421,6 +465,25 @@ export async function writeProposedBatch(
           duplicateSuspects: {
             count: written.suspects.length,
             sample: written.suspects.slice(0, 10),
+          },
+        }
+      : {}),
+    /*
+     * O descarte é ANUNCIADO. Zerar em silêncio seria trocar um defeito
+     * visível (categoria estranha na tela) por um invisível (linhas que
+     * perderam categoria sem ninguém saber por quê).
+     *
+     * O `hint` aponta o caminho certo, que é o mesmo que o produto já
+     * oferece para categoria desconhecida em `recategorize_transactions`:
+     * propor a criação pelo gate, com nome em português, e recategorizar
+     * depois de aprovada.
+     */
+    ...(inventadas.length > 0
+      ? {
+          droppedCategories: {
+            categories: inventadas,
+            note: `${inventadas.length} categoria(s) que não existem para esta pessoa foram deixadas em branco: ${inventadas.join(", ")}. Os lançamentos entraram sem categoria.`,
+            hint: "Diga isso à pessoa e ofereça criar a categoria com save_concept (type \"Category\", conceptId \"categories/<slug>\", title em português) — depois de aprovada, recategorize. Nunca force numa categoria existente só para não ficar em branco.",
           },
         }
       : {}),

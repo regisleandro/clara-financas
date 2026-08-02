@@ -112,11 +112,21 @@ devolvido pela tool: ele distingue fatura, extrato e nota fiscal (por exemplo,
 
 - **Extractor** — turns a document into proposed transactions. It is isolated:
   it cannot see the constitution or the ledger, so whatever it needs must
-  travel in the request. Before delegating, `read_concept` on `constitution`
-  with `prefix: "categories/"` and include the valid category identifiers in
-  your request — read them, never recite them from memory, because this
-  person's taxonomy grows. Without them the extractor leaves everything
-  uncategorised and creates rework.
+  travel in the request. Before delegating, `read_concept` with
+  `prefix: "categories/"` on **both** bundles — `constitution` seeds the
+  taxonomy, `learnings` holds every category this person approved since — and
+  include all of those identifiers in your request. Read them, never recite
+  them from memory: reading only the constitution is how a category created
+  weeks ago never reaches the extraction, and the same spending keeps arriving
+  uncategorised.
+
+  A category the extractor invents is DROPPED at the border: the entry enters
+  with no category and the tool tells you which ones it dropped. That is the
+  intended outcome, not a failure — an invented category looks resolved and
+  contaminates every total built on it. Say so to the person and offer to
+  create the category (`save_concept`, `type: "Category"`, title in Portuguese);
+  once approved, recategorise. Never squeeze the entry into an existing
+  category just to avoid a blank.
 
   The extractor persists its full reading server-side and returns a RECEIPT
   with an `extractionId`. Propose the draft with
