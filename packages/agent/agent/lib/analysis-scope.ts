@@ -11,6 +11,7 @@ export type LedgerScopeFilter = {
   to?: string;
   issuer?: string;
   batchId?: string;
+  includeProposed?: boolean;
 };
 
 /**
@@ -47,6 +48,25 @@ export function canonicalAnalysisRequestScope(scope: AnalysisRequestScope): Anal
   };
 }
 
+/**
+ * O recorte, e com ele a decisão sobre RASCUNHO — uma vez só.
+ *
+ * `includeProposed` vivia em cada tool, e só `query_ledger` o ligava. O
+ * resultado era uma contradição dentro do mesmo turno: "mostre os lançamentos
+ * desta fatura" listava tudo, e "quanto gastei nesta fatura" respondia que o
+ * recorte não possui lançamentos. As duas frases sobre o mesmo documento, uma
+ * depois da outra.
+ *
+ * A regra correta não é "incluir rascunho em tudo" nem "em nada" — é que
+ * `invoice` é um recorte sobre o DOCUMENTO, não sobre o razão. Perguntar de uma
+ * fatura em conferência é perguntar do papel que está na mesa, e o rascunho é
+ * exatamente o que está lá. Já `calendar_month`, `range` e `all` são recortes do
+ * razão: ali o rascunho viraria fato, e continua de fora.
+ *
+ * Quem inclui rascunho precisa DIZER (ver `draftNote`). Apresentar como
+ * registrado o que ainda espera aprovação é o erro que a exclusão original
+ * tentava evitar, e ele não some por a leitura ser conveniente.
+ */
 export function scopeFilter(scope: AnalysisScope): LedgerScopeFilter {
   switch (scope.kind) {
     case "calendar_month": {
@@ -54,12 +74,27 @@ export function scopeFilter(scope: AnalysisScope): LedgerScopeFilter {
       return { ...dates, issuer: scope.issuer };
     }
     case "invoice":
-      return { batchId: scope.batchId };
+      return { batchId: scope.batchId, includeProposed: true };
     case "range":
       return { from: scope.from, to: scope.to, issuer: scope.issuer };
     case "all":
       return { issuer: scope.issuer };
   }
+}
+
+/**
+ * O aviso que acompanha todo painel montado sobre rascunho.
+ *
+ * Uma frase, no resumo do painel — não um `warning` que a interface pode
+ * engolir. O número está certo; o que a pessoa precisa saber é que ele ainda
+ * não é fato.
+ */
+export function draftNote(entries: readonly { status: string }[]): string {
+  const drafts = entries.filter((entry) => entry.status === "proposed").length;
+  if (drafts === 0) return "";
+  return drafts === entries.length
+    ? " Esta fatura ainda está em conferência: nada aqui foi registrado no razão."
+    : ` ${drafts} ${drafts === 1 ? "lançamento ainda está" : "lançamentos ainda estão"} em conferência.`;
 }
 
 export function scopeLabel(scope: AnalysisScope): string {

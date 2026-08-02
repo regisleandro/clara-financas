@@ -168,6 +168,73 @@ describe("os painéis fecham com o razão", () => {
     assert.ok(!("error" in (recibo as object)), "não pode recusar por ausência de recorrência");
   });
 
+  it("uma fatura em conferência responde igual nas duas tools", async () => {
+    /*
+     * A contradição que a pessoa via dentro do MESMO turno: "mostre os
+     * lançamentos desta fatura" listava tudo, e "quanto gastei nesta fatura"
+     * respondia que o recorte não possui lançamentos. Só `query_ledger` ligava
+     * `includeProposed`; as tools de agregação não.
+     *
+     * A regra agora mora em `scopeFilter`, uma vez só: `invoice` é um recorte
+     * sobre o DOCUMENTO, e a fatura em conferência é exatamente o documento
+     * que está na mesa. Mês, intervalo e razão inteiro continuam sem rascunho.
+     */
+    const documentId = await seedDocument(tenantId, {
+      filename: "rascunho.pdf",
+      issuer: "Nubank",
+    });
+    const rascunho = (await proposeBatch.execute(
+      {
+        documentId,
+        issuer: "Nubank",
+        declaredTotal: 7_000,
+        transactions: [
+          {
+            date: "2026-07-10",
+            originalDescription: "Farmácia",
+            merchant: "Farmácia",
+            amount: 7_000,
+            kind: "purchase" as const,
+            category: "health",
+            extractionConfidence: "alta" as const,
+          },
+        ],
+      },
+      ctx,
+    )) as { batchId: string };
+
+    const lista = (await viewFromReceipt(
+      await queryLedger.execute({ scope: { kind: "invoice", batchId: rascunho.batchId } }, ctx),
+      ctx,
+    )) as Painel;
+    const composicao = (await viewFromReceipt(
+      await aggregateByCategory.execute(
+        { scope: { kind: "invoice", batchId: rascunho.batchId } },
+        ctx,
+      ),
+      ctx,
+    )) as Painel & { summary: string };
+
+    assert.equal(lista.rows.length, 1, "a lista enxerga a fatura em conferência");
+    assert.equal(composicao.metric?.amount, 7_000, "e a composição enxerga a mesma fatura");
+    // Enxergar não é apresentar como fato: o painel precisa DIZER.
+    assert.match(composicao.summary, /confer[êe]ncia/i);
+  });
+
+  it("rascunho não contamina o recorte do MÊS", async () => {
+    // O cuidado que justificava excluir rascunho continua de pé, e é outro:
+    // num total de mês ele viraria fato. Só o recorte por documento o inclui.
+    const view = (await viewFromReceipt(
+      await aggregateByCategory.execute(
+        { scope: { kind: "calendar_month", month: "2026-07" } },
+        ctx,
+      ),
+      ctx,
+    )) as Painel & { summary: string };
+
+    assert.doesNotMatch(view.summary ?? "", /confer[êe]ncia/i);
+  });
+
   it("recorte vazio publica painel válido", async () => {
     const recibo = await aggregateByCategory.execute(
       { scope: { kind: "calendar_month", month: "2026-01" } },

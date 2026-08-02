@@ -64,11 +64,11 @@ export default defineTool({
     // `month` é açúcar sobre from/to; datas explícitas ganham quando as duas
     // formas vierem juntas, porque são o recorte mais específico.
     const rows = await loadLedger(tenantId, {
+      // A decisão sobre rascunho mora em `scopeFilter`, não aqui. Ela vivia
+      // nesta tool e só nela, e o efeito era esta ferramenta listar a fatura em
+      // conferência enquanto as de agregação respondiam, sobre o MESMO
+      // documento e no mesmo turno, que o recorte não possui lançamentos.
       ...scopeFilter(scope),
-      // Perguntar sobre UMA fatura inclui a que ainda espera decisão: é
-      // justamente a que está em conferência. Fora desse recorte, rascunho
-      // continua fora, para não virar fato numa soma.
-      includeProposed: scope.kind === "invoice",
       ids: input.transactionIds,
       search: input.search,
       kinds: input.kinds,

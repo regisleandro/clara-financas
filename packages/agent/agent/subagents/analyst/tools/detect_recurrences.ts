@@ -6,6 +6,7 @@ import { z } from "zod";
 import { loadMerchantAliases } from "../../../lib/aliases";
 import {
   canonicalAnalysisScope,
+  draftNote,
   scopeFilter,
   scopeLabel,
 } from "../../../lib/analysis-scope";
@@ -78,7 +79,7 @@ export default defineTool({
       {
         kind: "recurrences",
         title: "Cobranças recorrentes",
-        summary: `${recurrences.length} ${recurrences.length === 1 ? "padrão encontrado" : "padrões encontrados"} em ${scopeLabel(scope)}.`,
+        summary: `${recurrences.length} ${recurrences.length === 1 ? "padrão encontrado" : "padrões encontrados"} em ${scopeLabel(scope)}.${draftNote(ledger)}`,
         rows: recurrences.map((recurrence) => ({
           label: recurrence.merchant,
           amount: recurrence.annualizedCents,

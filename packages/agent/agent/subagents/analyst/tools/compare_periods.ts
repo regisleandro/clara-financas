@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import {
   canonicalAnalysisScope,
+  draftNote,
   scopeFilter,
   scopeLabel,
 } from "../../../lib/analysis-scope";
@@ -85,7 +86,7 @@ export default defineTool({
       {
         kind: "comparison",
         title: "Comparação de gastos",
-        summary: "A variação e suas causas foram calculadas diretamente do razão.",
+        summary: `A variação e suas causas foram calculadas diretamente do razão.${draftNote([...current, ...previous])}`,
         previousLabel: scopeLabel(previousScope),
         currentLabel: scopeLabel(currentScope),
         metric: {

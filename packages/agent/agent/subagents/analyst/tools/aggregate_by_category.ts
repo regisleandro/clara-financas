@@ -6,6 +6,7 @@ import { z } from "zod";
 import { categoryLabel, loadCategoryLabels } from "../../../lib/categories";
 import {
   canonicalAnalysisScope,
+  draftNote,
   scopeFilter,
   scopeLabel,
 } from "../../../lib/analysis-scope";
@@ -141,7 +142,7 @@ export default defineTool({
         {
           kind: "metric",
           title: "Composição dos gastos",
-          summary: `${label} não teve compras.${notaDeCreditos}`,
+          summary: `${label} não teve compras.${notaDeCreditos}${draftNote(ledger)}`,
           metric: {
             label: "Compras no período",
             amount: 0,
@@ -162,8 +163,8 @@ export default defineTool({
         title: "Composição dos gastos",
         summary:
           creditTotal.value === 0
-            ? `${label}. As barras representam compras; as linhas somam o total.`
-            : `${label}. As barras representam compras; os créditos do período estão no topo.${notaDeCreditos}`,
+            ? `${label}. As barras representam compras; as linhas somam o total.${draftNote(ledger)}`
+            : `${label}. As barras representam compras; os créditos do período estão no topo.${notaDeCreditos}${draftNote(ledger)}`,
         metric: {
           label: "Compras no período",
           amount: grossTotal.value,

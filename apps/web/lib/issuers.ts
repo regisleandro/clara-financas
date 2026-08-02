@@ -86,7 +86,12 @@ export async function loadIssuerMonthView(tenantId: string): Promise<IssuerMonth
   const groups: IssuerMonthView["groups"] = [];
 
   for (const issuer of matrix.issuers) {
-    const key = issuerKey(issuer.issuer);
+    // A chave vem do kernel, que agora AGRUPA por ela. Recalculá-la aqui era o
+    // que produzia duas linhas para o mesmo cartão escrito de duas formas: o
+    // agrupamento acontecia pela grafia crua e só a chave era derivada depois,
+    // então as duas linhas terminavam com `key` idêntica — inclusive para o
+    // React, que via duas irmãs com a mesma identidade.
+    const key = issuer.key;
     const label = issuer.issuer ?? "Sem operadora";
 
     issuer.byMonth.forEach((cell, position) => {
@@ -126,7 +131,7 @@ export async function loadIssuerMonthView(tenantId: string): Promise<IssuerMonth
       label: capitalize(shortMonthLabel(month).replace(".", "")),
     })),
     issuers: matrix.issuers.map((issuer) => ({
-      key: issuerKey(issuer.issuer),
+      key: issuer.key,
       label: issuer.issuer ?? "Sem operadora",
       total: issuer.total.value,
       count: issuer.total.count,

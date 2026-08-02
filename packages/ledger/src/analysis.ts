@@ -1,4 +1,5 @@
 import { countsTowardDeclaredTotal } from "./checksum";
+import { issuerKey } from "./issuer";
 import { clusterMerchantKeys, merchantKey } from "./merchant";
 import type { Transaction } from "./types";
 
@@ -161,6 +162,17 @@ export type IssuerMonthMatrix = {
   /** `YYYY-MM` presentes no razão, do mais recente para o mais antigo. */
   months: string[];
   issuers: Array<{
+    /**
+     * A identidade da operadora — `issuerKey`, não a grafia.
+     *
+     * O agrupamento era pela string crua, e a chave só era derivada DEPOIS, na
+     * web. Duas grafias do mesmo cartão ("Nubank" e "NuBank") viravam duas
+     * linhas na tela, cada uma com metade do total, enquanto a conversa —
+     * que já filtrava por chave — mostrava uma linha com o total inteiro. As
+     * duas ainda colidiam na `key` do React, porque a chave derivada era igual.
+     */
+    key: string;
+    /** A grafia a exibir: a mais recente vista para esta operadora. */
     issuer: string | null;
     total: Bucket;
     /**
@@ -201,17 +213,27 @@ export function aggregateByIssuerMonth(entries: IssuedTransaction[]): IssuerMont
   );
   const monthIndex = new Map(months.map((month, position) => [month, position]));
 
-  const byIssuer = new Map<string | null, Array<Bucket | null>>();
+  // Agrupa por IDENTIDADE, e guarda a grafia mais recente para exibir. Sem
+  // isto o mesmo cartão escrito de duas formas rende duas linhas com metade do
+  // total cada — e a conversa, que já filtra por chave, discorda da tela.
+  const byIssuer = new Map<string, Array<Bucket | null>>();
+  const spelling = new Map<string, { issuer: string | null; seenAt: string }>();
   const monthTotals: Bucket[] = months.map(() => emptyBucket());
   const total = emptyBucket();
 
   for (const entry of counted) {
     const position = monthIndex.get(entry.date.slice(0, 7))!;
     const issuer = entry.issuer ?? null;
+    const key = issuerKey(issuer);
 
-    const row = byIssuer.get(issuer) ?? months.map(() => null);
+    const known = spelling.get(key);
+    if (known === undefined || entry.date > known.seenAt) {
+      spelling.set(key, { issuer, seenAt: entry.date });
+    }
+
+    const row = byIssuer.get(key) ?? months.map(() => null);
     row[position] = add(row[position] ?? emptyBucket(), entry);
-    byIssuer.set(issuer, row);
+    byIssuer.set(key, row);
 
     monthTotals[position] = add(monthTotals[position]!, entry);
     add(total, entry);
@@ -220,8 +242,9 @@ export function aggregateByIssuerMonth(entries: IssuedTransaction[]): IssuerMont
   return {
     months,
     issuers: [...byIssuer.entries()]
-      .map(([issuer, byMonth]) => ({
-        issuer,
+      .map(([key, byMonth]) => ({
+        key,
+        issuer: spelling.get(key)?.issuer ?? null,
         total: byMonth.reduce<Bucket>(
           (sum, cell) =>
             cell === null
