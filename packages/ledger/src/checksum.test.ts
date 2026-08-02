@@ -233,6 +233,49 @@ describe("causa provável da divergência", () => {
     );
   });
 
+  it("a folga aplicada viaja no relatório, e não é silêncio", () => {
+    // "Arredondamento" era um veredito sem argumento: a diferença sumia sem
+    // culpado e sem dizer por quê.
+    const many = Array.from({ length: 48 }, () => tx({ amount: 1000 }));
+    const report = verifyChecksum(batch(many, 48000 + 1));
+
+    assert.deepEqual(report.tolerance, { cents: 24, itemCount: 48 });
+  });
+
+  it("LIMITE CONHECIDO: a folga cresce com o número de itens e absorve erro real", () => {
+    /*
+     * Numa fatura de 48 lançamentos a folga chega a 24 centavos, então um
+     * dígito de centavo lido errado (R$ 12,34 → R$ 12,14, 20 centavos) é
+     * classificado como arredondamento e não ganha suspeitos.
+     *
+     * A heurística fica: o caso real que a motivou é verdadeiro — o IOF é
+     * arredondado uma vez sobre o total pelo emissor enquanto somamos parcelas
+     * já arredondadas —, e apontar um culpado ali inventaria precisão que não
+     * existe. O que este teste trava é o limite ser DITO: a folga aparece no
+     * relatório, e quem lê pode discordar dela em vez de receber um veredito
+     * mudo.
+     */
+    const many = Array.from({ length: 48 }, () => tx({ amount: 1000 }));
+    const report = verifyChecksum(batch(many, 48000 + 20));
+
+    assert.equal(report.likelyCause, "rounding");
+    assert.deepEqual(report.suspectItems, []);
+    assert.equal(report.tolerance?.cents, 24, "a folga que absorveu os 20 centavos está declarada");
+    // Negativa: `extracted − declared`, e aqui lemos 20 centavos A MENOS que o
+    // documento declara — que é o formato de um dígito perdido na leitura.
+    assert.equal(report.difference, -20);
+  });
+
+  it("uma fatura pequena não ganha folga proporcional", () => {
+    // O piso protege o caso oposto: com 2 itens, 20 centavos não é
+    // arredondamento — e ali há o que investigar.
+    const report = verifyChecksum(batch([tx({ amount: 1000 }), tx({ amount: 1000 })], 2000 - 20));
+
+    assert.notEqual(report.likelyCause, "rounding");
+    assert.equal(report.tolerance, undefined, "sem folga aplicada, sem folga declarada");
+    assert.ok(report.suspectItems.length > 0);
+  });
+
   it("classifica coincidência exata de valor como item, não arredondamento", () => {
     const report = verifyChecksum(
       batch([tx({ id: "culpado", amount: 3 }), tx({ amount: 1000 })], 1000),

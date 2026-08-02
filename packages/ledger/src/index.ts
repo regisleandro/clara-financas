@@ -4,6 +4,7 @@ export {
   sumAmounts,
   formatCents,
   countsTowardDeclaredTotal,
+  roundingTolerance,
 } from "./checksum";
 export {
   aggregateByCategory,

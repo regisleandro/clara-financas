@@ -39,13 +39,45 @@ export function analyzeFinancialSeries(periods: FinancialPeriod[]): FinancialSer
     return { points: [], totalDelta: 0, largest: null, smallest: null, drivers: [] };
   }
 
-  const points = periods.map((period) => {
+  /*
+   * A ordem vem dos DADOS, não de como os períodos chegaram.
+   *
+   * `totalDelta` é "último menos primeiro" e os drivers comparam a primeira
+   * fatura com a última. Enquanto isso dependia da ordem de ENTRADA, um modelo
+   * que listasse do mais recente para o mais antigo — que é como uma pessoa
+   * fala, "as três últimas faturas" — invertia o sinal da variação e fazia os
+   * drivers explicarem a mudança ao contrário. O `InputSchema` só validava ids
+   * únicos, então nada denunciava.
+   *
+   * A âncora é a data mais antiga de cada período. Recorte por fatura não tem
+   * data comparável no próprio escopo (é um `batchId`), mas os lançamentos
+   * têm — e são eles que definem o que veio antes.
+   *
+   * Período sem lançamento não tem âncora e fica no fim: ele contribui zero
+   * para a série, e usá-lo como base tornaria a variação uma comparação contra
+   * o vazio.
+   */
+  const cronologicos = [...periods].sort((left, right) => {
+    const anchor = (period: FinancialPeriod) =>
+      period.transactions.reduce<string | null>(
+        (earliest, entry) => (earliest === null || entry.date < earliest ? entry.date : earliest),
+        null,
+      );
+    const a = anchor(left);
+    const b = anchor(right);
+    if (a === null && b === null) return 0;
+    if (a === null) return 1;
+    if (b === null) return -1;
+    return a.localeCompare(b);
+  });
+
+  const points = cronologicos.map((period) => {
     const total = totalSpend(period.transactions);
     return { id: period.id, label: period.label, value: total.value, transactionIds: total.transactionIds };
   });
 
-  const first = periods[0]!;
-  const last = periods.at(-1)!;
+  const first = cronologicos[0]!;
+  const last = cronologicos.at(-1)!;
   const firstCategories = new Map(aggregateByCategory(first.transactions).map((row) => [row.category, row]));
   const lastCategories = new Map(aggregateByCategory(last.transactions).map((row) => [row.category, row]));
   const categories = new Set([...firstCategories.keys(), ...lastCategories.keys()]);

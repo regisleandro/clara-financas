@@ -71,6 +71,16 @@ export function verifyChecksum(
   return {
     result: "mismatch",
     likelyCause,
+    // A folga viaja junto quando ela foi o motivo: sem isso, "arredondamento"
+    // é um veredito sem argumento, e a pessoa não tem como discordar dele.
+    ...(likelyCause === "rounding"
+      ? {
+          tolerance: {
+            cents: roundingTolerance(counted.length, rounding),
+            itemCount: counted.length,
+          },
+        }
+      : {}),
     ...(localizedIn === null ? {} : { localizedIn }),
     extractedTotal,
     declaredTotal: batch.declaredTotal,
@@ -142,6 +152,11 @@ export type RoundingPolicy = {
 
 export const DEFAULT_ROUNDING: RoundingPolicy = { floorCents: 2, perItemCents: 0.5 };
 
+/** A folga, em centavos, para um documento com este número de itens. */
+export function roundingTolerance(itemCount: number, rounding: RoundingPolicy): number {
+  return Math.max(rounding.floorCents, Math.ceil(itemCount * rounding.perItemCents));
+}
+
 function classifyCause(
   difference: number,
   itemCount: number,
@@ -149,10 +164,7 @@ function classifyCause(
   rounding: RoundingPolicy,
 ): ChecksumCause {
   if (hasExactMatch) return "item";
-
-  const tolerance = Math.max(rounding.floorCents, Math.ceil(itemCount * rounding.perItemCents));
-  if (Math.abs(difference) <= tolerance) return "rounding";
-
+  if (Math.abs(difference) <= roundingTolerance(itemCount, rounding)) return "rounding";
   return "unknown";
 }
 

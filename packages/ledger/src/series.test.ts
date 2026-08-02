@@ -19,6 +19,12 @@ const tx = (id: string, amount: number, category: string): Transaction => ({
   page: 1,
 });
 
+/** Como `tx`, mas com data — a ordem cronológica depende dela. */
+const seriesTx = (partial: { id: string; date: string; amount: number }): Transaction => ({
+  ...tx(partial.id, partial.amount, "groceries"),
+  date: partial.date,
+});
+
 describe("analyzeFinancialSeries", () => {
   it("calcula todos os pontos e drivers entre o primeiro e o último período", () => {
     const result = analyzeFinancialSeries([
@@ -43,5 +49,52 @@ describe("analyzeFinancialSeries", () => {
     ]);
     assert.deepEqual(result.points.map((point) => point.value), [0, 0]);
     assert.equal(result.totalDelta, 0);
+  });
+});
+
+describe("a ordem vem dos dados, não da entrada", () => {
+  /*
+   * `totalDelta` é "último menos primeiro" e os drivers comparam a primeira
+   * fatura com a última. Enquanto isso seguia a ordem de ENTRADA, um modelo que
+   * listasse do mais recente para o mais antigo — que é como uma pessoa fala,
+   * "as três últimas faturas" — invertia o sinal da variação. O `InputSchema`
+   * só validava ids únicos, então nada denunciava.
+   */
+  const maio = {
+    id: "maio",
+    label: "Maio",
+    transactions: [seriesTx({ id: "m1", date: "2026-05-10", amount: 10_000 })],
+  };
+  const junho = {
+    id: "junho",
+    label: "Junho",
+    transactions: [seriesTx({ id: "j1", date: "2026-06-10", amount: 15_000 })],
+  };
+
+  it("períodos invertidos produzem a MESMA série que na ordem certa", () => {
+    const naOrdem = analyzeFinancialSeries([maio, junho]);
+    const aoContrario = analyzeFinancialSeries([junho, maio]);
+
+    assert.equal(naOrdem.totalDelta, 5_000, "de 10.000 para 15.000: subiu");
+    assert.equal(aoContrario.totalDelta, naOrdem.totalDelta, "o sinal não depende da ordem de entrada");
+    assert.deepEqual(
+      aoContrario.points.map((point) => point.id),
+      naOrdem.points.map((point) => point.id),
+    );
+  });
+
+  it("os drivers explicam a mudança no sentido certo, em qualquer ordem", () => {
+    const aoContrario = analyzeFinancialSeries([junho, maio]);
+
+    assert.ok((aoContrario.drivers[0]?.delta ?? 0) > 0, "a categoria que subiu aparece como aumento");
+  });
+
+  it("período sem lançamento não vira a base da comparação", () => {
+    // Comparar contra o vazio faria "subiu tudo" a partir de zero.
+    const vazio = { id: "vazio", label: "Sem dados", transactions: [] };
+    const series = analyzeFinancialSeries([vazio, maio, junho]);
+
+    assert.equal(series.points.at(-1)?.id, "vazio", "o sem-âncora vai para o fim");
+    assert.equal(series.points[0]?.id, "maio");
   });
 });

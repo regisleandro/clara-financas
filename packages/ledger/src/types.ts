@@ -120,6 +120,21 @@ export type ChecksumReport = {
   /** Só presente quando `result` é `mismatch`. */
   likelyCause?: ChecksumCause;
   /**
+   * A folga aplicada, quando a causa provável foi arredondamento.
+   *
+   * "Arredondamento" era um veredito MUDO: a diferença sumia sem culpado e sem
+   * dizer por quê. E a folga cresce com o número de itens — numa fatura de 48
+   * lançamentos ela chega a 24 centavos —, então um erro de leitura pequeno o
+   * bastante era absorvido e anunciado como se não existisse.
+   *
+   * A heurística continua: numa fatura real de 48 linhas a diferença de 1
+   * centavo veio mesmo do IOF, que o emissor arredonda uma vez sobre o total
+   * enquanto nós somamos parcelas já arredondadas. Apontar um culpado ali
+   * inventaria precisão. O que muda é o silêncio — a folga passa a ser dita, e
+   * quem lê pode discordar dela.
+   */
+  tolerance?: { cents: number; itemCount: number };
+  /**
    * Onde a diferença está, quando o documento declara subtotais e um deles não
    * fecha. É a diferença entre "a conta não bate" e "a conta não bate no IOF".
    */
