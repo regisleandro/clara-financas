@@ -2,11 +2,12 @@ import { getDb } from "@clara-financas/db";
 import { batches, documents, transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import { formatDocumentLabel } from "@clara-financas/ledger";
-import { desc, eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { requireTenantCaller } from "../lib/tenant";
+import { latestInvoiceOrder } from "../lib/invoice-order";
 
 /**
  * Recuperação explícita para o histórico que não cabe no snapshot de turno.
@@ -43,7 +44,7 @@ export default defineTool({
           .from(batches)
           .innerJoin(documents, eq(documents.id, batches.documentId))
           .where(inArray(batches.status, ["proposed", "confirmed"]))
-          .orderBy(desc(batches.periodEnd), desc(batches.createdAt))
+          .orderBy(...latestInvoiceOrder())
           .limit(input.limit ?? 20);
 
         return rows.map((row) => ({

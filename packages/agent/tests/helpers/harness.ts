@@ -69,7 +69,12 @@ export async function freshTenant(): Promise<string> {
 /** Um documento registrado, que é o que `propose_batch` exige existir antes. */
 export async function seedDocument(
   tenantId: string,
-  overrides: { filename?: string; issuer?: string | null } = {},
+  overrides: {
+    filename?: string;
+    issuer?: string | null;
+    /** Extrato e nota fiscal também viram lote — e não são "a última fatura". */
+    kind?: "credit_card_invoice" | "bank_statement" | "invoice_nfe";
+  } = {},
 ): Promise<string> {
   const id = `doc_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
   await forTenant(
@@ -78,7 +83,7 @@ export async function seedDocument(
       await tx.insert(documents).values({
         id,
         tenantId,
-        kind: "credit_card_invoice",
+        kind: overrides.kind ?? "credit_card_invoice",
         blobKey: `${tenantId}/${id}.pdf`,
         filename: overrides.filename ?? "fatura.pdf",
         issuer: overrides.issuer === undefined ? "Nubank" : overrides.issuer,

@@ -5,9 +5,10 @@ import { concepts } from "@clara-financas/db/schema/knowledge";
 import { agentSessions } from "@clara-financas/db/schema/agent-session";
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import { formatDocumentLabel, type FinancialDocumentKind } from "@clara-financas/ledger";
-import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
 import { todayInSaoPaulo } from "./dates";
+import { latestInvoiceOrder } from "./invoice-order";
 
 /**
  * O estado do razão, em uma consulta.
@@ -101,7 +102,7 @@ export async function loadSnapshot(
         .innerJoin(documents, eq(documents.id, batches.documentId))
         // Lote rejeitado não é fatura da pessoa, é tentativa descartada.
         .where(inArray(batches.status, ["proposed", "confirmed"]))
-        .orderBy(desc(batches.periodEnd), desc(batches.createdAt))
+        .orderBy(...latestInvoiceOrder())
         .limit(12);
 
       const [invoiceCount] = await tx
