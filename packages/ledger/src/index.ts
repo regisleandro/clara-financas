@@ -41,6 +41,7 @@ export {
   type Countable,
   type Violation,
 } from "./figure";
+export { entryKindLabel, nonSpendLabel, hasNoSpend } from "./entry-kind";
 export { categoryLabel, categorySlug, type CategoryLabels } from "./categories";
 export { issuerKey, UNKNOWN_ISSUER } from "./issuer";
 export {

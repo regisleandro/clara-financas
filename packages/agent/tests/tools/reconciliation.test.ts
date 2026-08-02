@@ -39,7 +39,7 @@ let atualId: string;
 type Linha = {
   description: string;
   amount: number;
-  category: string;
+  category?: string;
   kind?: "purchase" | "refund" | "payment";
 };
 
@@ -56,7 +56,7 @@ async function fatura(date: string, linhas: Linha[]) {
         merchant: linha.description,
         amount: linha.amount,
         kind: linha.kind ?? "purchase",
-        category: linha.category,
+        category: linha.category ?? null,
         extractionConfidence: "alta" as const,
       })),
     },
@@ -96,7 +96,8 @@ describe("os painéis fecham com o razão", () => {
       // linha de R$ 0,00 invisível, e o crédito abatia o topo sem aparecer.
       { description: "Estorno assinatura", amount: -1_500, category: "subscriptions", kind: "refund" },
       // Pagamento de fatura não é gasto e não pode entrar na composição.
-      { description: "Pagamento recebido", amount: -20_000, category: "transfers", kind: "payment" },
+      // Pagamento não é gasto categorizável — ver `countsTowardDeclaredTotal`.
+      { description: "Pagamento recebido", amount: -20_000, kind: "payment" },
     ]);
   });
 
@@ -233,6 +234,42 @@ describe("os painéis fecham com o razão", () => {
     )) as Painel & { summary: string };
 
     assert.doesNotMatch(view.summary ?? "", /confer[êe]ncia/i);
+  });
+
+  it("recorte sem gasto nomeia o que tem, em vez de anunciar R$ 0,00", async () => {
+    /*
+     * O caso especial anterior perguntava se tudo era `payment`, mas quatro
+     * naturezas ficam fora do gasto. Uma consulta só de `card_payment` — que o
+     * extrator emite — escapava e o painel dizia "Gastos do recorte R$ 0,00"
+     * com linhas de valor não-zero abaixo. O modelo repassava o zero como fato.
+     */
+    const view = (await viewFromReceipt(
+      await queryLedger.execute(
+        { scope: { kind: "invoice", batchId: atualId }, kinds: ["payment"] },
+        ctx,
+      ),
+      ctx,
+    )) as Painel & { metric: { label: string; detail: string } };
+
+    assert.ok(view.rows.length > 0, "há linhas de pagamento no recorte");
+    assert.notEqual(view.metric.amount, 0, "o destaque não pode zerar com linhas não-zero");
+    assert.doesNotMatch(view.metric.label, /^Gastos/, "e não pode chamá-las de gasto");
+    assert.match(view.metric.detail, /nada aqui conta como gasto/i);
+  });
+
+  it("a natureza do lançamento chega em português, não como identificador", async () => {
+    const view = (await viewFromReceipt(
+      await queryLedger.execute({ scope: { kind: "invoice", batchId: atualId } }, ctx),
+      ctx,
+    )) as { rows: Array<{ detail: string }> };
+
+    for (const row of view.rows) {
+      assert.doesNotMatch(
+        row.detail,
+        /purchase|card_payment|cash_withdrawal|refund|transfer/,
+        "identificador interno não vai para a tela",
+      );
+    }
   });
 
   it("recorte vazio publica painel válido", async () => {

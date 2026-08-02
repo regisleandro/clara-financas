@@ -231,7 +231,12 @@ describe("ciclo de vida de uma fatura", () => {
     assert.match(scoped.summary, /4 ainda em conferência/);
     assert.ok(scoped.rows.every((row) => row.detail.includes("em conferência")));
     // Campos que antes eram amputados na fronteira e nunca chegavam ao modelo.
-    assert.ok(scoped.rows.some((row) => row.detail.includes("payment")));
+    // A natureza chega como RÓTULO: este teste exigia a string "payment", ou
+    // seja, travava como contrato o identificador interno indo para a tela.
+    // O que importa é que a informação chegue, não em que idioma o banco a
+    // guarda.
+    assert.ok(scoped.rows.some((row) => row.detail.includes("Pagamento de fatura")));
+    assert.ok(scoped.rows.every((row) => !/\b(payment|purchase|refund)\b/.test(row.detail)));
     assert.ok(scoped.rows.some((row) => row.detail.includes("confiança baixa")));
 
     // Fora do recorte de uma fatura, rascunho continua fora do razão.

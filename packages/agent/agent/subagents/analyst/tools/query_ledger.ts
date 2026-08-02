@@ -1,4 +1,11 @@
-import { CONFIDENCE, ENTRY_KINDS, totalSpend } from "@clara-financas/ledger";
+import {
+  CONFIDENCE,
+  ENTRY_KINDS,
+  entryKindLabel,
+  hasNoSpend,
+  nonSpendLabel,
+  totalSpend,
+} from "@clara-financas/ledger";
 import { AnalysisScopeSchema } from "@clara-financas/views/agent-contracts";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
@@ -107,9 +114,6 @@ export default defineTool({
     // `total: R$ 0,00` com 3 linhas de pagamento na lista — e o modelo
     // repassava o zero como fato.
     const spend = totalSpend(rows);
-    const paymentsCents = rows
-      .filter((row) => row.kind === "payment")
-      .reduce((sum, row) => sum + row.amount, 0);
     const truncated = rows.length > LIMIT;
     const labels = await loadCategoryLabels(tenantId);
     // Rascunho no resultado tem de ser dito, não deduzido: apresentar como
@@ -117,10 +121,24 @@ export default defineTool({
     // `proposed` tentava evitar. Aqui ele entra — mas anunciado.
     const draftCount = rows.filter((row) => row.status === "proposed").length;
 
-    const onlyPayments = rows.every((row) => row.kind === "payment");
-    const metricIds = onlyPayments
-      ? rows.map((row) => row.id)
-      : spend.transactionIds;
+    /*
+     * "Gastos do recorte — R$ 0,00" com linhas de valor não-zero logo abaixo.
+     *
+     * O caso especial anterior perguntava se TUDO era `payment`, mas
+     * `countsTowardDeclaredTotal` exclui quatro naturezas — `payment`,
+     * `card_payment`, `transfer` e `income`. Uma consulta que trouxesse só
+     * `card_payment` (natureza que o próprio extrator emite) escapava do caso
+     * especial e caía exatamente no buraco que ele dizia ter fechado: o
+     * destaque zerado, a lista cheia, e o modelo repassando o zero como fato.
+     *
+     * Agora a pergunta é a certa — "nada aqui conta como gasto?" — e o rótulo
+     * é derivado do que está no recorte, sem lista de exceções para manter.
+     */
+    const semGasto = hasNoSpend(rows);
+    const metricIds = semGasto ? rows.map((row) => row.id) : spend.transactionIds;
+    const metricAmount = semGasto
+      ? rows.reduce((total, row) => total + row.amount, 0)
+      : spend.value;
     const summarized = rows.slice(0, LIMIT).map((row) => brief(row, labels));
     return saveAnalysis(
       {
@@ -128,15 +146,19 @@ export default defineTool({
         title: "Lançamentos",
         summary: `${rows.length} ${rows.length === 1 ? "lançamento encontrado" : "lançamentos encontrados"} em ${scopeLabel(scope)}.${truncated ? ` Exibindo os primeiros ${LIMIT}.` : ""}${draftCount > 0 ? ` ${draftCount} ainda em conferência.` : ""}`,
         metric: {
-          label: onlyPayments ? "Pagamentos de fatura" : "Gastos do recorte",
-          amount: onlyPayments ? paymentsCents : spend.value,
-          detail: onlyPayments ? "Pagamentos não contam como gasto." : scopeLabel(scope),
+          label: semGasto ? nonSpendLabel(rows) : "Gastos do recorte",
+          amount: metricAmount,
+          detail: semGasto
+            ? `${scopeLabel(scope)} · nada aqui conta como gasto`
+            : scopeLabel(scope),
           transactionIds: metricIds,
         },
         rows: summarized.map((row) => ({
           label: row.merchant ?? row.description,
           amount: row.amountCents,
-          detail: `${row.date} · ${row.kind} · ${row.categoryLabel} · confiança ${row.confidence}${row.status === "proposed" ? " · em conferência" : ""}`,
+          // `entryKindLabel` e não `row.kind`: a natureza vinha crua para a
+          // tela, e a pessoa lia "card_payment" no detalhe do lançamento.
+          detail: `${row.date} · ${entryKindLabel(row.kind)} · ${row.categoryLabel} · confiança ${row.confidence}${row.status === "proposed" ? " · em conferência" : ""}`,
           transactionIds: [row.id],
         })),
       },
