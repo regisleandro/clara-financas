@@ -91,6 +91,68 @@ export function NavBar({
     active?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [pathname]);
 
+  /*
+   * O menu do celular é uma gaveta, e gaveta tem regras de foco.
+   *
+   * Aberto, ele cobre a tela com um fundo escuro — mas o Tab continuava
+   * passeando pelo conteúdo debaixo, que está visível, inalcançável pelo mouse
+   * e sem nenhuma indicação de onde o cursor foi parar. E não havia Escape:
+   * quem abriu pelo teclado só saía clicando.
+   *
+   * O laço aqui é o mínimo que resolve: prende o Tab entre o primeiro e o
+   * último foco da gaveta, leva o foco para dentro ao abrir e o devolve ao
+   * botão que a abriu ao fechar. Sem isso "fechei o menu" significa perder o
+   * lugar na página.
+   */
+  const railRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const foraDoFoco = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!railOpen || rail === null) return;
+
+    foraDoFoco.current = document.activeElement as HTMLElement | null;
+    const focaveis = () =>
+      Array.from(
+        rail.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+      );
+    focaveis()[0]?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setRailOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const alvos = focaveis();
+      const primeiro = alvos[0];
+      const ultimo = alvos.at(-1);
+      if (primeiro === undefined || ultimo === undefined) return;
+      // Fora da gaveta o Tab volta para dentro: sem isto o foco escapa para o
+      // conteúdo coberto pelo fundo escuro, que ninguém consegue ver nem clicar.
+      const atual = document.activeElement;
+      if (event.shiftKey && (atual === primeiro || !rail.contains(atual))) {
+        event.preventDefault();
+        ultimo.focus();
+      } else if (!event.shiftKey && (atual === ultimo || !rail.contains(atual))) {
+        event.preventDefault();
+        primeiro.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      // Devolver o foco só faz sentido se ele ainda estiver na gaveta que saiu
+      // de cena; se a pessoa já clicou noutro lugar, mover seria atrapalhar.
+      if (rail.contains(document.activeElement)) {
+        (foraDoFoco.current ?? menuButtonRef.current)?.focus();
+      }
+    };
+  }, [railOpen]);
+
   const isActive = (href: string) =>
     pathname === href || (href !== "/conversa" && pathname.startsWith(`${href}/`));
 
@@ -143,8 +205,11 @@ export function NavBar({
             {badge > 99 ? "99+" : badge}
           </span>
         ) : null}
+        {/* `role="img"`: `aria-label` num elemento genérico é IGNORADO pelo
+            leitor de tela, então o ponto de aviso simplesmente não existia para
+            quem não o enxerga. Com um papel, o rótulo passa a valer. */}
         {item.href === "/agenda" && hasAlerts ? (
-          <i className="clara-header-alert-dot" aria-label="Avisos novos" />
+          <i className="clara-header-alert-dot" role="img" aria-label="Avisos novos" />
         ) : null}
       </Link>
     );
@@ -159,7 +224,11 @@ export function NavBar({
         onClick={() => setRailOpen(false)}
       />
 
-      <aside className={`clara-rail ${railOpen ? "is-open" : ""}`} aria-label="Navegação da Clara">
+      <aside
+        ref={railRef}
+        className={`clara-rail ${railOpen ? "is-open" : ""}`}
+        aria-label="Navegação da Clara"
+      >
         <div className="clara-rail-top">
           <Link
             href="/conversa"
@@ -184,33 +253,38 @@ export function NavBar({
 
           <div className="clara-rail-section">
             <p className="clara-rail-label">Conversas</p>
-            <div className="clara-conversation-list" role="list">
-              {conversations.length === 0 ? (
-                <p className="clara-rail-empty">Suas conversas aparecem aqui.</p>
-              ) : (
-                conversations.slice(0, 8).map((entry) => {
+            {conversations.length === 0 ? (
+              <p className="clara-rail-empty">Suas conversas aparecem aqui.</p>
+            ) : (
+              /* `ul`/`li` de verdade, e não `role` costurado por cima: o
+                 `role="listitem"` que estava no botão apagava o papel de
+                 botão, e o leitor de tela anunciava "item de lista" sem dizer
+                 que dava para clicar. */
+              <ul className="clara-conversation-list">
+                {conversations.slice(0, 8).map((entry) => {
                   const active = activeId === entry.sessionId;
                   return (
-                    <button
-                      type="button"
-                      role="listitem"
-                      key={entry.sessionId}
-                      className={`clara-conversation-item ${active ? "is-active" : ""}`}
-                      onClick={() => openConversation(entry.sessionId)}
-                    >
-                      {/* Sem `truncate`: o título quebra em até duas linhas
-                          (ver `.clara-conversation-item > span`). Numa linha
-                          só, toda conversa sobre fatura virava o mesmo prefixo
-                          seguido de reticências. */}
-                      <span>{entry.title}</span>
-                      <time dateTime={new Date(entry.updatedAt).toISOString()}>
-                        {conversationDate(entry.updatedAt)}
-                      </time>
-                    </button>
+                    <li key={entry.sessionId}>
+                      <button
+                        type="button"
+                        aria-current={active ? "true" : undefined}
+                        className={`clara-conversation-item ${active ? "is-active" : ""}`}
+                        onClick={() => openConversation(entry.sessionId)}
+                      >
+                        {/* Sem `truncate`: o título quebra em até duas linhas
+                            (ver `.clara-conversation-item > span`). Numa linha
+                            só, toda conversa sobre fatura virava o mesmo
+                            prefixo seguido de reticências. */}
+                        <span>{entry.title}</span>
+                        <time dateTime={new Date(entry.updatedAt).toISOString()}>
+                          {conversationDate(entry.updatedAt)}
+                        </time>
+                      </button>
+                    </li>
                   );
-                })
-              )}
-            </div>
+                })}
+              </ul>
+            )}
           </div>
 
         </div>
@@ -231,6 +305,7 @@ export function NavBar({
       <section className="clara-workspace">
         <header className="clara-workspace-header">
           <button
+            ref={menuButtonRef}
             type="button"
             className="clara-mobile-menu"
             aria-label="Abrir menu"

@@ -66,6 +66,22 @@
   --clara-composer-max: 672px;
   /* O teto da coluna de conversa — e da faixa que a contém. */
   --clara-chat-max: 920px;
+
+  /*
+   * O piso do texto legível, em dois valores.
+   *
+   * Havia oito tamanhos abaixo de 11px espalhados pela folha, chegando a
+   * 9,12px — e três deles em fonte mono, MAIÚSCULA e com `letter-spacing`, que
+   * é a combinação mais difícil de ler que existe: caixa alta apaga o contorno
+   * das palavras, mono estreita o traço e o espaçamento desmancha o que
+   * sobrou. Nada disso é decoração desconhecida da pessoa; é rótulo de seção,
+   * data de conversa, contagem de pendências.
+   *
+   * Dois tokens porque a exigência é diferente: 11px serve para texto normal;
+   * mono em caixa alta precisa dos 12px para chegar à mesma legibilidade.
+   */
+  --clara-text-min: 0.6875rem;
+  --clara-text-min-mono: 0.75rem;
 }
 
 :root {
@@ -317,7 +333,6 @@
   .clara-brand:focus-visible,
   .clara-new-conversation:focus-visible,
   .clara-conversation-item:focus-visible,
-  .clara-rail-secondary a:focus-visible,
   .clara-mobile-menu:focus-visible,
   .clara-tool-button:focus-visible,
   .clara-workspace-tab:focus-visible {
@@ -365,7 +380,7 @@
     margin: 0 8px 9px;
     color: var(--clara-slate);
     font-family: var(--clara-mono);
-    font-size: 0.625rem;
+    font-size: var(--clara-text-min-mono);
     font-weight: 500;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -374,6 +389,21 @@
   .clara-conversation-list {
     display: grid;
     gap: 2px;
+    list-style: none;
+  }
+
+  /*
+   * O `<li>` é uma casca sem estilo — quem desenha continua sendo o botão.
+   *
+   * A lista era um `<div role="list">` com `<button role="listitem">` dentro, e
+   * o papel imposto no botão APAGAVA o papel de botão: o leitor de tela
+   * anunciava "item de lista", sem dizer que aquilo era clicável nem o que
+   * aconteceria ao ativar. Marcação de verdade (`ul`/`li`) devolve os dois
+   * papéis, o de lista e o de botão, sem que um custe o outro.
+   */
+  .clara-conversation-list > li {
+    display: block;
+    min-width: 0;
   }
 
   .clara-conversation-item {
@@ -423,7 +453,7 @@
     /* Acerta a data com a PRIMEIRA linha do título, que é maior. */
     padding-top: 2px;
     color: var(--clara-slate);
-    font-size: 0.625rem;
+    font-size: var(--clara-text-min);
     font-weight: 500;
   }
 
@@ -457,7 +487,7 @@
 
   .clara-profile small {
     color: var(--clara-slate);
-    font-size: 0.625rem;
+    font-size: var(--clara-text-min);
   }
 
   .clara-profile {
@@ -477,7 +507,7 @@
     background: var(--clara-ink);
     color: var(--clara-fog);
     font-family: var(--clara-mono);
-    font-size: 0.6rem;
+    font-size: var(--clara-text-min);
     font-weight: 500;
   }
 
@@ -548,9 +578,14 @@
       right center,
       left center,
       right center;
+    /* A tampa é MAIS LARGA que a sombra de propósito. Com 10px contra 18px
+       sobravam 8px de gradiente à mostra mesmo quando as abas cabiam todas na
+       tela — uma sombra permanente nas duas bordas, dizendo que havia mais
+       coisa onde não havia. Cobrindo os 18px inteiros, "não rola" volta a ser
+       indistinguível de "não tem sombra". */
     background-size:
-      10px 100%,
-      10px 100%,
+      20px 100%,
+      20px 100%,
       18px 100%,
       18px 100%;
     background-attachment: local, local, scroll, scroll;
@@ -604,17 +639,25 @@
     background: var(--clara-terracotta);
   }
 
+  /*
+   * O número cresceu de 9,12px para o piso de 11px, e a pílula precisa
+   * acompanhar: com `min-width` fixa e sem recuo lateral, "99+" encostava nas
+   * duas bordas do círculo. O recuo é o que deixa a contagem respirar sem
+   * transformar um selo em botão.
+   */
   .clara-review-badge {
     display: inline-grid;
-    min-width: 17px;
-    height: 17px;
+    min-width: 18px;
+    height: 18px;
     place-items: center;
     border-radius: 999px;
+    padding-inline: 5px;
     background: var(--clara-yellow);
     color: var(--clara-ink);
     font-family: var(--clara-mono);
-    font-size: 0.57rem;
+    font-size: var(--clara-text-min);
     font-weight: 600;
+    line-height: 1;
   }
 
   .clara-workspace-tools {
@@ -627,12 +670,36 @@
 
   .clara-tool-button,
   .clara-mobile-menu {
+    position: relative;
     display: grid;
     width: 34px;
     height: 34px;
     place-items: center;
     border-radius: 6px;
     color: var(--clara-ink);
+  }
+
+  /*
+   * A área clicável cresce; o desenho não.
+   *
+   * Estes dois botões mediam 34×34 (e 31×31 abaixo de 640px), contra os 44px
+   * que uma ponta de dedo pede. Aumentar a caixa visível resolveria o toque e
+   * estragaria a barra: numa faixa de 58px, dois quadrados de 44px pesam mais
+   * que tudo o que está em volta.
+   *
+   * O pseudo-elemento separa as duas coisas — o que se vê continua com 34px, o
+   * que se acerta passa a ter 44. É transparente e não recebe estilo nenhum;
+   * existe só para ser alvo.
+   */
+  .clara-tool-button::after,
+  .clara-mobile-menu::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
   }
 
   .clara-mobile-menu {
@@ -880,7 +947,7 @@
     padding-top: 4px;
     color: var(--clara-slate);
     font-family: var(--clara-mono);
-    font-size: 0.6rem;
+    font-size: var(--clara-text-min-mono);
     white-space: nowrap;
   }
 
@@ -991,7 +1058,7 @@
   .clara-details-link-copy small {
     color: var(--clara-slate);
     font-family: var(--clara-mono);
-    font-size: 0.57rem;
+    font-size: var(--clara-text-min-mono);
     letter-spacing: 0.1em;
     text-transform: uppercase;
   }
@@ -1097,7 +1164,7 @@
   .clara-composer-wrap > p {
     margin-top: 6px;
     color: var(--clara-slate);
-    font-size: 0.6rem;
+    font-size: var(--clara-text-min);
     text-align: left;
   }
 
@@ -1278,10 +1345,6 @@
     background: var(--clara-teal);
   }
 
-  .clara-note-blush {
-    background: var(--clara-blush);
-  }
-
   .clara-pill {
     display: inline-flex;
     min-height: 2.625rem;
@@ -1345,11 +1408,6 @@
 
   .clara-link:hover {
     text-decoration: underline;
-  }
-
-  .clara-table-number {
-    font-family: var(--clara-mono);
-    font-variant-numeric: tabular-nums;
   }
 }
 
@@ -1419,15 +1477,44 @@
 }
 
 @media (max-width: 1023px) {
+  /*
+   * `visibility`, além do `transform`.
+   *
+   * Sair da tela por `translateX(-105%)` esconde dos olhos e de mais nada: o
+   * menu fechado continuava na ordem de tabulação e na árvore de
+   * acessibilidade. Quem navega por teclado dava Tab na conversa e caía em oito
+   * conversas invisíveis; quem usa leitor de tela ouvia a navegação inteira
+   * antes do conteúdo. `visibility: hidden` tira dos dois de uma vez.
+   *
+   * O atraso de 180ms na volta é o que preserva a animação de fechar: a
+   * `visibility` só some depois que o painel terminou de deslizar (transições
+   * não rodam a partir de `hidden`). Ao abrir ela vale na hora, senão o
+   * primeiro quadro do deslize aconteceria com o painel ainda invisível.
+   *
+   * Isto é CSS de propósito. A alternativa — `inert` condicionado ao viewport —
+   * dependeria de um `matchMedia` que no servidor não existe, e o HTML enviado
+   * marcaria como inerte um menu que no desktop está aberto e clicável.
+   */
   .clara-rail {
     box-shadow: 12px 0 30px rgb(26 51 0 / 0.12);
     transform: translateX(-105%);
+    visibility: hidden;
+    transition:
+      transform 180ms ease,
+      visibility 0s linear 180ms;
   }
 
   .clara-rail.is-open {
     transform: translateX(0);
+    visibility: visible;
+    transition: transform 180ms ease;
   }
 
+  /*
+   * O mesmo vale para o fundo escuro: é um `<button>` de tela inteira, e
+   * fechado ele era um alvo de Tab que anunciava "Fechar menu" sem que houvesse
+   * menu aberto para fechar.
+   */
   .clara-rail-backdrop {
     position: fixed;
     inset: 0;
@@ -1436,13 +1523,18 @@
     border: 0;
     background: rgb(26 51 0 / 0.18);
     opacity: 0;
+    visibility: hidden;
     pointer-events: none;
-    transition: opacity 180ms ease;
+    transition:
+      opacity 180ms ease,
+      visibility 0s linear 180ms;
   }
 
   .clara-rail-backdrop.is-open {
     opacity: 1;
+    visibility: visible;
     pointer-events: auto;
+    transition: opacity 180ms ease;
   }
 
   .clara-workspace {
@@ -1526,9 +1618,19 @@
     padding-right: 8px;
   }
 
+  /* O desenho encolhe com a faixa; o alvo de 44px do `::after` não muda. */
   .clara-tool-button {
     width: 31px;
     height: 31px;
+  }
+
+  /*
+   * A lista de conversas é a navegação principal do celular, e 35px de altura
+   * é menos que a ponta de um dedo. No desktop 35px basta (o ponteiro é
+   * preciso e a lista precisa caber), então a folga vale só aqui.
+   */
+  .clara-conversation-item {
+    min-height: 44px;
   }
 
   .clara-chat-column,
