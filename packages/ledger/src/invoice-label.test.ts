@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { formatInvoiceLabel } from "./invoice-label";
+import { formatDocumentLabel, formatInvoiceLabel } from "./invoice-label";
 
 describe("formatInvoiceLabel", () => {
   it("usa origem e vencimento no formato reconhecível", () => {
@@ -26,6 +26,19 @@ describe("formatInvoiceLabel", () => {
     assert.equal(
       formatInvoiceLabel({ issuer: null, dueDate: null, periodEnd: null }),
       "Fatura",
+    );
+  });
+});
+
+describe("formatDocumentLabel", () => {
+  it("não chama extrato de fatura", () => {
+    assert.equal(
+      formatDocumentLabel({
+        issuer: "Nubank",
+        periodEnd: "2026-07-31",
+        documentKind: "bank_statement",
+      }),
+      "Nubank · Extrato 31/07/26",
     );
   });
 });

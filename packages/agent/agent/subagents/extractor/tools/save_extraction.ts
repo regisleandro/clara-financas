@@ -76,6 +76,11 @@ export default defineTool({
           payload,
         });
 
+        await tx
+          .update(documents)
+          .set({ kind: payload.documentKind })
+          .where(and(eq(documents.id, payload.documentId), eq(documents.tenantId, tenantId)));
+
         return { ok: true as const };
       },
       db,
@@ -86,8 +91,17 @@ export default defineTool({
     return {
       extractionId,
       documentId: payload.documentId,
+      documentKind: payload.documentKind,
+      issuer: payload.issuer,
+      periodStart: payload.periodStart,
+      periodEnd: payload.periodEnd,
+      dueDate: payload.dueDate,
+      declaredTotal: payload.declaredTotal,
+      declaredSubtotals: payload.declaredSubtotals,
+      openingBalance: payload.openingBalance,
+      closingBalance: payload.closingBalance,
       transactionCount: payload.transactions.length,
-      note: "Extração guardada. Devolva o recibo com este extractionId — não repita as transações no texto.",
+      warnings: payload.warnings,
     };
   },
 });

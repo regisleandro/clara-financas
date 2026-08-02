@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useTransition } from "react";
 
 import {
@@ -27,6 +27,7 @@ export function OverviewFilters({
   selectedIssuer: string;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [pending, startTransition] = useTransition();
 
   function update(next: { month?: string; issuer?: string }) {
@@ -38,7 +39,8 @@ export function OverviewFilters({
     if (issuer !== ALL_ISSUERS) params.set("origem", issuer);
 
     startTransition(() => {
-      router.replace(`/inicio${params.size > 0 ? `?${params.toString()}` : ""}`, {
+      const destination = pathname.startsWith("/comparacao") ? "/comparacao" : "/inicio";
+      router.replace(`${destination}${params.size > 0 ? `?${params.toString()}` : ""}`, {
         scroll: false,
       });
     });
@@ -47,7 +49,7 @@ export function OverviewFilters({
   return (
     <section
       aria-label="Filtros dos gastos"
-      className="mb-5 flex flex-col gap-4 rounded-[var(--clara-radius-card)] border border-[var(--clara-fog)] bg-white px-5 py-4 sm:flex-row sm:items-end"
+      className="mb-5 flex flex-col gap-4 rounded-[var(--clara-radius-card)] border border-[var(--clara-border)] bg-[var(--clara-white)] px-5 py-4 sm:flex-row sm:items-end"
     >
       <div className="min-w-0 flex-1">
         <label id="overview-month-label" className="clara-eyebrow mb-2 block">
@@ -60,7 +62,7 @@ export function OverviewFilters({
         >
           <SelectTrigger
             aria-labelledby="overview-month-label"
-            className="h-11 w-full rounded-full border-[var(--clara-ash)] bg-[var(--clara-cloud)] px-4 shadow-none"
+            className="h-11 w-full rounded-[var(--clara-radius-pill)] border-[var(--clara-ash)] bg-[var(--clara-cloud)] px-4 shadow-none"
           >
             <SelectValue placeholder="Sem períodos disponíveis" />
           </SelectTrigger>
@@ -87,7 +89,7 @@ export function OverviewFilters({
         >
           <SelectTrigger
             aria-labelledby="overview-origin-label"
-            className="h-11 w-full rounded-full border-[var(--clara-ash)] bg-[var(--clara-cloud)] px-4 shadow-none"
+            className="h-11 w-full rounded-[var(--clara-radius-pill)] border-[var(--clara-ash)] bg-[var(--clara-cloud)] px-4 shadow-none"
           >
             <SelectValue />
           </SelectTrigger>

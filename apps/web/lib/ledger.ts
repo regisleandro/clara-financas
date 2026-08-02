@@ -6,7 +6,17 @@ import { documents, transactions } from "@clara-financas/db/schema/ledger";
 import { transactionReclassifications } from "@clara-financas/db/schema/reclassification";
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import { aggregateByCategory, totalSpend, type Transaction } from "@clara-financas/ledger";
-import { desc, eq, inArray } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  or,
+} from "drizzle-orm";
 
 /**
  * Leitura do razão para as telas.
@@ -23,6 +33,44 @@ export type LedgerRow = Transaction & {
   documentIssuer: string | null;
   status: string;
 };
+
+export const TRANSACTION_PAGE_SIZE = 50;
+
+export type LedgerPageOptions = {
+  page?: number;
+  pageSize?: number;
+  query?: string;
+  category?: string;
+};
+
+const toLedgerRow = ({
+  transaction,
+  documentFilename,
+  documentIssuer,
+}: {
+  transaction: typeof transactions.$inferSelect;
+  documentFilename: string | null;
+  documentIssuer: string | null;
+}): LedgerRow => ({
+  id: transaction.id,
+  date: transaction.date,
+  originalDescription: transaction.originalDescription,
+  merchant: transaction.merchant,
+  merchantKey: transaction.merchantKey,
+  amount: transaction.amount,
+  kind: transaction.kind,
+  installment:
+    transaction.installmentCurrent !== null && transaction.installmentTotal !== null
+      ? { current: transaction.installmentCurrent, total: transaction.installmentTotal }
+      : null,
+  category: transaction.category,
+  extractionConfidence: transaction.extractionConfidence,
+  sourceDocument: transaction.sourceDocumentId,
+  page: transaction.page,
+  documentFilename,
+  documentIssuer,
+  status: transaction.status,
+});
 
 export async function loadLedgerView(tenantId: string) {
   const db = getDb();
@@ -43,31 +91,98 @@ export async function loadLedgerView(tenantId: string) {
     db,
   );
 
-  const ledger: LedgerRow[] = rows.map(({ transaction, documentFilename, documentIssuer }) => ({
-    id: transaction.id,
-    date: transaction.date,
-    originalDescription: transaction.originalDescription,
-    merchant: transaction.merchant,
-    merchantKey: transaction.merchantKey,
-    amount: transaction.amount,
-    kind: transaction.kind,
-    installment:
-      transaction.installmentCurrent !== null && transaction.installmentTotal !== null
-        ? { current: transaction.installmentCurrent, total: transaction.installmentTotal }
-        : null,
-    category: transaction.category,
-    extractionConfidence: transaction.extractionConfidence,
-    sourceDocument: transaction.sourceDocumentId,
-    page: transaction.page,
-    documentFilename,
-    documentIssuer,
-    status: transaction.status,
-  }));
+  const ledger: LedgerRow[] = rows.map(toLedgerRow);
 
   return {
     rows: ledger,
     total: totalSpend(ledger),
     categories: aggregateByCategory(ledger),
+  };
+}
+
+/**
+ * Página da lista operacional do razão.
+ *
+ * A lista não precisa carregar o razão inteiro para exibir 50 linhas. Busca,
+ * categoria, total e categorias disponíveis são resolvidos no banco, então o
+ * filtro continua correto sem transferir milhares de lançamentos para o
+ * navegador.
+ */
+export async function loadLedgerPage(
+  tenantId: string,
+  options: LedgerPageOptions = {},
+) {
+  const db = getDb();
+  const pageSize = Math.min(Math.max(Math.trunc(options.pageSize ?? TRANSACTION_PAGE_SIZE), 10), 100);
+  const page = Math.max(Math.trunc(options.page ?? 1), 1);
+  const query = options.query?.trim().slice(0, 120) ?? "";
+  const category = options.category?.trim() ?? "";
+
+  const filters = [
+    inArray(transactions.status, ["confirmed", "adjustment"]),
+    query === ""
+      ? undefined
+      : or(
+          ilike(transactions.merchant, `%${query}%`),
+          ilike(transactions.originalDescription, `%${query}%`),
+        ),
+    category === ""
+      ? undefined
+      : category === "Sem categoria"
+        ? isNull(transactions.category)
+        : eq(transactions.category, category),
+  ].filter((filter): filter is NonNullable<typeof filter> => filter !== undefined);
+  const where = and(...filters);
+
+  const result = await forTenant(
+    tenantId,
+    async (tx) => {
+      const countResult = await tx
+        .select({ total: count() })
+        .from(transactions)
+        .where(where);
+      const total = countResult[0]?.total ?? 0;
+      const pageCount = Math.max(1, Math.ceil(total / pageSize));
+      const currentPage = Math.min(page, pageCount);
+      const rows = await tx
+        .select({
+          transaction: transactions,
+          documentFilename: documents.filename,
+          documentIssuer: documents.issuer,
+        })
+        .from(transactions)
+        .leftJoin(documents, eq(transactions.sourceDocumentId, documents.id))
+        .where(where)
+        .orderBy(desc(transactions.date), desc(transactions.id))
+        .limit(pageSize)
+        .offset((currentPage - 1) * pageSize);
+
+      const categoryRows = await tx
+        .select({ category: transactions.category })
+        .from(transactions)
+        .where(inArray(transactions.status, ["confirmed", "adjustment"]))
+        .groupBy(transactions.category)
+        .orderBy(asc(transactions.category));
+
+      return {
+        rows: rows.map(toLedgerRow),
+        total,
+        currentPage,
+        pageCount,
+        categories: categoryRows
+          .map((row) => row.category)
+          .filter((value): value is string => value !== null),
+      };
+    },
+    db,
+  );
+
+  return {
+    ...result,
+    pageSize,
+    page: result.currentPage,
+    query,
+    category: category === "" ? undefined : category,
   };
 }
 

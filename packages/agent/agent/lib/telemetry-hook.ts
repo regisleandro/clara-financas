@@ -37,6 +37,20 @@ const asRecord = (value: unknown): UnknownRecord | undefined =>
 const asString = (value: unknown): string | undefined =>
   typeof value === "string" && value.length > 0 ? value : undefined;
 
+const BEHAVIOR_CRITICAL_TOOLS = new Set([
+  "aggregate_by_category",
+  "compare_periods",
+  "detect_recurrences",
+  "query_ledger",
+  "save_categorization",
+  "save_extraction",
+  "present_analysis",
+  "analyze_series",
+  "present_financial_artifact",
+  "present_categorization",
+  "recategorize_transactions",
+]);
+
 /**
  * O resumo do input — e o que ele DELIBERADAMENTE não carrega.
  *
@@ -186,7 +200,13 @@ export function telemetryHook() {
               ? "recuperavel"
               : "ok";
 
-        if (status === "ok" && process.env.CLARA_TELEMETRY_ALL !== "1") return;
+        if (
+          status === "ok" &&
+          process.env.CLARA_TELEMETRY_ALL !== "1" &&
+          !BEHAVIOR_CRITICAL_TOOLS.has(toolName)
+        ) {
+          return;
+        }
 
         // O agente que executou entra no resumo: as tools de subagente rodam
         // na sessão filha, com o hook do próprio subagente, e sem isto os

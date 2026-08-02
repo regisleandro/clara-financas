@@ -29,7 +29,7 @@ import type {
  * extração e era erro de modelo.
  */
 export function countsTowardDeclaredTotal(transaction: Transaction): boolean {
-  return transaction.kind !== "payment";
+  return !["payment", "card_payment", "transfer", "income"].includes(transaction.kind);
 }
 
 export function verifyChecksum(

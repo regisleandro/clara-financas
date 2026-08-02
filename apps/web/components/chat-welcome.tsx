@@ -41,30 +41,59 @@ export function ChatWelcome({
   disabled: boolean;
   onPick: (starter: Starter) => void;
 }) {
-  // O array de starters chega ORDENADO por urgência do servidor: a nota do
-  // primeiro é a frase que abre a conversa do que é verdade — vencimento
-  // próximo, conferência aberta — em vez de uma saudação genérica.
-  const urgentNote = starters[0]?.prompt !== null ? starters[0]?.note : undefined;
+  const defaults: readonly Starter[] = [
+    {
+      title: "Ver a divergência",
+      note: "A soma de uma fatura não fecha",
+      prompt: "Verifique a divergência da minha última fatura.",
+    },
+    {
+      title: "Comparar as duas últimas faturas",
+      note: "Entender o que mudou de um ciclo para o outro",
+      prompt: "Compare minhas duas últimas faturas.",
+    },
+    {
+      title: "Ver onde foi o dinheiro",
+      note: "Composição da fatura mais recente",
+      prompt: "Mostre onde foi o dinheiro da minha última fatura.",
+    },
+    {
+      title: "Enviar um documento",
+      note: "Fatura, extrato ou nota fiscal em PDF",
+      prompt: null,
+    },
+  ];
+  const visibleStarters = defaults.map((fallback, index) => starters[index] ?? fallback);
 
   return (
-    <div>
-      <h1 className="clara-display-lg text-pretty">
-        Oi{name === null ? "" : `, ${name}`}. O que fazemos com o seu dinheiro agora?
+    <div className="clara-welcome">
+      <p className="clara-eyebrow">Assistente financeiro</p>
+      <h1 className="clara-welcome-title">
+        Seu dinheiro, <span className="clara-highlight">bem explicado.</span>
       </h1>
-      {urgentNote !== undefined ? (
-        <p className="clara-small mt-4 text-[var(--clara-graphite)]">{urgentNote}</p>
-      ) : null}
-      <div className="mt-12 grid gap-4 sm:grid-cols-2">
-        {starters.map((starter) => (
+      <div className="clara-welcome-intro">
+        <span className="clara-message-mark" aria-hidden="true">c.</span>
+        <p>
+          Oi{name === null ? "" : `, ${name}`}. Eu organizo seus dados, explico o que mudou e mostro os detalhes para você decidir.
+        </p>
+      </div>
+      <div className="clara-quick-list" aria-label="Comece por aqui">
+        {visibleStarters.map((starter, index) => (
           <button
             key={starter.title}
             type="button"
             disabled={disabled}
             onClick={() => onPick(starter)}
-            className="clara-card flex flex-col gap-2 p-7 text-left transition-colors hover:bg-[#fbfbfd] disabled:opacity-60"
+            className="clara-quick-row disabled:opacity-60"
           >
-            <strong className="clara-display-xs">{starter.title}</strong>
-            <small className="clara-small">{starter.note}</small>
+            <span className={`clara-quick-icon clara-quick-icon-${index + 1}`} aria-hidden="true">
+              {index === 3 ? "↑" : index === 1 ? "↔" : index === 2 ? "◒" : "!"}
+            </span>
+            <span className="clara-quick-copy">
+              <strong>{starter.title}</strong>
+              <small>{starter.note}</small>
+            </span>
+            <span className="clara-quick-arrow" aria-hidden="true">↗</span>
           </button>
         ))}
       </div>
@@ -78,7 +107,7 @@ const conversationDate = (timestamp: number) =>
     new Date(timestamp),
   );
 
-/** Cabeçalho da conversa: identidade da Clara, histórico, artefato e sessão. */
+/** Cabeçalho da conversa: identidade da Clara, histórico, Detalhes e sessão. */
 export function ChatHeader({
   onReset,
   onToggleArtifact,
@@ -104,10 +133,10 @@ export function ChatHeader({
 
   return (
     <header className="flex items-center gap-3">
-      <span className="grid size-[31px] shrink-0 place-items-center rounded-[10px] bg-[var(--clara-ink)]">
-        <svg width="19" height="19" viewBox="0 0 12 12" aria-hidden="true">
-          <circle cx="6" cy="6" r="4.7" fill="none" stroke="#f5f5f7" strokeWidth="1.2" />
-          <circle cx="6" cy="6" r="1.7" fill="#f5f5f7" />
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[var(--clara-yellow)] text-[var(--clara-ink)]">
+        <svg width="19" height="19" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M15.4 6.6a6.3 6.3 0 1 0 0 6.8" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+          <circle cx="10" cy="10" r="2" fill="currentColor" />
         </svg>
       </span>
       <span>
@@ -145,7 +174,7 @@ export function ChatHeader({
             onClick={onToggleArtifact}
             className="clara-pill clara-pill-outline h-8 px-4 text-xs"
           >
-            {artifactOpen ? "Fechar artefato" : "Ver artefato"}
+            {artifactOpen ? "Fechar detalhes" : "Ver detalhes"}
           </button>
         ) : null}
         {onReset !== null ? (
@@ -153,7 +182,7 @@ export function ChatHeader({
             type="button"
             onClick={onReset}
             disabled={navigationDisabled}
-            className="rounded-[var(--clara-radius-pill)] bg-[var(--clara-ash)] px-4 py-2 text-xs disabled:opacity-50"
+            className="clara-pill clara-pill-outline min-h-8 px-3 text-xs disabled:opacity-50"
             style={{ letterSpacing: "-0.022em" }}
           >
             Nova conversa

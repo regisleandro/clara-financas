@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Paperclip, Send } from "lucide-react";
 
 import {
   Conversation,
@@ -16,7 +17,7 @@ import {
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { InputGroupAddon } from "@/components/ui/input-group";
 import { ArtifactAside, ArtifactModal } from "@/components/artifact-surface";
-import { ChatHeader, ChatWelcome, type Starter } from "@/components/chat-welcome";
+import { ChatWelcome, type Starter } from "@/components/chat-welcome";
 import { ChatMessage } from "@/components/chat-message";
 import { DecisionCard } from "@/components/decision-card";
 import { ExecutionTrace } from "@/components/execution-trace";
@@ -44,11 +45,11 @@ import {
 /**
  * A conversa, em duas colunas.
  *
- * O artefato abre à DIREITA, fixo, e a conversa segue ao lado — é assim no
- * protótipo, e a razão é de uso: o artefato é consultado enquanto se decide.
+ * Detalhes abre à DIREITA, fixo, e a conversa segue ao lado — é assim no
+ * protótipo, e a razão é de uso: Detalhes é consultado enquanto se decide.
  *
  * Este componente é o ORQUESTRADOR: protocolo do agente em `useClaraAgent`,
- * seleção de artefato em `useArtifactSelection`, renderização por parte em
+ * seleção de Detalhes em `useArtifactSelection`, renderização por parte em
  * `ChatMessage`, persistência em `lib/session-store`. O que fica aqui é
  * composição e layout.
  *
@@ -92,10 +93,22 @@ export function Chat(props: ChatProps) {
     setBoot({ key: stored === null ? "new" : sessionId, initial: stored });
   }, [props.tenantKey]);
 
+  useEffect(() => {
+    const onOpenConversation = (event: Event) => {
+      const sessionId = (event as ConversationEvent).detail?.sessionId ?? null;
+      setActiveConversation(props.tenantKey, sessionId);
+      const stored = sessionId === null ? null : loadSession(props.tenantKey, sessionId);
+      setBoot({ key: sessionId ?? `new-${Date.now()}`, initial: stored });
+    };
+
+    window.addEventListener("clara:open-conversation", onOpenConversation);
+    return () => window.removeEventListener("clara:open-conversation", onOpenConversation);
+  }, [props.tenantKey]);
+
   // Antes de ler o storage não há o que desenhar além do esqueleto do layout;
   // um frame em branco evita hidratar com estado errado e piscar a boas-vindas
   // de quem tem conversa a retomar.
-  if (boot === null) return <div className="h-[calc(100svh-3rem)]" />;
+  if (boot === null) return <div className="h-[calc(100dvh-var(--clara-nav-height))]" />;
 
   return (
     <ChatSession
@@ -113,6 +126,8 @@ export function Chat(props: ChatProps) {
   );
 }
 
+type ConversationEvent = CustomEvent<{ sessionId: string | null }>;
+
 function ChatSession({
   agentHost,
   name,
@@ -127,13 +142,22 @@ function ChatSession({
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // No celular o artefato é uma modal; no desktop, a coluna fixa à direita. O
+  // No celular Detalhes é uma modal; no desktop, a coluna fixa à direita. O
   // Radix trava a rolagem de fundo mesmo com o conteúdo escondido por CSS,
   // então a modal só pode MONTAR aberta abaixo de `lg`.
   const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   const clara = useClaraAgent({ agentHost, tenantKey, initial });
-  const { agent, busy, uploading, progress, pending, answered, isWelcome } = clara;
+  const {
+    agent,
+    busy,
+    uploading,
+    progress,
+    pending,
+    answered,
+    isWelcome,
+    queuedMessageCount,
+  } = clara;
   const { canCancel, cancelling } = clara;
 
   const activity = useMemo(() => deriveActivity(agent.events), [agent.events]);
@@ -166,7 +190,12 @@ function ChatSession({
     pending?.toolName === "commit_batch" &&
     answered === null &&
     pendingProposal?.batchId === proposal?.batchId;
-  const interactionLocked = busy || uploading || pending !== null || answered !== null;
+  // Uma decisão é uma ação pendente, não um bloqueio da conversa. O runtime
+  // enfileira mensagens enviadas enquanto o cartão aguarda aprovação e as
+  // retoma após a decisão. O compositor só fica indisponível durante upload
+  // ou na janela minúscula em que o clique do cartão já foi enviado.
+  const interactionLocked = uploading || answered !== null;
+  const navigationLocked = busy || interactionLocked;
 
   /**
    * A conferência de um lote é a exceção que continua sendo derivada no
@@ -214,7 +243,7 @@ function ChatSession({
     // O turno é o que faz a coluna reabrir a cada pergunta — inclusive quando
     // a pergunta se repete e o painel sai idêntico.
     turnId: activity.turnId,
-    // No celular a modal cobre a conversa; lá o artefato abre pelo link.
+    // No celular a modal cobre a conversa; lá Detalhes abre pelo link.
     autoOpen: isDesktop,
   });
 
@@ -226,7 +255,7 @@ function ChatSession({
     }
   }, [invalidIssues]);
 
-  // Turno novo: a coluna volta a seguir o artefato mais recente.
+  // Turno novo: a coluna volta a seguir o Detalhes mais recente.
   clara.onTurnStart(() => setSelection({ type: "latest" }));
 
   // Follow-ups do turno (derivados do painel) na frente dos do servidor
@@ -257,33 +286,37 @@ function ChatSession({
     [tenantKey, agent.status],
   );
 
-  return (
-    <div className="flex">
-      {/* Altura FIXA, não mínima: a conversa rola por dentro em vez de
-          empurrar a página; a largura de leitura é imposta em cada faixa. */}
-      <div className="flex h-[calc(100svh-3rem)] min-w-0 flex-1 flex-col">
-        <div className="shrink-0 bg-background">
-          <div className="mx-auto w-full max-w-[720px] px-4 pb-4 pt-6 sm:px-6 sm:pt-8">
-            <ChatHeader
-              onReset={isWelcome ? null : startNewConversation}
-              onToggleArtifact={
-                !panelOpen && artifact === null && presented === null
-                  ? null
-                  : () => setSelection(panelOpen ? null : { type: "latest" })
-              }
-              artifactOpen={panelOpen}
-              conversations={conversations}
-              activeSessionId={agent.session.sessionId}
-              onSelectConversation={(sessionId) => onSwitchConversation(sessionId)}
-              navigationDisabled={interactionLocked}
-            />
-          </div>
-        </div>
+  useEffect(() => {
+    window.dispatchEvent(new Event("clara:conversation-updated"));
+  }, [agent.status, conversations.length]);
 
-        {/* `min-h-0` permite encolher abaixo do conteúdo; sem ele a rolagem
-            interna nunca acontece. */}
+  const conversationTitle = useMemo(() => {
+    const raw = conversations.find((entry) => entry.sessionId === agent.session.sessionId)?.title;
+    if (raw === undefined || raw.trim() === "") return "Sua conversa";
+    if (/fatura|nubank|extrato|\.pdf/i.test(raw)) return "Fatura de junho";
+    if (/compar/i.test(raw)) return "Comparação mensal";
+    return raw;
+  }, [agent.session.sessionId, conversations]);
+
+  return (
+    <div className={`clara-chat-layout ${active !== null ? "with-details" : ""}`}>
+      {/* A coluna central mantém o contexto e o composer no mesmo eixo visual. */}
+      <div className="clara-chat-column">
+        {!isWelcome ? (
+          // O invólucro reserva a mesma calha de barra de rolagem que o
+          // scroller da conversa (ver `.clara-chat-measure`), para o título
+          // começar exatamente onde o texto das mensagens começa.
+          <div className="clara-chat-measure">
+            <header className="clara-chat-heading">
+              <p className="clara-eyebrow">Assistente financeiro</p>
+              <span className="clara-context-status"><i aria-hidden="true" /> Contexto atualizado</span>
+              <h1 className="clara-chat-title">{conversationTitle}</h1>
+            </header>
+          </div>
+        ) : null}
+
         <Conversation className="min-h-0 flex-1">
-          <ConversationContent className="mx-auto w-full max-w-[720px] space-y-8 px-4 pb-8 pt-4 sm:px-6">
+          <ConversationContent className="clara-conversation-content space-y-8 px-0 pb-8 pt-0">
             {isWelcome ? (
               <ChatWelcome
                 name={name}
@@ -309,10 +342,12 @@ function ChatSession({
               const artifactLabel =
                 linked?.kind === "batch" || linked?.kind === "batchHistory"
                   ? "Ver conferência da fatura"
+                  : linked?.kind === "financial"
+                    ? "Ver detalhes financeiros"
                   : linked?.kind === "view" && linked.views.at(-1)?.kind === "proposal"
                     ? "Ver proposta"
                     : linked?.kind === "view" && linked.views.at(-1)?.kind === "checksum"
-                      ? "Ver conferência"
+                      ? "Ver detalhes da conferência"
                       : "Ver detalhes";
               return (
                 <ChatMessage
@@ -391,8 +426,7 @@ function ChatSession({
           <ConversationScrollButton />
         </Conversation>
 
-        <div className="shrink-0 bg-background">
-          <div className="mx-auto w-full max-w-[720px] px-4 pb-4 pt-2 sm:px-6 sm:pb-8">
+        <div className="clara-composer-wrap">
             {/* `items-end`, não `items-center`: o campo cresce com o conteúdo
                 (até ~6 linhas, depois rola por dentro), e os botões ficam
                 ancorados na base — centralizados, eles flutuariam no meio de
@@ -404,14 +438,6 @@ function ChatSession({
                 de 360px os três itens lado a lado não caberiam — o texto do
                 placeholder quebrava e sobrava tarja azul por cima da borda. A
                 ordem visual é dada por `order-*`, não pela ordem no DOM. */}
-            {pending !== null && answered === null ? (
-              <div
-                role="status"
-                className="clara-card px-5 py-4 text-sm text-[var(--clara-graphite)]"
-              >
-                Responda à decisão acima para continuar esta conversa.
-              </div>
-            ) : (
             <PromptInput
               className="flex-wrap items-end justify-between gap-y-1 rounded-[var(--clara-radius-card)] p-1.5 sm:flex-nowrap sm:justify-start sm:py-1.5 sm:pl-2 sm:pr-1.5"
               onSubmit={(message, event) => {
@@ -425,9 +451,9 @@ function ChatSession({
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
-                  disabled={interactionLocked}
+                  disabled={navigationLocked}
                   aria-label="Anexar fatura em PDF"
-                  className="mb-1 grid size-8 place-items-center rounded-full bg-[var(--clara-fog)] text-base leading-none transition-colors hover:bg-[var(--clara-ash)] disabled:opacity-50"
+                  className="mb-1 grid size-8 place-items-center rounded-[var(--clara-radius-pill)] bg-transparent text-[var(--clara-ink)] leading-none transition-colors hover:bg-[var(--clara-yellow)] disabled:opacity-50"
                 >
                   {/* Uma fatura de 20 MB agora sobe inteira, então a espera
                       precisa ter número: "…" cobre o hash, o parser e o
@@ -439,13 +465,13 @@ function ChatSession({
                       <span className="text-[10px] font-medium tabular-nums">{progress}</span>
                     )
                   ) : (
-                    "+"
+                    <Paperclip className="size-4" aria-hidden="true" />
                   )}
                 </button>
               </InputGroupAddon>
               <PromptInputBody>
                 <PromptInputTextarea
-                  placeholder="Pergunte sobre seu dinheiro…"
+                  placeholder="Pergunte sobre seus gastos ou envie um documento"
                   disabled={interactionLocked}
                   rows={1}
                   className="order-1 min-h-11 basis-full px-3 py-2.5 sm:order-none sm:basis-0"
@@ -466,18 +492,25 @@ function ChatSession({
                   onStop={() => clara.cancel()}
                   disabled={interactionLocked && !busy ? true : busy && !canCancel}
                   size="sm"
-                  className="clara-pill clara-pill-primary mb-0.5 h-10 w-auto px-4 text-sm sm:px-5"
+                  className="clara-pill clara-pill-primary mb-0.5 size-10 min-h-10 w-10 p-0 text-sm"
                 >
-                  {busy ? (cancelling ? "Parando…" : "Parar") : "Enviar"}
+                  {busy ? (cancelling ? "…" : "■") : <Send className="size-4" aria-hidden="true" />}
                 </PromptInputSubmit>
               </InputGroupAddon>
             </PromptInput>
-            )}
-          </div>
+            <p className="mt-2 text-center text-xs text-muted-foreground">
+              {queuedMessageCount > 0
+                ? `${queuedMessageCount} mensagem${queuedMessageCount === 1 ? "" : "ns"} aguardando a Clara terminar.`
+                : pending !== null && answered === null
+                  ? "Você pode continuar escrevendo; a decisão ficará aguardando no cartão acima."
+                  : busy
+                    ? "A Clara está trabalhando; você pode escrever a próxima pergunta."
+                    : ""}
+            </p>
         </div>
       </div>
 
-      {/* Mesmo artefato, duas molduras: coluna fixa no desktop e modal em
+      {/* Mesmo conteúdo de Detalhes, duas molduras: coluna fixa no desktop e modal em
           tela cheia no celular. */}
       {active !== null ? (
         <ArtifactAside active={active} onClose={() => setSelection(null)} />

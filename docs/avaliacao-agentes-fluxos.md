@@ -74,7 +74,7 @@ A suíte de testes exercita as tools contra o banco real (não o texto do modelo
 
 | Gap | Detalhe |
 |---|---|
-| **Extrato bancário** declarado (`bank_statement` no schema, "extratos" no PRODUCT.md) mas nenhum código grava outro `kind` além de `credit_card_invoice`; checksum é todo modelado para fatura | P2 — exigiria outro contrato de conferência |
+| **Extrato bancário** declarado (`bank_statement` no schema, "extratos" no PRODUCT.md) mas nenhum código grava outro `kind` além de `credit_card_invoice`; checksum é todo modelado para fatura | **Corrigido na v3** — classificação, saldos inicial/final, reconciliação determinística e painel próprio |
 | **Operadora sem identidade canônica**: `documents.issuer` é texto livre; a chave (`issuerKey`) só existe na leitura. "Nubank" e "Nu Bank" são duas linhas na matriz | Parcial: a chave agora é compartilhada (`@clara-financas/ledger`) e o snapshot entrega as grafias exatas; canonicalização na escrita (análoga ao `merchantKey`) fica P2 |
 | **Lembrete sem porta de saída**: `commitments.active` nunca recebe `"no"` — não há tool nem tela que desative; a varredura diária avisa para sempre | **Corrigido (P1: `deactivate_commitment`, com gate)** |
 | **Proatividade sem opt-in**: o cron varre todos os tenants `ready`; o princípio "relevância **e consentimento**" está implementado só na metade relevância | **Corrigido (P2: `set_proactivity`)** |

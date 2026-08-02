@@ -20,9 +20,20 @@ export {
   type IssuedTransaction,
   type IssuerMonthMatrix,
 } from "./analysis";
+export {
+  analyzeFinancialSeries,
+  type FinancialPeriod,
+  type FinancialSeries,
+  type FinancialSeriesDriver,
+  type FinancialSeriesPoint,
+} from "./series";
 export { categoryLabel, categorySlug, type CategoryLabels } from "./categories";
 export { issuerKey, UNKNOWN_ISSUER } from "./issuer";
-export { formatInvoiceLabel } from "./invoice-label";
+export {
+  formatDocumentLabel,
+  formatInvoiceLabel,
+  type FinancialDocumentKind,
+} from "./invoice-label";
 export {
   merchantKey,
   isTruncationOf,
@@ -52,3 +63,4 @@ export {
   type ChecksumResult,
   type ChecksumCause,
 } from "./types";
+export { verifyStatementBalance, type StatementBalanceReport } from "./statement";

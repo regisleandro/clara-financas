@@ -6,8 +6,9 @@ import { batches, documents, transactions } from "@clara-financas/db/schema/ledg
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import {
   formatCents,
-  formatInvoiceLabel,
+  formatDocumentLabel,
   type ChecksumReport,
+  type StatementBalanceReport,
 } from "@clara-financas/ledger";
 import { and, eq } from "drizzle-orm";
 import { defineTool } from "eve/tools";
@@ -55,6 +56,7 @@ export default defineTool({
             updatedAt: batches.updatedAt,
             checksumReport: batches.checksumReport,
             issuer: documents.issuer,
+            documentKind: documents.kind,
           })
           .from(batches)
           .innerJoin(documents, eq(documents.id, batches.documentId))
@@ -62,22 +64,30 @@ export default defineTool({
           .limit(1);
 
         if (batch === undefined) {
-          return notFound("lote_nao_encontrado", `Nenhuma fatura com o id ${input.batchId}.`, {
+          return notFound("lote_nao_encontrado", `Nenhum documento com o id ${input.batchId}.`, {
             hint: "Chame list_invoices para obter o batchId atual.",
           });
         }
         if (batch.status !== "confirmed") {
           return refused(
             "operacao_nao_permitida",
-            "A fatura ainda é rascunho; corrija as linhas antes de registrá-la.",
+            "O documento ainda é rascunho; corrija as linhas antes de registrá-lo.",
             { hint: "Use edit_proposed_batch para uma fatura em rascunho." },
           );
         }
 
-        const report = batch.checksumReport as ChecksumReport | null;
-        const difference = report?.difference ?? null;
+        const report = batch.checksumReport as (ChecksumReport | StatementBalanceReport) | null;
+        if (report !== null && "kind" in report && report.kind === "statement_balance") {
+          return refused(
+            "operacao_nao_permitida",
+            "Extratos são reconciliados pelo saldo inicial e final, não por ajuste de fatura.",
+            { hint: "Use read_batch para conferir o saldo e create_adjustment para uma correção explícita." },
+          );
+        }
+        const checksum = report as ChecksumReport | null;
+        const difference = checksum?.difference ?? null;
         const plan = invoiceResolutionPlan(difference);
-        if (report === null || report.result !== "mismatch" || plan === null) {
+        if (checksum === null || checksum.result !== "mismatch" || plan === null) {
           return refused(
             "fatura_sem_divergencia",
             "Esta fatura não tem uma diferença aberta que peça ajuste.",
@@ -110,7 +120,7 @@ export default defineTool({
         const proposalId = `act_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
         const adjustmentCents = plan.adjustmentCents;
         const expiresAt = new Date(Date.now() + expiresInMinutes * 60_000);
-        const invoiceLabel = formatInvoiceLabel(batch);
+        const invoiceLabel = formatDocumentLabel(batch);
         const payload = {
           adjustmentCents,
           differenceBeforeCents: plan.differenceBeforeCents,

@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { findMessageView, findMessageViews, findPresentedView, findPresentedViews } from "./stream";
+import {
+  findMessageFinancialArtifacts,
+  findMessageView,
+  findMessageViews,
+  findPresentedFinancialArtifacts,
+  findPresentedView,
+  findPresentedViews,
+} from "./stream";
 
 /**
  * Estes testes cobrem exatamente os erros que a inferência anterior cometia em
@@ -26,6 +33,26 @@ const succeeded = (callId = "c1") => ({
 });
 
 describe("findPresentedView", () => {
+  it("lê o painel validado do output de present_analysis", () => {
+    const panel = view("Por recibo");
+    const events = [
+      { type: "turn.started", data: {} },
+      requested({ artifactId: "art_1" }, "present_analysis", "a1"),
+      {
+        type: "action.result",
+        data: {
+          status: "completed",
+          result: {
+            callId: "a1",
+            toolName: "present_analysis",
+            output: { presented: "metric", view: panel },
+          },
+        },
+      },
+    ];
+    assert.equal(findPresentedView(events)?.title, "Por recibo");
+  });
+
   it("encontra o painel que a Clara mandou desenhar", () => {
     const found = findPresentedView([requested(view("Gastos de junho")), succeeded()]);
     assert.equal(found?.title, "Gastos de junho");
@@ -138,6 +165,20 @@ const viewPart = (input: unknown, toolName = "present_view") => ({
 });
 
 describe("findMessageView", () => {
+  it("lê o painel materializado no output de present_categorization", () => {
+    const found = findMessageView({
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolName: "present_categorization",
+          input: { artifactId: "art_1" },
+          output: { presented: "proposal", view: view("Categorias sugeridas") },
+        },
+      ],
+    });
+    assert.equal(found?.title, "Categorias sugeridas");
+  });
+
   it("encontra o painel gravado na mensagem", () => {
     const found = findMessageView({
       id: "m1",
@@ -231,5 +272,53 @@ describe("findMessageView", () => {
       ["Um", "Dois"],
     );
     assert.equal(findMessageView(message)?.title, "Dois");
+  });
+});
+
+const financialArtifact = (title: string) => ({
+  artifactId: "art_series1",
+  version: 1,
+  kind: "timeline",
+  title,
+  summary: "Evolução calculada pelo razão.",
+  blocks: [
+    {
+      type: "series",
+      title: "Gasto por período",
+      points: [
+        { periodId: "a", label: "Maio", amount: 100, provenance: { transactionIds: ["t1"], documentIds: ["d1"] } },
+        { periodId: "b", label: "Junho", amount: 120, provenance: { transactionIds: ["t2"], documentIds: ["d2"] } },
+      ],
+    },
+  ],
+  warnings: [],
+  createdAt: "2026-08-01T12:00:00.000Z",
+});
+
+describe("findPresentedFinancialArtifacts", () => {
+  it("lê o artefato rico da apresentação e limpa no turno seguinte", () => {
+    const artifact = financialArtifact("Evolução");
+    const events = [
+      { type: "turn.started", data: { turnId: "t1" } },
+      { type: "actions.requested", data: { actions: [{ callId: "a1", toolName: "present_financial_artifact", input: { artifactId: "art_series1" } }] } },
+      { type: "action.result", data: { status: "completed", result: { callId: "a1", toolName: "present_financial_artifact", output: { presented: "timeline", artifact } } } },
+    ];
+    assert.equal(findPresentedFinancialArtifacts(events)[0]?.title, "Evolução");
+    assert.equal(findPresentedFinancialArtifacts([...events, { type: "turn.started", data: {} }]).length, 0);
+  });
+
+  it("associa o artefato rico à mensagem", () => {
+    const found = findMessageFinancialArtifacts({
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolName: "present_financial_artifact",
+          input: { artifactId: "art_series1" },
+          output: { presented: "timeline", artifact: financialArtifact("Evolução") },
+        },
+      ],
+    });
+    assert.equal(found.length, 1);
+    assert.equal(found[0]?.blocks[0]?.type, "series");
   });
 });

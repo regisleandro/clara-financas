@@ -1,7 +1,76 @@
 import { z } from "zod";
 
+import { ViewSchema } from "./index";
+import { AnalysisRequestScopeSchema } from "./analysis-scope-contracts";
+
+export {
+  AnalysisRequestScopeSchema,
+  AnalysisScopeSchema,
+  ComparableAnalysisScopeSchema,
+} from "./analysis-scope-contracts";
+export type {
+  AnalysisRequestScope,
+  AnalysisScope,
+  ComparableAnalysisScope,
+} from "./analysis-scope-contracts";
+
 const cents = z.number().int();
 const transactionIds = z.array(z.string().min(1)).min(1);
+
+export const AnalysisArtifactSchema = z
+  .object({
+    artifactKind: z.literal("analysis"),
+    requestedScope: AnalysisRequestScopeSchema,
+    actualScope: AnalysisRequestScopeSchema,
+    view: ViewSchema,
+    warnings: z.array(z.string()).default([]),
+  })
+  .superRefine((artifact, ctx) => {
+    if (JSON.stringify(artifact.requestedScope) !== JSON.stringify(artifact.actualScope)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["actualScope"],
+        message: "o escopo efetivo deve ser exatamente o escopo solicitado",
+      });
+    }
+  });
+
+export const AnalysisReceiptSchema = z.object({
+  artifactId: z.string().regex(/^art_[a-z0-9]+$/),
+  artifactKind: z.literal("analysis"),
+  nextAction: z.literal("present_analysis"),
+  viewKind: z.enum([
+    "metric",
+    "breakdown",
+    "comparison",
+    "recurrences",
+    "transactions",
+    "commitments",
+    "proposal",
+    "checksum",
+  ]),
+  warnings: z.array(z.string()).default([]),
+});
+
+/**
+ * Recibo do caminho v3. Diferente do painel legado, ele aponta para um
+ * artefato durável que pode conter série, composição e reconciliação na mesma
+ * resposta. O coordenador não recebe números: só a referência e o próximo
+ * passo de apresentação.
+ */
+export const FinancialAnalysisReceiptSchema = z.object({
+  artifactId: z.string().regex(/^art_[a-z0-9]+$/),
+  artifactKind: z.literal("analysis_v3"),
+  nextAction: z.literal("present_financial_artifact"),
+  blockCount: z.number().int().positive(),
+  warnings: z.array(z.string()).default([]),
+});
+
+export const AnalysisDeliverySchema = z.union([
+  AnalysisReceiptSchema,
+  FinancialAnalysisReceiptSchema,
+  ViewSchema,
+]);
 
 /**
  * O que o extrator DEVOLVE ao coordenador: um recibo, não a fatura inteira.
@@ -16,6 +85,9 @@ const transactionIds = z.array(z.string().min(1)).min(1);
 export const ExtractionReceiptSchema = z.object({
   extractionId: z.string().min(1),
   documentId: z.string().min(1),
+  documentKind: z.enum(["credit_card_invoice", "bank_statement", "invoice_nfe"]).default("credit_card_invoice"),
+  openingBalance: cents.nullable().default(null),
+  closingBalance: cents.nullable().default(null),
   issuer: z.string().nullable(),
   periodStart: z.string().nullable(),
   periodEnd: z.string().nullable(),
@@ -37,6 +109,9 @@ export const ExtractionReceiptSchema = z.object({
  */
 export const ExtractionResultSchema = z.object({
   documentId: z.string().min(1),
+  documentKind: z.enum(["credit_card_invoice", "bank_statement", "invoice_nfe"]).default("credit_card_invoice"),
+  openingBalance: cents.nullable().default(null),
+  closingBalance: cents.nullable().default(null),
   issuer: z.string().nullable(),
   periodStart: z.string().nullable(),
   periodEnd: z.string().nullable(),
@@ -54,7 +129,17 @@ export const ExtractionResultSchema = z.object({
       originalDescription: z.string().min(1),
       merchant: z.string().nullable(),
       amount: cents,
-      kind: z.enum(["purchase", "payment", "refund", "fee", "adjustment"]),
+      kind: z.enum([
+        "purchase",
+        "payment",
+        "refund",
+        "fee",
+        "adjustment",
+        "income",
+        "transfer",
+        "card_payment",
+        "cash_withdrawal",
+      ]),
       installment: z
         .object({ current: z.number().int().positive(), total: z.number().int().positive() })
         .nullable(),
@@ -205,7 +290,48 @@ export const CategorizationResultSchema = z.object({
   warnings: z.array(z.string()).default([]),
 });
 
+export const CategorizationArtifactSchema = z.object({
+  artifactKind: z.literal("categorization"),
+  matchedRules: z.array(
+    CategorizationResultSchema.shape.matchedRules.element.extend({ proposalId: z.string().min(1) }),
+  ),
+  proposals: z.array(
+    CategorizationResultSchema.shape.proposals.element.extend({ proposalId: z.string().min(1) }),
+  ),
+  merchantAliases: z.array(
+    CategorizationResultSchema.shape.merchantAliases.element.extend({ proposalId: z.string().min(1) }),
+  ),
+  warnings: z.array(z.string()).default([]),
+  view: ViewSchema,
+});
+
+export const CategorizationReceiptSchema = z.object({
+  artifactId: z.string().regex(/^art_[a-z0-9]+$/),
+  artifactKind: z.literal("categorization"),
+  nextAction: z.literal("present_categorization"),
+  proposalCount: z.number().int().nonnegative(),
+  warnings: z.array(z.string()).default([]),
+});
+
+export const LegacyCategorizationDeliverySchema = z.object({
+  artifactKind: z.literal("categorization_legacy"),
+  view: ViewSchema,
+  result: CategorizationResultSchema,
+  shadowArtifactId: z.string().regex(/^art_[a-z0-9]+$/).optional(),
+});
+
+export const CategorizationDeliverySchema = z.union([
+  CategorizationReceiptSchema,
+  LegacyCategorizationDeliverySchema,
+]);
+
 export type ExtractionReceipt = z.infer<typeof ExtractionReceiptSchema>;
 export type ExtractionResult = z.infer<typeof ExtractionResultSchema>;
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;
 export type CategorizationResult = z.infer<typeof CategorizationResultSchema>;
+export type AnalysisArtifact = z.infer<typeof AnalysisArtifactSchema>;
+export type AnalysisReceipt = z.infer<typeof AnalysisReceiptSchema>;
+export type AnalysisDelivery = z.infer<typeof AnalysisDeliverySchema>;
+export type CategorizationArtifact = z.infer<typeof CategorizationArtifactSchema>;
+export type CategorizationReceipt = z.infer<typeof CategorizationReceiptSchema>;
+export type CategorizationDelivery = z.infer<typeof CategorizationDeliverySchema>;

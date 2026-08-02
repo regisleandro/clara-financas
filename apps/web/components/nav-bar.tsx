@@ -2,158 +2,282 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-/**
- * Barra fixa do topo.
- *
- * Escura e translúcida sobre fundo claro — a inversão é o que faz a barra
- * "flutuar" em vez de dividir a página. O `backdrop-filter` com saturação
- * acima de 100% é o detalhe que dá o vidro da linguagem Apple: sem ele o
- * conteúdo por baixo aparece lavado.
- *
- * 48px de altura, sem exceção: é a âncora vertical de todas as telas.
- */
+import {
+  activeConversation,
+  listConversations,
+  setActiveConversation,
+  type StoredConversation,
+} from "@/lib/session-store";
 
-const ITEMS = [
-  { href: "/conversa", label: "Conversa" },
-  { href: "/inicio", label: "Visão geral" },
-  { href: "/transacoes", label: "Transações" },
-  { href: "/revisar", label: "Revisar" },
-  { href: "/aprendizados", label: "Aprendizados" },
-  { href: "/agenda", label: "Agenda" },
+type NavItem = {
+  href: string;
+  label: string;
+  icon: (props: { className?: string }) => ReactNode;
+};
+
+const CORE_ITEMS: NavItem[] = [
+  { href: "/conversa", label: "Conversa", icon: ChatIcon },
+  { href: "/comparacao", label: "Comparação", icon: CompareIcon },
+  { href: "/validacao", label: "Validação", icon: CheckIcon },
 ];
 
+const SECONDARY_ITEMS: NavItem[] = [
+  { href: "/transacoes", label: "Transações", icon: SearchIcon },
+  { href: "/aprendizados", label: "Aprendizados", icon: SparkIcon },
+  { href: "/agenda", label: "Agenda", icon: CalendarIcon },
+];
+
+type ConversationEvent = CustomEvent<{ sessionId: string | null }>;
+
+/**
+ * Shell da aplicação. A conversa continua sendo a superfície principal, mas
+ * a navegação agora respeita a hierarquia do produto: histórico à esquerda,
+ * abas de trabalho no topo e conteúdo no espaço de trabalho.
+ */
 export function NavBar({
+  children,
   hasAlerts = false,
   pendingReview = 0,
+  tenantKey = "anon",
+  name = null,
 }: {
+  children: ReactNode;
   hasAlerts?: boolean;
-  /**
-   * A contagem fica ao lado do rótulo, não num ponto vermelho: "3" diz o
-   * tamanho do trabalho, e um ponto só diz que existe trabalho — o que faz a
-   * pessoa abrir a tela para descobrir.
-   */
   pendingReview?: number;
+  tenantKey?: string;
+  name?: string | null;
 }) {
   const pathname = usePathname();
+  const [railOpen, setRailOpen] = useState(false);
+  const [conversations, setConversations] = useState<StoredConversation[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const refreshConversations = () => {
+    setConversations(listConversations(tenantKey));
+    setActiveId(activeConversation(tenantKey));
+  };
+
+  useEffect(() => {
+    refreshConversations();
+
+    const onStorage = () => refreshConversations();
+    const onUpdated = () => refreshConversations();
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("clara:conversation-updated", onUpdated);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("clara:conversation-updated", onUpdated);
+    };
+  }, [tenantKey]);
+
+  useEffect(() => {
+    setRailOpen(false);
+  }, [pathname]);
+
+  const isActive = (href: string) =>
+    pathname === href || (href !== "/conversa" && pathname.startsWith(`${href}/`));
+
+  const firstName = useMemo(() => {
+    const clean = name?.trim();
+    return clean ? (clean.split(/\s+/)[0] ?? "Você") : "Você";
+  }, [name]);
+
+  const openConversation = (sessionId: string | null) => {
+    setActiveConversation(tenantKey, sessionId);
+    setActiveId(sessionId);
+    window.dispatchEvent(
+      new CustomEvent<ConversationEvent["detail"]>("clara:open-conversation", {
+        detail: { sessionId },
+      }),
+    );
+    setRailOpen(false);
+  };
+
+  const conversationDate = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    if (date.toDateString() === now.toDateString()) return "Agora";
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) return "Ontem";
+    return new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "short" })
+      .format(date)
+      .replace(" de ", " ");
+  };
+
+  const renderWorkspaceTab = (item: NavItem, secondary = false) => {
+    const active = isActive(item.href);
+    const badge = item.href === "/validacao" ? pendingReview : 0;
+    const Icon = item.icon;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        aria-current={active ? "page" : undefined}
+        className={`clara-workspace-tab ${secondary ? "is-secondary" : ""} ${active ? "is-active" : ""}`}
+      >
+        <Icon className="size-3.5" />
+        <span>{item.label}</span>
+        {badge > 0 ? (
+          <span
+            aria-label={`${badge} ${badge === 1 ? "item pendente" : "itens pendentes"}`}
+            className="clara-review-badge"
+          >
+            {badge > 99 ? "99+" : badge}
+          </span>
+        ) : null}
+        {item.href === "/agenda" && hasAlerts ? (
+          <i className="clara-header-alert-dot" aria-label="Avisos novos" />
+        ) : null}
+      </Link>
+    );
+  };
 
   return (
-    <header
-      className="fixed inset-x-0 top-0 z-50 h-12"
-      style={{
-        background: "var(--clara-nav-bg)",
-        backdropFilter: "saturate(180%) blur(20px)",
-        WebkitBackdropFilter: "saturate(180%) blur(20px)",
-      }}
-    >
-      <nav className="mx-auto flex h-12 max-w-[1024px] items-center gap-1 px-2.5">
-        <Link href="/inicio" className="flex items-center gap-2 pr-3.5">
-          <span className="grid size-[18px] shrink-0 place-items-center rounded-md bg-[var(--clara-fog)]">
-            <ClaraMark />
-          </span>
-          <span
-            className="text-sm font-semibold text-[var(--clara-fog)]"
-            style={{ fontFamily: "var(--clara-display)", letterSpacing: "-0.015em" }}
-          >
-            clara
-          </span>
-        </Link>
+    <div className="clara-app-shell min-h-dvh">
+      <button
+        type="button"
+        aria-label="Fechar menu"
+        className={`clara-rail-backdrop ${railOpen ? "is-open" : ""}`}
+        onClick={() => setRailOpen(false)}
+      />
 
-        <ul className="flex items-center overflow-x-auto">
-          {ITEMS.map((item) => {
-            const active = pathname === item.href;
-            const badge = item.href === "/revisar" ? pendingReview : 0;
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className="flex h-12 items-center gap-1.5 whitespace-nowrap px-[11px] text-xs text-[var(--clara-fog)] transition-opacity hover:opacity-100"
-                  style={{ letterSpacing: "-0.01em", opacity: active ? 1 : 0.72 }}
-                >
-                  {item.label}
-                  {badge > 0 ? (
-                    <span
-                      aria-label={`${badge} ${badge === 1 ? "item pendente" : "itens pendentes"}`}
-                      className="grid h-[17px] min-w-[17px] place-items-center rounded-full bg-[var(--clara-blue)] px-1 text-[10px] font-semibold text-white"
+      <aside className={`clara-rail ${railOpen ? "is-open" : ""}`} aria-label="Navegação da Clara">
+        <div className="clara-rail-top">
+          <Link
+            href="/conversa"
+            aria-label="Clara, abrir conversa"
+            className="clara-brand"
+            onClick={() => setRailOpen(false)}
+          >
+            <span className="clara-brand-mark">
+              <ClaraMark />
+            </span>
+            <span>clara</span>
+          </Link>
+
+          <button
+            type="button"
+            className="clara-new-conversation"
+            onClick={() => openConversation(null)}
+          >
+            <PlusIcon className="size-4" />
+            <span>Nova conversa</span>
+          </button>
+
+          <div className="clara-rail-section">
+            <p className="clara-rail-label">Conversas</p>
+            <div className="clara-conversation-list" role="list">
+              {conversations.length === 0 ? (
+                <p className="clara-rail-empty">Suas conversas aparecem aqui.</p>
+              ) : (
+                conversations.slice(0, 8).map((entry) => {
+                  const active = activeId === entry.sessionId;
+                  return (
+                    <button
+                      type="button"
+                      role="listitem"
+                      key={entry.sessionId}
+                      className={`clara-conversation-item ${active ? "is-active" : ""}`}
+                      onClick={() => openConversation(entry.sessionId)}
                     >
-                      {badge > 99 ? "99+" : badge}
-                    </span>
-                  ) : null}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+                      {/* Sem `truncate`: o título quebra em até duas linhas
+                          (ver `.clara-conversation-item > span`). Numa linha
+                          só, toda conversa sobre fatura virava o mesmo prefixo
+                          seguido de reticências. */}
+                      <span>{entry.title}</span>
+                      <time dateTime={new Date(entry.updatedAt).toISOString()}>
+                        {conversationDate(entry.updatedAt)}
+                      </time>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
 
-        <div className="ml-auto flex items-center gap-1">
-          <Link
-            href="/transacoes"
-            aria-label="Buscar transação"
-            className="grid size-[30px] place-items-center rounded-full transition-colors hover:bg-white/15"
-          >
-            <SearchIcon />
-          </Link>
-          <Link
-            href="/agenda"
-            aria-label={hasAlerts ? "Agenda, com avisos novos" : "Agenda"}
-            className="relative grid size-[30px] place-items-center rounded-full transition-colors hover:bg-white/15"
-          >
-            <CalendarIcon />
-            {hasAlerts ? (
-              <span
-                aria-hidden="true"
-                className="absolute right-1 top-1 size-[5px] rounded-full bg-[var(--clara-blue)]"
-              />
-            ) : null}
-          </Link>
         </div>
-      </nav>
-    </header>
+
+        <div className="clara-rail-bottom">
+          <div className="clara-profile">
+            <span className="clara-profile-avatar" aria-hidden="true">
+              {firstName === "Você" ? "VC" : firstName.slice(0, 2).toUpperCase()}
+            </span>
+            <div>
+              <strong>{name ?? "Você"}</strong>
+              <small>Conta pessoal</small>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <section className="clara-workspace">
+        <header className="clara-workspace-header">
+          <button
+            type="button"
+            className="clara-mobile-menu"
+            aria-label="Abrir menu"
+            aria-expanded={railOpen}
+            onClick={() => setRailOpen(true)}
+          >
+            <MenuIcon className="size-5" />
+          </button>
+          <nav className="clara-workspace-tabs" aria-label="Áreas principais">
+            {CORE_ITEMS.map((item) => renderWorkspaceTab(item))}
+            <span className="clara-workspace-tab-divider" aria-hidden="true" />
+            {SECONDARY_ITEMS.map((item) => renderWorkspaceTab(item, true))}
+          </nav>
+          <div className="clara-workspace-tools">
+            <Link href="/transacoes" aria-label="Buscar transação" className="clara-tool-button">
+              <SearchIcon className="size-4" />
+            </Link>
+          </div>
+        </header>
+        <main className="clara-workspace-main">{children}</main>
+      </section>
+    </div>
   );
 }
 
 function ClaraMark() {
   return (
-    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-      <circle cx="6" cy="6" r="4.7" fill="none" stroke="#1d1d1f" strokeWidth="1.3" />
-      <circle cx="6" cy="6" r="1.7" fill="#1d1d1f" />
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M15.4 6.6a6.3 6.3 0 1 0 0 6.8" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+      <circle cx="10" cy="10" r="2" fill="currentColor" />
     </svg>
   );
 }
 
-function SearchIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="#f5f5f7"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <circle cx="6.9" cy="6.9" r="4.7" />
-      <path d="M10.4 10.4 13.9 13.9" />
-    </svg>
-  );
+function PlusIcon({ className }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg>;
 }
 
-function CalendarIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="#f5f5f7"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <rect x="2.3" y="3.5" width="11.4" height="10.2" rx="2.4" />
-      <path d="M2.3 6.7h11.4M5.6 2.3v2.1M10.4 2.3v2.1" />
-    </svg>
-  );
+function MenuIcon({ className }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M3 5.5h14M3 10h14M3 14.5h14" /></svg>;
+}
+
+function ChatIcon({ className }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h7A2.5 2.5 0 0 1 16 5.5v4a2.5 2.5 0 0 1-2.5 2.5H9l-3.5 3v-3.1A2.5 2.5 0 0 1 4 9.5v-4Z" /></svg>;
+}
+
+function CompareIcon({ className }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><path d="M5 4v12M15 4v12M3 7h4M13 13h4" /><path d="m6.8 5.2 2-1.2 2 1.2M13.2 14.8l-2 1.2-2-1.2" /></svg>;
+}
+
+function CheckIcon({ className }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m4 10.2 3.8 3.8L16 5.8" /></svg>;
+}
+
+function SearchIcon({ className }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><circle cx="8.6" cy="8.6" r="5.2" /><path d="m12.5 12.5 4 4" /></svg>;
+}
+
+function SparkIcon({ className }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><path d="m10 2 1.2 4.8L16 8l-4.8 1.2L10 14l-1.2-4.8L4 8l4.8-1.2L10 2Z" /><path d="m16.2 13.2.5 2 .3.1-2 .5-.1.2-.5-2-.2-.1 2-.5Z" /></svg>;
+}
+
+function CalendarIcon({ className }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12" rx="2.5" /><path d="M3 8h14M6.5 2.8v3M13.5 2.8v3" /></svg>;
 }

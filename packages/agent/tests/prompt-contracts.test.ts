@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { describe, it } from "node:test";
 
 const read = (path: string) => readFile(new URL(path, import.meta.url), "utf8");
@@ -37,6 +37,51 @@ describe("contratos de interação dos prompts", () => {
       const source = await read(`../agent/subagents/${name}/agent.ts`);
       assert.match(source, /outputSchema:/);
     }
+  });
+
+  it("agentes financeiros não recebem ferramentas genéricas de workspace ou web", async () => {
+    const forbidden = [
+      "agent",
+      "bash",
+      "glob",
+      "grep",
+      "read_file",
+      "todo",
+      "web_fetch",
+      "web_search",
+      "write_file",
+    ];
+    for (const directory of [
+      "../agent/tools",
+      "../agent/subagents/analyst/tools",
+      "../agent/subagents/categorizer/tools",
+      "../agent/subagents/extractor/tools",
+    ]) {
+      const files = await readdir(new URL(directory, import.meta.url));
+      for (const name of forbidden) assert.ok(files.includes(`${name}.ts`), `${directory}/${name}`);
+    }
+  });
+
+  it("análise preserva escopo vazio e atravessa agentes só por recibo", async () => {
+    const analyst = await read("../agent/subagents/analyst/instructions.md");
+    const coordinator = await read("../agent/instructions.md");
+    assert.match(analyst, /current calendar month/i);
+    assert.match(analyst, /Never\s+replace an empty requested scope/i);
+    assert.match(analyst, /When the tool returns the declared `AnalysisReceipt`/i);
+    assert.match(analyst, /return that View unchanged/i);
+    assert.match(coordinator, /call `present_analysis`/i);
+    assert.match(coordinator, /rollout fallback.+`present_view`/is);
+    assert.match(coordinator, /`nextAction`.+mandatory control flow/is);
+    assert.match(coordinator, /`proposalCount: 0` still requires/is);
+    assert.match(coordinator, /SAME requested scope/i);
+    assert.doesNotMatch(coordinator, /redo the query ONCE over the reported interval/i);
+  });
+
+  it("toda correção de categoria usa o cartão", async () => {
+    const coordinator = await read("../agent/instructions.md");
+    assert.match(coordinator, /Every category correction, including ONE entry/i);
+    const tools = await readdir(new URL("../agent/tools", import.meta.url));
+    assert.ok(!tools.includes("set_transaction_category.ts"));
   });
 
   it("referências relativas de fatura passam pelo foco persistido", async () => {

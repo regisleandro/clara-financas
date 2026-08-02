@@ -42,6 +42,9 @@ lerna-debug.log*
 .turbo
 .nx
 
+# CodeGraph index (local developer artifact)
+.codegraph
+
 # eve (artefatos de compilação e descoberta)
 .eve
 .output

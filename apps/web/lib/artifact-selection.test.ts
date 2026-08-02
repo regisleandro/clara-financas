@@ -3,7 +3,12 @@ import { describe, it } from "node:test";
 
 import type { View } from "@clara-financas/views";
 
-import { artifactKey, resolveActive, type MessageArtifact } from "./artifact-selection";
+import {
+  artifactKey,
+  resolveActive,
+  shouldAutoOpen,
+  type MessageArtifact,
+} from "./artifact-selection";
 
 /**
  * Os dois defeitos que a pessoa sentia em toda conversa, e que só apareceram
@@ -187,6 +192,70 @@ describe("artifactKey", () => {
     assert.equal(
       artifactKey({ batchId: null, batchTitle: null, hasPresented: false, turnId: "t1" }),
       null,
+    );
+  });
+});
+
+describe("abrir a coluna sozinha", () => {
+  it("abrir uma conversa antiga NÃO escancara o painel", () => {
+    // O sintoma: a pessoa clica numa conversa para reler o que foi conversado
+    // e recebe meia tela ocupada por um painel que ela não pediu. Os eventos
+    // retomados já trazem os `present_*` daquela conversa, então a chave nasce
+    // preenchida e o efeito disparava na montagem.
+    const retomada = artifactKey({
+      batchId: null,
+      batchTitle: null,
+      hasPresented: true,
+      turnId: "t9",
+    });
+
+    assert.equal(shouldAutoOpen({ openKey: retomada, mountKey: retomada, autoOpen: true }), false);
+  });
+
+  it("um artefato produzido AGORA abre a coluna", () => {
+    const naMontagem = artifactKey({
+      batchId: null,
+      batchTitle: null,
+      hasPresented: true,
+      turnId: "t9",
+    });
+    const perguntaNova = artifactKey({
+      batchId: null,
+      batchTitle: null,
+      hasPresented: true,
+      turnId: "t10",
+    });
+
+    assert.equal(
+      shouldAutoOpen({ openKey: perguntaNova, mountKey: naMontagem, autoOpen: true }),
+      true,
+    );
+  });
+
+  it("conversa nova: o primeiro artefato abre a coluna", () => {
+    // Montou sem artefato nenhum (`null`); o primeiro painel é novidade.
+    const primeiro = artifactKey({
+      batchId: null,
+      batchTitle: null,
+      hasPresented: true,
+      turnId: "t1",
+    });
+
+    assert.equal(shouldAutoOpen({ openKey: primeiro, mountKey: null, autoOpen: true }), true);
+  });
+
+  it("no celular a coluna nunca abre sozinha", () => {
+    // Lá o artefato é uma modal em tela cheia: abri-la sozinha cobre a conversa.
+    assert.equal(
+      shouldAutoOpen({ openKey: "view:t2", mountKey: "view:t1", autoOpen: false }),
+      false,
+    );
+  });
+
+  it("antes da primeira renderização assentar, não abre", () => {
+    assert.equal(
+      shouldAutoOpen({ openKey: "view:t1", mountKey: undefined, autoOpen: true }),
+      false,
     );
   });
 });

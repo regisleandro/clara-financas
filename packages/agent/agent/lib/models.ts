@@ -46,9 +46,11 @@ function resolve(variable: string): LanguageModel {
     return openai(modelId.replace(/^openai\//, ""));
   }
 
-  // String pura: o eve roteia pelo AI Gateway, que exige o prefixo do
-  // provedor e conhecer o modelo (do contrário a compactação não compila).
-  return modelId as unknown as LanguageModel;
+  // O AI Gateway exige o prefixo do provedor. Aceitamos o slug curto no env
+  // para que a mesma configuração Terra funcione localmente (provider direto)
+  // e em produção (Gateway); ids já prefixados, inclusive de outro provedor,
+  // permanecem intocados.
+  return (modelId.includes("/") ? modelId : `openai/${modelId}`) as unknown as LanguageModel;
 }
 
 /** Coordenador e analista: conversa e agregação, modelo mais econômico. */
@@ -58,8 +60,8 @@ export function coordinatorModel(): LanguageModel {
 
 /**
  * Extrator: lê o texto de faturas reais e devolve transações estruturadas.
- * É o gargalo de qualidade da hipótese H2, então vale o modelo mais forte —
- * roda uma vez por documento, não a cada mensagem.
+ * Pode receber um override explícito, mas por padrão usa o mesmo Terra para
+ * que o custo não mude silenciosamente entre agentes.
  */
 export function extractorModel(): LanguageModel {
   return resolve(process.env.CLARA_EXTRACTOR_MODEL ? "CLARA_EXTRACTOR_MODEL" : "CLARA_MODEL");

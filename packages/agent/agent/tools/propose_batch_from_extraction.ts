@@ -89,12 +89,15 @@ export default defineTool({
 
     const result = await writeProposedBatch(tenantId, {
       documentId: payload.documentId,
+      documentKind: payload.documentKind,
       issuer: payload.issuer,
       periodStart: payload.periodStart,
       periodEnd: payload.periodEnd,
       dueDate: payload.dueDate,
       declaredTotal: payload.declaredTotal,
       declaredSubtotals: payload.declaredSubtotals,
+      openingBalance: payload.openingBalance,
+      closingBalance: payload.closingBalance,
       transactions: payload.transactions,
       overwriteEditedDraft: input.overwriteEditedDraft,
     });
@@ -117,13 +120,19 @@ export default defineTool({
     return {
       batchId: result.batchId,
       status: "proposed" as const,
+      documentKind: result.documentKind,
       issuer: result.issuer,
       invoiceLabel: result.invoiceLabel,
       periodEnd: result.periodEnd,
       dueDate: result.dueDate,
+      ...(payload.openingBalance !== null ? { openingBalance: payload.openingBalance } : {}),
+      ...(payload.closingBalance !== null ? { closingBalance: payload.closingBalance } : {}),
       transactionCount: result.transactionCount,
       ...(payload.warnings.length > 0 ? { extractionWarnings: payload.warnings } : {}),
       checksum: result.checksum,
+      ...(result.statementBalance === undefined
+        ? {}
+        : { statementBalance: result.statementBalance }),
       ...(result.duplicateSuspects !== undefined
         ? {
             duplicateSuspects: result.duplicateSuspects,

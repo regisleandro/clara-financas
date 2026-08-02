@@ -43,7 +43,10 @@ export type ToolErrorCode =
   | "proposta_expirada"
   | "proposta_desatualizada"
   | "fatura_sem_divergencia"
-  | "referencia_de_fatura_nao_encontrada";
+  | "referencia_de_fatura_nao_encontrada"
+  | "artefato_nao_encontrado"
+  | "artefato_expirado"
+  | "artefato_invalido";
 
 export type ToolError = {
   error: {

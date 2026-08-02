@@ -331,3 +331,5 @@ export function viewTransactionIds(view: View): string[] {
   }
   return [...ids];
 }
+
+export * from "./v3-contracts";

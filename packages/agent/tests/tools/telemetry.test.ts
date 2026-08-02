@@ -137,4 +137,21 @@ describe("telemetria de execução", () => {
 
     assert.equal((await events()).length, before);
   });
+
+  it("sucesso crítico de comportamento sempre fornece denominador", async () => {
+    const hooks = telemetry.events!;
+    hooks["actions.requested"]!(
+      requested("c5", "present_analysis", { artifactId: "art_probe" }) as never,
+      ctx,
+    );
+    await hooks["action.result"]!(
+      resulted("c5", { artifactId: "art_probe", presented: "metric" }) as never,
+      ctx,
+    );
+
+    const row = (await events()).find((event) => event.callId === "c5");
+    assert.equal(row?.toolName, "present_analysis");
+    assert.equal(row?.status, "ok");
+    assert.equal((row?.inputSummary as Record<string, unknown>).artifactId, "art_probe");
+  });
 });

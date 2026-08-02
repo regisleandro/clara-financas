@@ -13,7 +13,14 @@ import proposeBatch from "../../agent/tools/propose_batch";
 import recategorize from "../../agent/tools/recategorize_transactions";
 import saveConcept from "../../agent/tools/save_concept";
 import queryLedger from "../../agent/subagents/analyst/tools/query_ledger";
-import { closeConnections, ctxFor, dropTenant, freshTenant, seedDocument } from "../helpers/harness";
+import {
+  closeConnections,
+  ctxFor,
+  dropTenant,
+  freshTenant,
+  seedDocument,
+  viewFromReceipt,
+} from "../helpers/harness";
 
 /**
  * O pedido literal que abriu esta investigação:
@@ -100,24 +107,27 @@ describe("revisar e categorizar o que a extração não fechou", () => {
   it('"descrição próxima a pagamento" encontra as duas grafias', async () => {
     // "PAGTO" e "Pagamento" — caixa diferente, palavra diferente. O
     // `includes()` em memória de antes achava no máximo uma das duas.
-    const found = (await queryLedger.execute(
-      { search: "pagamento pagto", uncategorizedOnly: true, reviewed: false },
+    const found = (await viewFromReceipt(
+      await queryLedger.execute(
+        { search: "pagamento pagto", uncategorizedOnly: true, reviewed: false },
+        ctx,
+      ),
       ctx,
-    )) as { matched: number; transactions: Array<{ id: string; description: string }> };
+    )) as { rows: Array<{ label: string; transactionIds: string[] }> };
 
-    assert.equal(found.matched, 2);
-    assert.ok(found.transactions.some((row) => row.description === "PAGTO FATURA ANTERIOR"));
+    assert.equal(found.rows.length, 2);
+    assert.ok(found.rows.some((row) => row.label === "PAGTO FATURA ANTERIOR"));
     assert.ok(
-      found.transactions.some((row) => row.description === "Pagamento efetuado — obrigado"),
+      found.rows.some((row) => row.label === "Pagamento efetuado — obrigado"),
     );
   });
 
   it("a categoria que não existe é criada pela conversa e passa a valer", async () => {
-    const found = (await queryLedger.execute(
-      { search: "pagamento pagto", uncategorizedOnly: true },
+    const found = (await viewFromReceipt(
+      await queryLedger.execute({ search: "pagamento pagto", uncategorizedOnly: true }, ctx),
       ctx,
-    )) as { transactions: Array<{ id: string }> };
-    const ids = found.transactions.map((row) => row.id);
+    )) as { rows: Array<{ transactionIds: string[] }> };
+    const ids = found.rows.flatMap((row) => row.transactionIds);
 
     // Antes de existir, a recategorização é recusada — apontando a saída.
     const before = (await recategorize.execute(

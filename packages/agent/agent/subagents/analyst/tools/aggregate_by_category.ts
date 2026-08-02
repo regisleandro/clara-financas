@@ -1,12 +1,17 @@
-import { aggregateByCategory, formatCents, totalSpend } from "@clara-financas/ledger";
+import { formatCents, spendable, totalSpend } from "@clara-financas/ledger";
+import { AnalysisScopeSchema } from "@clara-financas/views/agent-contracts";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { categoryLabel, loadCategoryLabels } from "../../../lib/categories";
-import { monthRange } from "../../../lib/dates";
+import {
+  canonicalAnalysisScope,
+  scopeFilter,
+  scopeLabel,
+} from "../../../lib/analysis-scope";
 import { requireTenantCaller } from "../../../lib/tenant";
-import { optionalText } from "../../../lib/schema";
 import { ledgerCoverage, loadLedger } from "../../../lib/ledger-query";
+import { saveAnalysis } from "../lib/save-analysis";
 
 /**
  * Composição do gasto por categoria.
@@ -17,74 +22,79 @@ import { ledgerCoverage, loadLedger } from "../../../lib/ledger-query";
 export default defineTool({
   description:
     "Sums spending by category over a period. Use for 'quanto gastei', 'com o quê', 'qual categoria pesa mais'.",
-  inputSchema: z.object({
-    from: optionalText().describe("Start date, YYYY-MM-DD. Omit for the whole ledger."),
-    to: optionalText().describe("End date, YYYY-MM-DD, inclusive."),
-    month: optionalText().describe(
-      "Calendar month, YYYY-MM. Shorthand for from/to covering the whole month. Remember an invoice CYCLE is not a calendar month — for 'nesta fatura' questions prefer batchId.",
-    ),
-    issuer: optionalText().describe(
-      "Card issuer/operator name as the person says it (e.g. 'Nubank'). Accent- and case-insensitive; matches the issuer of the document each transaction came from. Use for 'quanto gastei no <cartão>'.",
-    ),
-    batchId: optionalText().describe(
-      "Restrict to ONE invoice, by the batchId shown in the ledger state. Prefer this over guessing dates whenever the question is about a specific invoice or 'nesta fatura'.",
-    ),
-  }),
+  inputSchema: z.object({ scope: AnalysisScopeSchema }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);
-    const monthDates = input.month !== undefined ? monthRange(input.month) : undefined;
-    const ledger = await loadLedger(tenantId, {
-      from: input.from ?? monthDates?.from,
-      to: input.to ?? monthDates?.to,
-      issuer: input.issuer,
-      batchId: input.batchId,
-    });
+    const scope = canonicalAnalysisScope(input.scope);
+    const ledger = await loadLedger(tenantId, scopeFilter(scope));
+    const label = scopeLabel(scope);
 
     if (ledger.length === 0) {
-      // Vazio sem contexto é ambíguo: razão vazio, ou recorte errado? Dizer o
-      // que existe evita mandar a pessoa reenviar o que já está registrado.
       const coverage = await ledgerCoverage(tenantId);
-      return {
-        empty: true as const,
-        message:
-          coverage.count === 0
-            ? "The ledger has no confirmed transactions yet."
-            : `Não há transações nesse recorte, mas o razão cobre de ${coverage.firstDate} a ${coverage.lastDate} (${coverage.count} transações). Refaça a pergunta nesse intervalo.`,
-        ledgerCoverage: coverage,
-      };
+      const detail =
+        coverage.count === 0
+          ? "O razão ainda não tem lançamentos confirmados."
+          : `O razão possui dados de ${coverage.firstDate} a ${coverage.lastDate}, mas não neste recorte.`;
+      return saveAnalysis(
+        {
+          kind: "metric",
+          title: "Gastos no período",
+          summary: `O recorte ${label} não possui lançamentos.`,
+          metric: { label: "Resultado", text: "Sem lançamentos", detail, transactionIds: [] },
+          rows: [],
+        },
+        scope,
+        ctx,
+      );
     }
 
     const total = totalSpend(ledger);
-    const categories = aggregateByCategory(ledger);
-    const uncategorized = categories.find((bucket) => bucket.category === null);
     const labels = await loadCategoryLabels(tenantId);
-
-    return {
-      // O recorte de FATO usado, para a resposta dizer em relação a quê soma.
-      period: {
-        from: input.from ?? monthDates?.from ?? null,
-        to: input.to ?? monthDates?.to ?? null,
-        batchId: input.batchId ?? null,
-        issuer: input.issuer ?? null,
-      },
-      total: {
-        cents: total.value,
-        formatted: formatCents(total.value),
-        transactionIds: total.transactionIds,
-      },
-      categories: categories.map((bucket) => ({
-        category: bucket.category,
-        // O rótulo acompanha o id: é o que o modelo deve escrever na resposta
-        // e o que o painel deve exibir. O id fica para proveniência e regra.
-        label: categoryLabel(labels, bucket.category),
-        cents: bucket.value,
-        formatted: formatCents(bucket.value),
-        sharePercent: Math.round(bucket.share * 1000) / 10,
-        count: bucket.count,
+    const buckets = new Map<
+      string | null,
+      { gross: number; credits: number; net: number; transactionIds: string[] }
+    >();
+    for (const transaction of spendable(ledger)) {
+      const key = transaction.category ?? null;
+      const bucket = buckets.get(key) ?? { gross: 0, credits: 0, net: 0, transactionIds: [] };
+      bucket.net += transaction.amount;
+      if (transaction.amount > 0) bucket.gross += transaction.amount;
+      if (transaction.amount < 0) bucket.credits += transaction.amount;
+      bucket.transactionIds.push(transaction.id);
+      buckets.set(key, bucket);
+    }
+    const grossTotal = [...buckets.values()].reduce((sum, bucket) => sum + bucket.gross, 0);
+    const rows = [...buckets.entries()]
+      .sort(([, left], [, right]) => right.gross - left.gross || right.net - left.net)
+      .map(([category, bucket]) => ({
+        label: categoryLabel(labels, category),
+        // A barra e o valor da linha representam compras BRUTAS. O topo é o
+        // gasto líquido; misturar líquido por categoria com share bruto faria
+        // a mesma linha mostrar duas escalas incompatíveis.
+        amount: bucket.gross,
+        detail:
+          bucket.credits === 0
+            ? `Compras ${formatCents(bucket.gross)}`
+            : `Créditos ${formatCents(bucket.credits)} · líquido ${formatCents(bucket.net)}`,
+        ...(bucket.gross > 0 && grossTotal > 0 ? { share: bucket.gross / grossTotal } : {}),
         transactionIds: bucket.transactionIds,
-      })),
-      // Explicitado para o modelo poder avisar que a leitura está incompleta.
-      uncategorizedCount: uncategorized?.count ?? 0,
-    };
+      }));
+
+    return saveAnalysis(
+      {
+        kind: "breakdown",
+        title: "Composição dos gastos",
+        summary: `${label}. As barras representam compras brutas; créditos aparecem no detalhe.`,
+        metric: {
+          label: "Gasto líquido",
+          amount: total.value,
+          detail: label,
+          transactionIds: total.transactionIds,
+        },
+        rows,
+      },
+      scope,
+      ctx,
+    );
   },
 });

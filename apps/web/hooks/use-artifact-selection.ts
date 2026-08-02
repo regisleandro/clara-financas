@@ -1,19 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ActiveArtifact } from "@/components/artifact-surface";
 import type { ArtifactData } from "@/components/artifact-panel";
 import {
   artifactKey,
   resolveActive,
+  shouldAutoOpen,
   type ArtifactSelection,
   type MessageArtifact,
 } from "@/lib/artifact-selection";
 import { batchHistoryArtifact, type BatchProposal } from "@/lib/artifact";
 import type { View } from "@clara-financas/views";
 import type { BatchProposalLocation } from "@clara-financas/views/hitl";
-import { findMessageViews, findPresentedViews } from "@clara-financas/views/stream";
+import {
+  findMessageFinancialArtifacts,
+  findMessageViews,
+  findPresentedFinancialArtifacts,
+  findPresentedViews,
+} from "@clara-financas/views/stream";
 
 /**
  * Qual artefato está aberto na tela, e o que ele mostra.
@@ -76,10 +82,11 @@ export function useArtifactSelection({
    * permite dizer na tela que o painel não pôde ser montado, em vez de deixar
    * a resposta apontar para uma coluna vazia.
    */
-  const { presented, invalidIssues } = useMemo(() => {
+  const { presented, presentedFinancial, invalidIssues } = useMemo(() => {
     const issues: string[] = [];
     const views = findPresentedViews(events, (found) => issues.push(...found));
-    return { presented: views, invalidIssues: issues };
+    const financial = findPresentedFinancialArtifacts(events, (found) => issues.push(...found));
+    return { presented: views, presentedFinancial: financial, invalidIssues: issues };
   }, [events]);
 
   /** O artefato de CADA resposta, indexado pela mensagem que o produziu. */
@@ -88,7 +95,9 @@ export function useArtifactSelection({
     for (const message of messages) {
       if (message.role === "user") continue;
       const views = findMessageViews(message);
-      if (views.length > 0) map.set(message.id, { kind: "view", views });
+      const financial = findMessageFinancialArtifacts(message);
+      if (financial.length > 0) map.set(message.id, { kind: "financial", artifacts: financial });
+      else if (views.length > 0) map.set(message.id, { kind: "view", views });
     }
     // Conferências já decididas continuam alcançáveis pelo link da resposta
     // que as trouxe — sem botões, porque a decisão já foi tomada. Sem isto o
@@ -119,10 +128,11 @@ export function useArtifactSelection({
       resolveActive<ArtifactData>(selection, {
         batch: artifact,
         presented,
+        financial: presentedFinancial,
         messageArtifacts,
         batchId: proposalBatchId,
       }),
-    [selection, artifact, presented, messageArtifacts, proposalBatchId],
+    [selection, artifact, presented, presentedFinancial, messageArtifacts, proposalBatchId],
   );
 
   // Painel novo reabre a coluna, seguindo o artefato mais recente: a pessoa
@@ -131,10 +141,21 @@ export function useArtifactSelection({
     batchId: proposalBatchId,
     batchTitle: artifact?.title ?? null,
     hasPresented: presented.length > 0,
+    hasFinancial: presentedFinancial.length > 0,
     turnId,
   });
+
+  // O artefato que JÁ EXISTIA quando esta conversa foi aberta. Ref e não
+  // estado: é uma marca do instante da montagem, não algo que a tela desenha.
+  // O componente é remontado ao trocar de conversa (`key` no pai), então a
+  // marca acompanha a conversa corrente. Ver `shouldAutoOpen`.
+  const mountKeyRef = useRef<string | null | undefined>(undefined);
+  if (mountKeyRef.current === undefined) mountKeyRef.current = openKey;
+
   useEffect(() => {
-    if (openKey !== null && autoOpen) setSelection({ type: "latest" });
+    if (shouldAutoOpen({ openKey, mountKey: mountKeyRef.current, autoOpen })) {
+      setSelection({ type: "latest" });
+    }
   }, [openKey, autoOpen]);
 
   const openArtifact = (messageId: string) => {
@@ -154,9 +175,10 @@ export function useArtifactSelection({
      * texto costuma dizer "veja o painel ao lado", e sem isto o lado fica
      * vazio sem explicação — o sintoma indepurável era exatamente esse.
      */
-    panelFailed: presented.length === 0 && invalidIssues.length > 0,
+    panelFailed: presented.length === 0 && presentedFinancial.length === 0 && invalidIssues.length > 0,
     invalidIssues,
     messageArtifacts,
+    presentedFinancial,
     active,
     panelOpen: active !== null,
     openArtifact,

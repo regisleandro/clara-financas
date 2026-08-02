@@ -1,10 +1,17 @@
 import { detectRecurrences, formatCents } from "@clara-financas/ledger";
+import { AnalysisScopeSchema } from "@clara-financas/views/agent-contracts";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { loadMerchantAliases } from "../../../lib/aliases";
+import {
+  canonicalAnalysisScope,
+  scopeFilter,
+  scopeLabel,
+} from "../../../lib/analysis-scope";
 import { requireTenantCaller } from "../../../lib/tenant";
 import { loadLedger } from "../../../lib/ledger-query";
+import { saveAnalysis } from "../lib/save-analysis";
 
 /**
  * Cobranças recorrentes.
@@ -17,6 +24,7 @@ export default defineTool({
   description:
     "Finds charges that repeat monthly at the same merchant, with annualised cost and price drift since the first charge. Use for 'assinaturas', 'cobranças repetidas', 'onde posso economizar'.",
   inputSchema: z.object({
+    scope: AnalysisScopeSchema.optional().describe("Defaults to the whole confirmed ledger."),
     minOccurrences: z
       .number()
       .int()
@@ -29,8 +37,9 @@ export default defineTool({
   }),
   async execute(input, ctx) {
     const { tenantId } = requireTenantCaller(ctx);
+    const scope = canonicalAnalysisScope(input.scope ?? ({ kind: "all" } as const));
     const [ledger, merchantAliases] = await Promise.all([
-      loadLedger(tenantId),
+      loadLedger(tenantId, scopeFilter(scope)),
       // Apelidos aprovados entram no agrupamento. Sem esta linha o conceito
       // MerchantAlias seria gravável e inerte.
       loadMerchantAliases(tenantId),
@@ -46,37 +55,38 @@ export default defineTool({
     );
 
     if (recurrences.length === 0) {
-      return {
-        empty: true as const,
-        message:
-          "No repeating charge found. A pattern needs at least two charges roughly a month apart, so with a single invoice on file this is expected rather than informative — say so instead of implying the person has no subscriptions.",
-      };
+      return saveAnalysis(
+        {
+          kind: "metric",
+          title: "Cobranças recorrentes",
+          summary: `Nenhum padrão repetido foi encontrado em ${scopeLabel(scope)}.`,
+          metric: {
+            label: "Resultado",
+            text: "Nenhuma recorrência identificada",
+            detail: "São necessárias pelo menos duas cobranças em intervalos semelhantes.",
+            transactionIds: [],
+          },
+          rows: [],
+        },
+        scope,
+        ctx,
+      );
     }
 
-    return {
-      count: recurrences.length,
-      totalAnnualizedCents: recurrences.reduce(
-        (sum, recurrence) => sum + recurrence.annualizedCents,
-        0,
-      ),
-      recurrences: recurrences.map((recurrence) => ({
-        merchant: recurrence.merchant,
-        occurrences: recurrence.occurrences,
-        // Duas cobranças são indício; três ou mais, padrão estabelecido. Sem
-        // este campo o modelo apresentaria as duas com a mesma segurança.
-        confirmed: recurrence.confirmed,
-        latestCents: recurrence.latestAmount,
-        latestFormatted: formatCents(recurrence.latestAmount),
-        firstCents: recurrence.firstAmount,
-        priceChangePercent:
-          recurrence.priceChangeRatio === null
-            ? null
-            : Math.round(recurrence.priceChangeRatio * 1000) / 10,
-        annualizedCents: recurrence.annualizedCents,
-        annualizedFormatted: formatCents(recurrence.annualizedCents),
-        medianIntervalDays: recurrence.medianIntervalDays,
-        transactionIds: recurrence.transactionIds,
-      })),
-    };
+    return saveAnalysis(
+      {
+        kind: "recurrences",
+        title: "Cobranças recorrentes",
+        summary: `${recurrences.length} ${recurrences.length === 1 ? "padrão encontrado" : "padrões encontrados"} em ${scopeLabel(scope)}.`,
+        rows: recurrences.map((recurrence) => ({
+          label: recurrence.merchant,
+          amount: recurrence.annualizedCents,
+          detail: `${recurrence.confirmed ? "Padrão confirmado" : "Padrão provável"} · ${recurrence.occurrences} ocorrências · última ${formatCents(recurrence.latestAmount)}`,
+          transactionIds: recurrence.transactionIds,
+        })),
+      },
+      scope,
+      ctx,
+    );
   },
 });

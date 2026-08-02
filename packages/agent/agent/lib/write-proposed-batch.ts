@@ -5,10 +5,12 @@ import { batches, documents, transactions } from "@clara-financas/db/schema/ledg
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import {
   ProposedBatchSchema,
-  formatInvoiceLabel,
+  formatDocumentLabel,
   merchantKey,
   verifyChecksum,
+  verifyStatementBalance,
   type ChecksumReport,
+  type StatementBalanceReport,
 } from "@clara-financas/ledger";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
@@ -37,7 +39,16 @@ export type ProposedTransactionInput = {
   originalDescription: string;
   merchant?: string | null;
   amount: number;
-  kind?: "purchase" | "payment" | "refund" | "fee" | "adjustment";
+  kind?:
+    | "purchase"
+    | "payment"
+    | "refund"
+    | "fee"
+    | "adjustment"
+    | "income"
+    | "transfer"
+    | "card_payment"
+    | "cash_withdrawal";
   installment?: { current: number; total: number } | null;
   category?: string | null;
   extractionConfidence: "alta" | "media" | "baixa";
@@ -46,12 +57,15 @@ export type ProposedTransactionInput = {
 
 export type ProposedBatchWriteInput = {
   documentId: string;
+  documentKind?: "unknown" | "credit_card_invoice" | "bank_statement" | "invoice_nfe";
   issuer?: string | null;
   periodStart?: string | null;
   periodEnd?: string | null;
   dueDate?: string | null;
   declaredTotal?: number | null;
   declaredSubtotals?: { fees?: number | null; purchases?: number | null } | null;
+  openingBalance?: number | null;
+  closingBalance?: number | null;
   transactions: ProposedTransactionInput[];
   /**
    * Consente substituir um rascunho que já recebeu correções humanas.
@@ -78,12 +92,14 @@ export type ProposedBatchWriteResult =
   | (ToolError & { batchId?: string })
   | {
       batchId: string;
+      documentKind: "unknown" | "credit_card_invoice" | "bank_statement" | "invoice_nfe";
       issuer: string | null;
       invoiceLabel: string;
       periodEnd: string | null;
       dueDate: string | null;
       transactionCount: number;
       checksum: ChecksumReport;
+      statementBalance?: StatementBalanceReport;
       duplicateSuspects?: { count: number; sample: DuplicateSuspect[] };
     };
 
@@ -135,11 +151,14 @@ export async function writeProposedBatch(
     sourceDocument: document.id,
   }));
 
+  const documentKind = input.documentKind ?? document.kind;
+
   // Revalidação no executor. O modelo (ou a staging) produziu estes dados;
   // confiar neles sem passar pelo schema seria deixar quem os produziu definir
   // o formato do razão.
   const batch = ProposedBatchSchema.parse({
     documentId: document.id,
+    documentKind,
     issuer: input.issuer ?? document.issuer ?? null,
     periodStart: input.periodStart ?? null,
     periodEnd: input.periodEnd ?? null,
@@ -152,10 +171,25 @@ export async function writeProposedBatch(
             fees: input.declaredSubtotals.fees ?? null,
             purchases: input.declaredSubtotals.purchases ?? null,
           },
+    openingBalance: input.openingBalance ?? null,
+    closingBalance: input.closingBalance ?? null,
     transactions: prepared,
   });
 
   const checksum = verifyChecksum(batch);
+  const statementBalance =
+    batch.documentKind === "bank_statement"
+      ? verifyStatementBalance(batch.transactions, batch.openingBalance, batch.closingBalance)
+      : undefined;
+  const persistedChecksumResult =
+    statementBalance === undefined
+      ? checksum.result
+      : statementBalance.result === "match"
+        ? "match"
+        : statementBalance.result === "mismatch"
+          ? "mismatch"
+          : "no_declared_total";
+  const persistedChecksumReport = statementBalance ?? checksum;
   const batchId = id("bat");
 
   /**
@@ -187,7 +221,7 @@ export async function writeProposedBatch(
 
       if (confirmed) {
         return {
-          ...refused("documento_ja_registrado", "Esta fatura já está registrada no razão.", {
+          ...refused("documento_ja_registrado", "Este documento já está registrado no razão.", {
             hint: "Não proponha de novo. Para corrigir algo nela, chame read_batch e depois create_adjustment.",
           }),
           batchId: confirmed.id,
@@ -258,10 +292,19 @@ export async function writeProposedBatch(
         dueDate: batch.dueDate,
         declaredTotal: batch.declaredTotal,
         declaredSubtotals: batch.declaredSubtotals,
+        openingBalance: batch.openingBalance,
+        closingBalance: batch.closingBalance,
         extractedTotal: checksum.extractedTotal,
-        checksumResult: checksum.result,
-        checksumReport: checksum,
+        checksumResult: persistedChecksumResult,
+        checksumReport: persistedChecksumReport,
       });
+
+      if (input.documentKind !== undefined && document.kind !== input.documentKind) {
+        await tx
+          .update(documents)
+          .set({ kind: input.documentKind })
+          .where(and(eq(documents.id, document.id), eq(documents.tenantId, tenantId)));
+      }
 
       // O emissor mora no documento, não no lote — é propriedade do papel,
       // não da tentativa de leitura. E a grafia converge: se a mesma operadora
@@ -365,12 +408,14 @@ export async function writeProposedBatch(
 
   return {
     batchId,
+    documentKind: input.documentKind ?? document.kind,
     issuer: batch.issuer,
-    invoiceLabel: formatInvoiceLabel(batch),
+    invoiceLabel: formatDocumentLabel({ ...batch, documentKind: batch.documentKind }),
     periodEnd: batch.periodEnd,
     dueDate: batch.dueDate,
     transactionCount: batch.transactions.length,
     checksum,
+    ...(statementBalance === undefined ? {} : { statementBalance }),
     ...(written.suspects.length > 0
       ? {
           duplicateSuspects: {

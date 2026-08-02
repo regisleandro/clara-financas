@@ -5,6 +5,12 @@ const SHORT_DATE = new Intl.DateTimeFormat("pt-BR", {
   timeZone: "UTC",
 });
 
+export type FinancialDocumentKind =
+  | "unknown"
+  | "credit_card_invoice"
+  | "bank_statement"
+  | "invoice_nfe";
+
 /**
  * Nome financeiro estável para uma fatura.
  *
@@ -26,4 +32,32 @@ export function formatInvoiceLabel({
     return origin;
   }
   return `${origin} ${SHORT_DATE.format(new Date(`${date}T12:00:00Z`))}`;
+}
+
+/** Nome estável para qualquer documento, sem chamar extrato de fatura. */
+export function formatDocumentLabel({
+  issuer,
+  dueDate,
+  periodEnd,
+  documentKind = "unknown",
+}: {
+  issuer?: string | null;
+  dueDate?: string | null;
+  periodEnd?: string | null;
+  documentKind?: FinancialDocumentKind | null;
+}): string {
+  const kindLabel =
+    documentKind === "bank_statement"
+      ? "Extrato"
+      : documentKind === "invoice_nfe"
+        ? "Nota fiscal"
+        : documentKind === "credit_card_invoice"
+          ? "Fatura"
+          : "Documento";
+  const origin = issuer?.trim() || kindLabel;
+  const date = dueDate ?? periodEnd;
+  if (date === null || date === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return issuer?.trim() ? `${origin} · ${kindLabel}` : origin;
+  }
+  return `${origin} · ${kindLabel} ${SHORT_DATE.format(new Date(`${date}T12:00:00Z`))}`;
 }

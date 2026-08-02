@@ -1,9 +1,55 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { AnalysisResultSchema, CategorizationResultSchema } from "./agent-contracts";
+import {
+  AnalysisArtifactSchema,
+  AnalysisReceiptSchema,
+  AnalysisResultSchema,
+  AnalysisScopeSchema,
+  CategorizationResultSchema,
+} from "./agent-contracts";
 
 describe("contratos estruturados dos subagentes", () => {
+  it("escopo rejeita mês impossível e intervalo invertido", () => {
+    assert.equal(
+      AnalysisScopeSchema.safeParse({ kind: "calendar_month", month: "2026-13" }).success,
+      false,
+    );
+    assert.equal(
+      AnalysisScopeSchema.safeParse({ kind: "range", from: "2026-08-02", to: "2026-08-01" })
+        .success,
+      false,
+    );
+  });
+
+  it("recibo analítico não permite números financeiros", () => {
+    const result = AnalysisReceiptSchema.parse({
+      artifactId: "art_abc123",
+      artifactKind: "analysis",
+      nextAction: "present_analysis",
+      viewKind: "metric",
+      warnings: [],
+      amount: 1000,
+    });
+    assert.equal("amount" in result, false);
+  });
+
+  it("artefato recusa troca silenciosa do escopo", () => {
+    const result = AnalysisArtifactSchema.safeParse({
+      artifactKind: "analysis",
+      requestedScope: { kind: "calendar_month", month: "2026-08" },
+      actualScope: { kind: "calendar_month", month: "2026-06" },
+      view: {
+        kind: "metric",
+        title: "Gastos",
+        metric: { label: "Resultado", text: "Sem lançamentos" },
+        rows: [],
+      },
+      warnings: [],
+    });
+    assert.equal(result.success, false);
+  });
+
   it("analista não pode devolver número sem proveniência", () => {
     const result = AnalysisResultSchema.safeParse({
       kind: "metric",

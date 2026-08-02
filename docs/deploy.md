@@ -96,8 +96,8 @@ login de cada pessoa e a atualiza quando a versão do bundle muda.
 ### 3. Preencher os `.env` locais com os valores de produção
 
 O sync lê dos arquivos locais. Antes de rodar, ajuste `apps/web/.env` e
-`packages/agent/.env` para os valores reais — o script avisa se algum ainda
-aponta para `localhost`.
+`packages/agent/.env` para os valores reais — em produção, o script recusa o
+env inteiro se algum valor enviado ainda apontar para `localhost`.
 
 Os dois projetos precisam do **mesmo** `AGENT_TOKEN_SECRET`: é o segredo
 compartilhado que assina e verifica o token (HS256, modo pool).
@@ -112,11 +112,22 @@ pnpm env:production                 # envia
 pnpm env:agent:production
 ```
 
+Para alterar apenas parâmetros operacionais sem copiar banco, origem e
+segredos do arquivo local, restrinja o envio à allowlist desejada:
+
+```bash
+pnpm env:agent:production --only=CLARA_MODEL,CLARA_MODEL_CONTEXT_WINDOW,CLARA_BEHAVIOR_V2_MODE
+```
+
 O envio é por **allowlist**: só sai o que está declarado por plano em
 `scripts/sync-vercel-env.ts`. Variável nova no `.env` não vaza sozinha para o
 projeto errado — mas também não sobe sozinha, então acrescente-a à allowlist
 quando ela passar a existir. O `--plan` mostra as três listas: enviadas, não
 enviadas e ausentes.
+
+Em `production`, qualquer valor que aponte para localhost interrompe o sync
+antes da primeira escrita. O `--plan` continua exibindo o diagnóstico para que
+o arquivo possa ser corrigido sem tocar na Vercel.
 
 #### O que cada projeto recebe
 
@@ -143,9 +154,29 @@ os deriva de `VERCEL_URL`.
 | `APP_ORIGIN` | URL do control plane; aqui **não** é derivado |
 | `CLARA_MODEL` | sem default no código, por decisão |
 | `CLARA_MODEL_CONTEXT_WINDOW` | o eve exige para compilar a compactação |
-| `CLARA_EXTRACTOR_MODEL` | opcional: modelo mais forte só para o extrator |
+| `CLARA_EXTRACTOR_MODEL` | opcional: modelo do extrator; ausente ou `gpt-5.6-terra` mantém o orçamento do Terra |
+| `CLARA_BEHAVIOR_V2_MODE` | `off`, `shadow`, `canary` ou `on`; produção usa `off` quando ausente |
+| `CLARA_BEHAVIOR_V2_PERCENT` | percentual estável de tenants (0–100) no modo `canary` |
 | `OPENAI_API_KEY` | opcional — ver abaixo |
 | `TENANT_ID` | vazio no modo pool; preenchido no silo |
+
+Configuração-alvo desta versão em produção:
+
+```dotenv
+CLARA_MODEL=gpt-5.6-terra
+CLARA_MODEL_CONTEXT_WINDOW=200000
+CLARA_BEHAVIOR_V2_MODE=on
+```
+
+O Terra suporta uma janela maior, mas `200000` é um limite operacional
+intencional para compactar antes e controlar custo em conversas longas. O
+esforço de raciocínio fica fixado em `medium` no código de todos os agentes;
+não habilitamos Pro, PTC nem reasoning persistido. Como esta versão cria
+artefatos, objetivos, tarefas, decisões e suporte a extratos, aplique em ordem
+as migrações `0020_foamy_maggott.sql`, `0021_overjoyed_newton_destine.sql` e
+`0022_friendly_silver_surfer.sql` antes de colocar o novo agente no ar. A 0022
+também adiciona os saldos inicial/final dos lotes; não é necessário reprocessar
+documentos existentes.
 
 ### 5. Deployar
 
@@ -156,6 +187,13 @@ pnpm deploy:prod       # control plane
 
 ### 6. Verificar
 
+O workflow `agent-behavior-monitor` executa diariamente os fluxos live de
+coordenadora, analista, categorizador e extrator, três vezes cada. Para ativá-lo
+no environment `production`, defina `AGENT_BEHAVIOR_MONITOR_ENABLED=true` e as
+variables `AGENT_BASE_URL`, `APP_ORIGIN`, `PROBE_TENANT`,
+`PROBE_TRANSACTION_ID` e `PROBE_DOCUMENT_ID`; `AGENT_TOKEN_SECRET` permanece
+secret. O tenant de probe deve conter o lançamento e o PDF indicados.
+
 ```bash
 curl https://SEU-AGENTE.vercel.app/eve/v1/health
 ```
@@ -163,6 +201,23 @@ curl https://SEU-AGENTE.vercel.app/eve/v1/health
 Depois, no navegador: entre com o Google, abra `/conversa` e envie uma fatura.
 O caminho completo exercita as duas superfícies — token, CORS, extração,
 conferência e gate.
+
+### Estado local órfão do Eve
+
+Durante o desenvolvimento, uma interrupção do servidor pode deixar execuções
+locais em `.eve/.workflow-data`. Ao iniciar, o Eve avisa que há *Workflow
+runs* apontando para gerações que já não existem; esses turnos podem voltar a
+ser executados e deixar a conversa presa em “Pensando”. Pare o servidor e faça
+um backup removível do estado antes de iniciar novamente:
+
+```bash
+mv packages/agent/.eve/.workflow-data /tmp/clara-eve-workflow-data-backup
+pnpm -F @clara-financas/agent dev
+```
+
+Isso limpa apenas a orquestração local do Eve — não remove sessões, faturas ou
+lançamentos do banco. Se precisar investigar um turno antigo, o diretório de
+backup pode ser restaurado com o servidor parado.
 
 Se o deploy usar Deployment Protection, defina `VERCEL_AUTOMATION_BYPASS_SECRET`
 localmente antes de conectar o `eve dev` a ele.
@@ -226,8 +281,9 @@ a respeita.
 fala direto com a OpenAI. Sem ela, o ID de modelo é roteado pelo Vercel AI
 Gateway, autenticado por OIDC do projeto — que é o caminho preferido em
 produção, porque não põe chave de provedor no ambiente. O gateway exige o
-prefixo (`openai/gpt-5`) e precisa conhecer o modelo; `packages/agent/agent/lib/models.ts`
-normaliza entre as duas formas.
+prefixo (`openai/gpt-5`) e precisa conhecer o modelo; o resolvedor adiciona
+`openai/` automaticamente quando o env contém apenas o slug Terra e preserva
+ids já prefixados.
 
 **O `AGENT_TOKEN_SECRET` divergente falha de forma silenciosa-ish.** O agente
 recusa o token e a conversa nunca inicia. Se `/conversa` autentica mas nada

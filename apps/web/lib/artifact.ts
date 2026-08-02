@@ -1,5 +1,5 @@
 import type { ArtifactData, ArtifactRow } from "@/components/artifact-panel";
-import { formatCents } from "@clara-financas/ledger";
+import { formatCents, type StatementBalanceReport } from "@clara-financas/ledger";
 
 /**
  * Monta o cartão de conferência de um lote.
@@ -12,11 +12,15 @@ import { formatCents } from "@clara-financas/ledger";
 
 export type BatchProposal = {
   batchId: string;
+  documentKind?: "unknown" | "credit_card_invoice" | "bank_statement" | "invoice_nfe";
   transactionCount: number;
   issuer?: string | null;
   invoiceLabel?: string;
   periodEnd?: string | null;
   dueDate?: string | null;
+  openingBalance?: number | null;
+  closingBalance?: number | null;
+  statementBalance?: StatementBalanceReport;
   checksum: {
     result: "match" | "mismatch" | "no_declared_total";
     likelyCause?: "rounding" | "item" | "unknown";
@@ -82,6 +86,10 @@ export function batchArtifact(
     pendingGate: boolean;
   },
 ): ArtifactData {
+  if (proposal.documentKind === "bank_statement" && proposal.statementBalance !== undefined) {
+    return statementArtifact(proposal, actions);
+  }
+
   const { checksum } = proposal;
 
   const rows: ArtifactRow[] = [
@@ -146,6 +154,76 @@ export function batchArtifact(
       // do gate e aprovava depois, com a mesma aparência — quem clicava não
       // tinha como saber que precisava clicar de novo, e o fluxo travava ali.
       label: actions.pendingGate ? "Confirmar registro" : "Registrar fatura",
+      onClick: actions.onApprove,
+      disabled: actions.disabled,
+    },
+    secondaryAction: {
+      label: actions.pendingGate ? "Manter como rascunho" : "Rejeitar lote",
+      onClick: actions.onReject,
+      disabled: actions.disabled,
+    },
+    footnote: actions.pendingGate
+      ? "A Clara está aguardando sua decisão."
+      : "Ao registrar, a Clara pedirá sua confirmação antes de gravar no razão.",
+  };
+}
+
+function statementArtifact(
+  proposal: BatchProposal,
+  actions: {
+    onApprove: () => void;
+    onReject: () => void;
+    disabled: boolean;
+    pendingGate: boolean;
+  },
+): ArtifactData {
+  const report = proposal.statementBalance!;
+  const rows: ArtifactRow[] = [
+    {
+      label: "Saldo inicial",
+      value: report.openingBalance === null ? "não informado" : formatCents(report.openingBalance),
+    },
+    { label: "Movimentação líquida", value: formatCents(report.netMovement) },
+    {
+      label: "Saldo final no extrato",
+      value: report.closingBalance === null ? "não informado" : formatCents(report.closingBalance),
+    },
+    {
+      label: "Saldo final calculado",
+      value:
+        report.expectedClosingBalance === null
+          ? "não calculado"
+          : formatCents(report.expectedClosingBalance),
+    },
+  ];
+  if (report.difference !== null && report.difference !== 0) {
+    rows.push({
+      label: "Diferença",
+      value: formatCents(report.difference),
+      emphasis: true,
+      note: "Saldo esperado menos saldo informado no extrato.",
+    });
+  }
+
+  const status =
+    report.result === "match"
+      ? "Saldo confere"
+      : report.result === "mismatch"
+        ? "Diferença encontrada"
+        : "Saldos insuficientes";
+  const title = proposal.invoiceLabel ?? (proposal.issuer ? `${proposal.issuer} · Extrato` : "Extrato bancário");
+  return {
+    title,
+    metricLabel: report.result === "match" ? "Saldo final conferido" : "Saldo final",
+    metric:
+      report.closingBalance === null
+        ? "não informado"
+        : formatCents(report.closingBalance),
+    note: `${proposal.transactionCount} movimentações lidas · ${status.toLowerCase()}`,
+    listTitle: "Conferência do extrato",
+    rows,
+    primaryAction: {
+      label: actions.pendingGate ? "Confirmar registro" : "Registrar extrato",
       onClick: actions.onApprove,
       disabled: actions.disabled,
     },

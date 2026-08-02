@@ -19,7 +19,17 @@ export const CONFIDENCE = ["alta", "media", "baixa"] as const;
 export type Confidence = (typeof CONFIDENCE)[number];
 
 /** Natureza da linha, para leitura humana. O sinal do valor é que manda. */
-export const ENTRY_KINDS = ["purchase", "payment", "refund", "fee", "adjustment"] as const;
+export const ENTRY_KINDS = [
+  "purchase",
+  "payment",
+  "refund",
+  "fee",
+  "adjustment",
+  "income",
+  "transfer",
+  "card_payment",
+  "cash_withdrawal",
+] as const;
 export type EntryKind = (typeof ENTRY_KINDS)[number];
 
 export const InstallmentSchema = z.object({
@@ -59,6 +69,9 @@ export type Transaction = z.infer<typeof TransactionSchema>;
  */
 export const ProposedBatchSchema = z.object({
   documentId: z.string().min(1),
+  documentKind: z
+    .enum(["unknown", "credit_card_invoice", "bank_statement", "invoice_nfe"])
+    .default("credit_card_invoice"),
   issuer: z.string().nullable().default(null),
   periodStart: z.string().nullable().default(null),
   periodEnd: z.string().nullable().default(null),
@@ -81,6 +94,8 @@ export const ProposedBatchSchema = z.object({
     })
     .nullable()
     .default(null),
+  openingBalance: z.number().int().nullable().default(null),
+  closingBalance: z.number().int().nullable().default(null),
   transactions: z.array(TransactionSchema),
 });
 export type ProposedBatch = z.infer<typeof ProposedBatchSchema>;

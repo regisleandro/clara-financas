@@ -90,6 +90,8 @@ export function useClaraAgent({
   });
 
   const busy = agent.status === "submitted" || agent.status === "streaming";
+  const queuedMessagesRef = useRef<string[]>([]);
+  const [queuedMessageCount, setQueuedMessageCount] = useState(0);
   const pending = findPendingRequest(agent.data.messages);
   const answered = resolveAnswered(pending, answeredRequest);
   const isWelcome = agent.data.messages.length === 0;
@@ -234,8 +236,8 @@ export function useClaraAgent({
   };
 
   const onTurnStartRef = useRef<() => void>(() => {});
-  sendRef.current = (message: string) => {
-    if (pending !== null || busy) return;
+  const dispatchMessageRef = useRef<(message: string) => void>(() => {});
+  dispatchMessageRef.current = (message: string) => {
     setAnsweredRequest(null);
     onTurnStartRef.current();
     void Promise.resolve(agent.send({ message })).catch((error: unknown) => {
@@ -245,6 +247,27 @@ export function useClaraAgent({
           : "Não consegui enviar sua mensagem. Tente de novo.",
       );
     });
+  };
+
+  // A sessão do Eve não aceita duas chamadas concorrentes. Enfileirar aqui
+  // mantém o compositor conversável durante uma análise longa e preserva a
+  // ordem em que a pessoa escreveu as perguntas.
+  useEffect(() => {
+    if (busy || queuedMessagesRef.current.length === 0) return;
+    const next = queuedMessagesRef.current.shift();
+    setQueuedMessageCount(queuedMessagesRef.current.length);
+    if (next !== undefined) dispatchMessageRef.current(next);
+  }, [busy]);
+
+  sendRef.current = (message: string) => {
+    const normalized = message.trim();
+    if (normalized === "") return;
+    if (busy) {
+      queuedMessagesRef.current.push(normalized);
+      setQueuedMessageCount(queuedMessagesRef.current.length);
+      return;
+    }
+    dispatchMessageRef.current(normalized);
   };
 
   /**
@@ -359,6 +382,7 @@ export function useClaraAgent({
     upload,
     /** Envia uma mensagem de texto (turno novo). */
     send: (message: string) => sendRef.current(message),
+    queuedMessageCount,
     /** Interrompe o turno em voo no servidor (não é `stop()`). */
     cancel: () => cancelRef.current(),
     /** Responde o gate pendente (aprovar/negar/opção). */

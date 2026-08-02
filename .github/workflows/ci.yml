@@ -1,0 +1,97 @@
+# O gate que faltava.
+#
+# Até aqui o repositório tinha DOIS workflows — `db-migrate` e
+# `agent-behavior-monitor` — e nenhum deles rodava `pnpm test`. A suíte existia,
+# era boa, e nunca executava num PR. A consequência não é hipotética: um teste
+# em `packages/agent/tests/tools/agent-artifacts.test.ts` chegou a FIXAR um bug
+# como contrato (métrica de topo R$ 130,00 com linhas somando R$ 150,00) e
+# ninguém viu, porque nada nunca falhou.
+#
+# Este job existe para que um número errado passe a doer no lugar certo.
+#
+# Por que um Postgres de verdade, e não mock: a suíte testa o contrato entre as
+# tools e o banco — RLS, triggers de imutabilidade, isolamento por tenant. Com
+# banco falso ela testaria a si mesma. `scripts/ci-db.sh` reproduz os dois
+# papéis que o código exige (dono do schema e papel de aplicação sem
+# BYPASSRLS), porque `forTenant` recusa conectar como superuser e sem isso a
+# política de linha viraria enfeite.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  # Um push novo no mesmo ramo torna o run anterior irrelevante. Em `main` não
+  # cancelamos: cada commit da linha principal merece seu próprio veredicto.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          # Sem senha nenhuma, e não uma senha de brincadeira.
+          #
+          # A primeira versão declarava uma senha fixa para o superusuário.
+          # Funcionava, e foi recusada: um scanner de segredos não distingue
+          # senha de brincadeira de senha de verdade — e nem deveria, porque
+          # quem lê o arquivo também não, e a de brincadeira acaba copiada para
+          # um lugar onde não é. É a mesma razão que `scripts/dev-db.sh` já
+          # documenta para não trazer literal nenhum.
+          #
+          # `trust` é seguro AQUI e só aqui: o container é efêmero, vive na rede
+          # privada do runner, é destruído com o job e nunca guarda dado real.
+          # Os papéis que a suíte de fato usa (`clara_owner` e `clara_app`)
+          # recebem senha gerada por execução em `scripts/ci-db.sh`.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        # Sem isto os passos começam antes de o banco aceitar conexão, e a
+        # falha aparece como "connection refused" no meio da migração.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Lê a versão do pnpm do campo `packageManager` do package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      # Cria clara_owner (dono, NOSUPERUSER) e clara_app (aplicação, sem
+      # BYPASSRLS), o banco, as extensões e o GRANT que a limpeza entre testes
+      # exige. Exporta DATABASE_URL e DATABASE_ADMIN_URL para os passos
+      # seguintes via $GITHUB_ENV.
+      - name: Preparar o banco
+        env:
+          CLARA_SUPERUSER_URL: postgres://postgres@127.0.0.1:5432/postgres
+        run: ./scripts/ci-db.sh
+
+      # Direto pelo pnpm, não pelo turbo: a tarefa `db:migrate` está marcada
+      # como `persistent` no turbo.json (ela é interativa em desenvolvimento),
+      # e tarefa persistente não pode participar de um pipeline.
+      - name: Aplicar migrações
+        run: pnpm --filter @clara-financas/db db:migrate
+
+      - name: Conferir tipos
+        run: pnpm check-types
+
+      - name: Rodar a suíte
+        run: pnpm test

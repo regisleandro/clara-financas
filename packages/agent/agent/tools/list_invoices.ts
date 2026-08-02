@@ -1,7 +1,7 @@
 import { getDb } from "@clara-financas/db";
 import { batches, documents, transactions } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import { formatInvoiceLabel } from "@clara-financas/ledger";
+import { formatDocumentLabel } from "@clara-financas/ledger";
 import { desc, eq, inArray, sql } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
@@ -14,7 +14,7 @@ import { requireTenantCaller } from "../lib/tenant";
  */
 export default defineTool({
   description:
-    "Lists invoices already sent by this person, newest first. Use when the requested invoice is older than the bounded ledger snapshot or when the person asks for invoice history.",
+    "Lists financial documents already sent by this person (invoices, bank statements and notes), newest first. Use when the requested document is older than the bounded ledger snapshot or when the person asks for document history.",
   inputSchema: z.object({
     limit: z.number().int().min(1).max(50).optional().describe("Defaults to 20."),
   }),
@@ -28,6 +28,7 @@ export default defineTool({
             batchId: batches.id,
             documentId: batches.documentId,
             issuer: documents.issuer,
+            documentKind: documents.kind,
             status: batches.status,
             periodStart: batches.periodStart,
             periodEnd: batches.periodEnd,
@@ -47,7 +48,9 @@ export default defineTool({
 
         return rows.map((row) => ({
           ...row,
-          invoiceLabel: formatInvoiceLabel(row),
+          documentLabel: formatDocumentLabel(row),
+          // Alias preservado para o contrato legado da coordenadora.
+          invoiceLabel: formatDocumentLabel(row),
         }));
       },
       getDb(),

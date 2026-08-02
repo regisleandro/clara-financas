@@ -23,6 +23,9 @@ import { index, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
  *  o banco o guarda opaco e a validação mora nas tools, na fronteira. */
 export type ExtractionStagingPayload = {
   documentId: string;
+  documentKind: "credit_card_invoice" | "bank_statement" | "invoice_nfe";
+  openingBalance: number | null;
+  closingBalance: number | null;
   issuer: string | null;
   periodStart: string | null;
   periodEnd: string | null;
@@ -34,7 +37,16 @@ export type ExtractionStagingPayload = {
     originalDescription: string;
     merchant: string | null;
     amount: number;
-    kind: "purchase" | "payment" | "refund" | "fee" | "adjustment";
+    kind:
+      | "purchase"
+      | "payment"
+      | "refund"
+      | "fee"
+      | "adjustment"
+      | "income"
+      | "transfer"
+      | "card_payment"
+      | "cash_withdrawal";
     installment: { current: number; total: number } | null;
     category: string | null;
     extractionConfidence: "alta" | "media" | "baixa";

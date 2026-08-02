@@ -2,38 +2,39 @@
 name: Clara Finanças
 description: Clareza financeira calma, direta e rastreável.
 colors:
-  ink: "#1d1d1f"
-  fog: "#f5f5f7"
-  surface: "#ffffff"
-  action-blue: "#0071e3"
-  link-blue: "#0066cc"
-  slate: "#86868b"
-  border-ash: "#e8e8ed"
-  success-green: "#1d7f45"
-  warning-amber: "#8b5d00"
+  forest-ink: "#1a3300"
+  cream-paper: "#fcfaf5"
+  surface: "#fffefa"
+  highlighter-yellow: "#ffe95c"
+  pencil-gray: "#b6b6b6"
+  teal: "#a8e5e5"
+  mint: "#d5f5c2"
+  blush: "#f6d0ff"
+  terracotta: "#cb5521"
 typography:
   display:
-    fontFamily: "SF Pro Display, Inter Tight, system-ui, sans-serif"
-    fontSize: "1.1875rem"
-    fontWeight: 600
-    lineHeight: 1.14
-    letterSpacing: "-0.015em"
+    fontFamily: "Bricolage Grotesque, system-ui, sans-serif"
+    fontSize: "clamp(2.25rem, 1.5rem + 3vw, 4rem)"
+    fontWeight: 800
+    lineHeight: 1
+    letterSpacing: "-0.03em"
   body:
-    fontFamily: "SF Pro Text, Inter, system-ui, sans-serif"
+    fontFamily: "Inter, system-ui, sans-serif"
     fontSize: "1.0625rem"
     fontWeight: 400
-    lineHeight: 1.47
-    letterSpacing: "-0.019em"
+    lineHeight: 1.5
+    letterSpacing: "-0.01em"
   label:
-    fontFamily: "SF Pro Text, Inter, system-ui, sans-serif"
-    fontSize: "0.75rem"
-    fontWeight: 400
-    lineHeight: 1.33
-    letterSpacing: "0.06em"
+    fontFamily: "Roboto Mono, ui-monospace, monospace"
+    fontSize: "0.6875rem"
+    fontWeight: 500
+    lineHeight: 1.35
+    letterSpacing: "0.08em"
 rounded:
   tile: "12px"
-  card: "28px"
-  pill: "980px"
+  card: "12px"
+  button: "6px"
+  chip: "999px"
 spacing:
   xs: "4px"
   sm: "8px"
@@ -42,15 +43,15 @@ spacing:
   xl: "32px"
 components:
   button-primary:
-    backgroundColor: "{colors.action-blue}"
-    textColor: "{colors.surface}"
-    rounded: "{rounded.pill}"
-    padding: "11px 22px"
+    backgroundColor: "{colors.forest-ink}"
+    textColor: "{colors.cream-paper}"
+    rounded: "{rounded.button}"
+    padding: "10px 16px"
   card:
     backgroundColor: "{colors.surface}"
-    textColor: "{colors.ink}"
+    textColor: "{colors.forest-ink}"
     rounded: "{rounded.card}"
-    padding: "28px"
+    padding: "24px"
   input:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
@@ -69,9 +70,10 @@ não uma central bancária nem um console de agente. O sistema usa familiaridade
 espaço e linguagem direta para reduzir ansiedade; a complexidade técnica
 permanece atrás de resultados verificáveis e decisões explícitas.
 
-O registro é de produto. Densidade é permitida nos artefatos, enquanto o chat
-preserva leitura curta e ritmo generoso. Apple Settings, Linear e Stripe
-Dashboard são referências de previsibilidade, hierarquia e confiança.
+O registro é de produto. Densidade é permitida em Detalhes, enquanto o chat
+preserva leitura curta e ritmo generoso. O brief visual usa papel creme, tinta
+verde-floresta e marcações de trabalho — uma mesa de análise, não uma central
+bancária nem um console de agente.
 
 **Key Characteristics:**
 
@@ -79,14 +81,16 @@ Dashboard são referências de previsibilidade, hierarquia e confiança.
 - Dados densos apenas onde ajudam a decidir.
 - Estado e consequência antes de decoração.
 - Progresso descrito como tarefa humana.
+- Sem gradientes, glassmorphism ou excesso de cards e pílulas.
 
 ## Colors
 
-A paleta é neutra e fria, com azul reservado a ação, seleção e foco.
+A paleta é quente e editorial, com verde-floresta reservado a ação, seleção e
+foco. Amarelo, mint, teal e blush marcam estados sem depender apenas de cor.
 
 ### Primary
 
-- **Azul de Ação:** usado em ações primárias e foco, nunca como decoração.
+- **Verde-floresta:** usado em ações primárias e foco, nunca como decoração.
 
 ### Neutral
 
@@ -98,23 +102,23 @@ A paleta é neutra e fria, com azul reservado a ação, seleção e foco.
 
 ### Named Rules
 
-**The One Action Rule.** Azul identifica a ação principal ou o estado atual.
-Se tudo está azul, nada está priorizado.
+**The One Action Rule.** Verde-floresta identifica a ação principal ou o estado
+atual. Se tudo está forte, nada está priorizado.
 
 ## Typography
 
-**Display Font:** SF Pro Display, com Inter Tight e system-ui.
-**Body Font:** SF Pro Text, com Inter e system-ui.
+**Display Font:** Bricolage Grotesque 800, apenas em títulos grandes.
+**Body Font:** Inter; **metadados:** Roboto Mono.
 
 **Character:** uma única família de sistema em papéis distintos mantém o
 produto familiar, rápido e legível.
 
 ### Hierarchy
 
-- **Display:** peso 600, usado apenas em títulos e métricas.
-- **Title:** 1.1875rem, peso 600, usado em decisões e seções.
-- **Body:** 1.0625rem, line-height 1.47, para conversa e explicações.
-- **Label:** 0.75rem, tracking positivo, para metadados curtos.
+- **Display:** peso 800, usado apenas em títulos grandes e métricas.
+- **Title:** Inter 700, usado em decisões e seções.
+- **Body:** 1rem–1.125rem, line-height 1.5, para conversa e explicações.
+- **Label:** Roboto Mono 0.6875rem, tracking positivo, para metadados curtos.
 
 ### Named Rules
 
@@ -135,9 +139,9 @@ superfície realmente se sobrepõe a outra.
 
 ### Buttons
 
-- **Shape:** pílula completa.
-- **Primary:** azul de ação sobre texto claro.
-- **Hover / Focus:** alteração curta de opacidade e anel azul visível.
+- **Shape:** raio de 6px; chips podem ser pílulas completas.
+- **Primary:** verde-floresta sobre papel claro.
+- **Hover / Focus:** alteração curta de tonalidade e anel verde visível.
 - **Secondary:** contorno de tinta ou ação textual específica.
 
 ### Chips
@@ -147,7 +151,7 @@ superfície realmente se sobrepõe a outra.
 
 ### Cards / Containers
 
-- **Corner Style:** arredondamento generoso de 28px.
+- **Corner Style:** 12px, com borda de 1px e sem sombra em repouso.
 - **Background:** superfície clara sobre névoa.
 - **Shadow Strategy:** nenhuma sombra em repouso.
 - **Internal Padding:** 24px a 28px nas decisões principais.
@@ -155,15 +159,15 @@ superfície realmente se sobrepõe a outra.
 ### Inputs / Fields
 
 - **Style:** superfície clara, borda cinza e raio de 12px.
-- **Focus:** anel azul consistente.
+- **Focus:** anel verde-floresta consistente.
 - **Error / Disabled:** mensagem específica e redução de ênfase sem esconder o
   rótulo.
 
 ### Navigation
 
 Controles familiares, rótulos diretos e ação atual evidente. No celular,
-artefatos ocupam uma superfície modal completa; no desktop ficam ao lado da
-conversa.
+Detalhes ocupa uma superfície completa com “Voltar ao chat”; no desktop fica ao
+lado da conversa.
 
 ### Decision Card
 
@@ -174,7 +178,7 @@ ação real, nunca “Sim”, “OK” ou “Aprovar” isoladamente.
 
 ### Do:
 
-- **Do** manter o chat curto e mover números detalhados para o artefato.
+- **Do** manter o chat curto e mover números detalhados para Detalhes.
 - **Do** mostrar consequência e alcance antes de pedir uma decisão.
 - **Do** traduzir execução interna para tarefas como “Lendo o documento”.
 - **Do** preservar foco visível, semântica e redução de movimento existentes.

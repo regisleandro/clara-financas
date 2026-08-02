@@ -47,31 +47,39 @@ function decisionCopy(
   const input = asRecord(pending.toolInput);
 
   if (pending.toolName === "commit_batch") {
+    const isStatement =
+      proposal?.documentKind === "bank_statement" ||
+      asString(actionProposal?.documentKind) === "bank_statement";
     const count = proposal?.transactionCount ?? asNumber(actionProposal?.transactionCount);
-    const total = proposal?.checksum.extractedTotal ?? asNumber(actionProposal?.extractedTotalCents);
+    const total = isStatement
+      ? (proposal?.statementBalance?.closingBalance ?? asNumber(actionProposal?.closingBalanceCents))
+      : (proposal?.checksum.extractedTotal ?? asNumber(actionProposal?.extractedTotalCents));
     const checksumResult =
       proposal?.checksum.result ?? asString(actionProposal?.checksumResult);
-    const matched = checksumResult === "match";
+    const statementResult = asString(asRecord(actionProposal?.statementBalance)?.result);
+    const matched = isStatement
+      ? proposal?.statementBalance?.result === "match" || statementResult === "match"
+      : checksumResult === "match";
     const invoiceLabel = proposal?.invoiceLabel ?? asString(actionProposal?.invoiceLabel);
     return {
       title:
         count == null
-          ? "Registrar esta fatura no razão?"
+          ? `Registrar este ${isStatement ? "extrato" : "documento"} no razão?`
           : `Registrar ${count} lançamentos no razão?`,
       consequence: "Depois do registro, valor, data e origem não mudam mais.",
-      approveLabel: "Registrar fatura",
+      approveLabel: isStatement ? "Registrar extrato" : "Registrar fatura",
       denyLabel: "Manter como rascunho",
       details: [
         invoiceLabel === null || invoiceLabel === undefined
           ? null
-          : `Fatura: ${invoiceLabel}`,
+          : `${isStatement ? "Extrato" : "Fatura"}: ${invoiceLabel}`,
         ...(total == null
           ? []
           : [
               formatCents(total),
               matched
-                ? "O total confere com a fatura"
-                : "A soma não confere com a fatura",
+                ? `O ${isStatement ? "saldo" : "total"} confere com o documento`
+                : `A conferência não fecha com o documento`,
             ]),
       ].filter((value): value is string => value !== null),
       blocked: proposal === null && actionProposal === null,
@@ -80,6 +88,8 @@ function decisionCopy(
 
   if (pending.toolName === "recategorize_transactions") {
     const changes = Array.isArray(input?.changes) ? input.changes : [];
+    const proposalIds = Array.isArray(input?.proposalIds) ? input.proposalIds : [];
+    const count = changes.length > 0 ? changes.length : proposalIds.length;
     const labels = [
       ...new Set(
         changes
@@ -88,9 +98,10 @@ function decisionCopy(
       ),
     ];
     return {
-      title: `Alterar a categoria de ${changes.length} ${
-        changes.length === 1 ? "lançamento" : "lançamentos"
-      }?`,
+      title:
+        changes.length > 0
+          ? `Alterar a categoria de ${count} ${count === 1 ? "lançamento" : "lançamentos"}?`
+          : `Aplicar ${count} ${count === 1 ? "proposta de categoria" : "propostas de categoria"}?`,
       consequence: "Os valores não mudam. A alteração fica registrada no histórico.",
       approveLabel: "Alterar categorias",
       denyLabel: "Manter categorias atuais",
@@ -269,7 +280,7 @@ function decisionCopy(
  * fluxo. O botão de lá servia a dois propósitos com a mesma aparência: antes
  * do gate ele PEDIA o registro, depois ele APROVAVA — e nada na tela dizia que
  * o significado tinha mudado. Quem clicava via "processando", depois via o
- * mesmo botão azul, e concluía que não tinha acontecido nada.
+ * mesmo botão, e concluía que não tinha acontecido nada.
  *
  * Aqui a pergunta aparece onde a pessoa está lendo, com o número que ela está
  * decidindo, e some quando respondida. O painel continua existindo para

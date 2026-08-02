@@ -1,6 +1,4 @@
-"use client";
-
-import { useMemo, useState } from "react";
+import Link from "next/link";
 import { formatCents } from "@clara-financas/ledger";
 
 /**
@@ -13,7 +11,8 @@ import { formatCents } from "@clara-financas/ledger";
  *
  * A proveniência (documento e página) fica na segunda linha de cada item, e
  * não escondida atrás de um clique: é a promessa da tela, e promessa que exige
- * garimpo não é cumprida.
+ * garimpo não é cumprida. Página, busca e categoria são resolvidas no servidor
+ * para que a tabela nunca carregue o razão inteiro no navegador.
  */
 
 export type TableRow = {
@@ -43,39 +42,49 @@ const CONFIDENCE_COLOR = {
 export function TransactionTable({
   rows,
   categories,
+  totalCount,
+  page,
+  pageCount,
+  pageSize,
+  query,
+  category,
 }: {
   rows: TableRow[];
   categories: string[];
+  totalCount: number;
+  page: number;
+  pageCount: number;
+  pageSize: number;
+  query: string;
+  category?: string;
 }) {
-  const [filter, setFilter] = useState<string>("Todas");
-  const [query, setQuery] = useState("");
-
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return rows.filter((row) => {
-      const matchesFilter =
-        filter === "Todas" ||
-        (filter === "Sem categoria" ? row.category === null : row.category === filter);
-      const matchesQuery = needle === "" || row.merchant.toLowerCase().includes(needle);
-      return matchesFilter && matchesQuery;
-    });
-  }, [rows, filter, query]);
-
   const filters = ["Todas", ...categories, "Sem categoria"];
+  const hrefFor = (nextPage: number, nextQuery = query, nextCategory = category) => {
+    const params = new URLSearchParams();
+    if (nextPage > 1) params.set("pagina", String(nextPage));
+    if (nextQuery.trim() !== "") params.set("busca", nextQuery.trim());
+    if (nextCategory !== undefined && nextCategory !== "") {
+      params.set("categoria", nextCategory);
+    }
+    const encoded = params.toString();
+    return encoded === "" ? "/transacoes" : `/transacoes?${encoded}`;
+  };
+
+  const firstRow = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const lastRow = Math.min(page * pageSize, totalCount);
 
   return (
     <>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-5">
         <div className="flex flex-wrap gap-2">
           {filters.map((label) => {
-            const active = filter === label;
+            const active = label === "Todas" ? category === undefined : category === label;
             return (
-              <button
+              <Link
                 key={label}
-                type="button"
-                onClick={() => setFilter(label)}
-                aria-pressed={active}
-                className="rounded-full px-[15px] py-2 text-xs transition-colors"
+                href={hrefFor(1, query, label === "Todas" ? undefined : label)}
+                aria-current={active ? "page" : undefined}
+                className="rounded-[var(--clara-radius-pill)] border border-[var(--clara-border)] px-[15px] py-2 text-xs transition-colors"
                 style={{
                   letterSpacing: "-0.022em",
                   background: active ? "var(--clara-ink)" : "var(--clara-white)",
@@ -83,19 +92,22 @@ export function TransactionTable({
                 }}
               >
                 {label}
-              </button>
+              </Link>
             );
           })}
         </div>
-        <label className="w-full sm:w-[280px]">
-          <span className="sr-only">Buscar transação</span>
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar transação"
-            className="w-full rounded-[var(--clara-radius-pill)] bg-white px-5 py-[11px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--clara-blue)]"
-          />
-        </label>
+        <form action="/transacoes" method="get" className="flex w-full sm:w-[280px]">
+          <label className="w-full">
+            <span className="sr-only">Buscar transação</span>
+            <input
+              name="busca"
+              defaultValue={query}
+              placeholder="Buscar transação"
+              className="w-full rounded-[var(--clara-radius-pill)] border border-[var(--clara-border)] bg-[var(--clara-white)] px-5 py-[11px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--clara-blue)]"
+            />
+          </label>
+          {category !== undefined ? <input type="hidden" name="categoria" value={category} /> : null}
+        </form>
       </div>
 
       <div className="clara-card px-7 pb-7 pt-3.5">
@@ -107,15 +119,17 @@ export function TransactionTable({
           <span className="text-right">Valor</span>
         </div>
 
-        {filtered.length === 0 ? (
+        {rows.length === 0 ? (
           <p className="p-[52px] text-center text-[var(--clara-slate)]">
-            {rows.length === 0
-              ? "O razão ainda está vazio. Envie uma fatura pela conversa."
-              : "Nada por aqui com esse filtro."}
+            {totalCount === 0
+              ? query !== "" || category !== undefined
+                ? "Nada por aqui com esse filtro."
+                : "O razão ainda está vazio. Envie uma fatura pela conversa."
+              : "Não há lançamentos nesta página."}
           </p>
         ) : (
           <ul>
-            {filtered.map((row) => (
+            {rows.map((row) => (
               <li
                 key={row.id}
                 className="grid grid-cols-[44px_1fr_auto] items-center gap-4 border-t border-[var(--clara-fog)] py-4 sm:grid-cols-[44px_1fr_150px_100px_120px]"
@@ -154,9 +168,34 @@ export function TransactionTable({
         )}
       </div>
 
-      <p className="clara-small mt-6">
-        {filtered.length} {filtered.length === 1 ? "lançamento" : "lançamentos"}
-      </p>
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+        <p className="clara-small">
+          {firstRow}–{lastRow} de {totalCount} {totalCount === 1 ? "lançamento" : "lançamentos"}
+        </p>
+        {pageCount > 1 ? (
+          <nav aria-label="Paginação das transações" className="flex items-center gap-2">
+            {page > 1 ? (
+              <Link href={hrefFor(page - 1)} className="clara-pill clara-pill-outline min-h-9 px-3 text-xs">
+                Anterior
+              </Link>
+            ) : (
+              <span aria-disabled="true" className="clara-pill min-h-9 border border-[var(--clara-border)] px-3 text-xs text-[var(--clara-slate)] opacity-50">
+                Anterior
+              </span>
+            )}
+            <span className="clara-small px-1">Página {page} de {pageCount}</span>
+            {page < pageCount ? (
+              <Link href={hrefFor(page + 1)} className="clara-pill clara-pill-outline min-h-9 px-3 text-xs">
+                Próxima
+              </Link>
+            ) : (
+              <span aria-disabled="true" className="clara-pill min-h-9 border border-[var(--clara-border)] px-3 text-xs text-[var(--clara-slate)] opacity-50">
+                Próxima
+              </span>
+            )}
+          </nav>
+        ) : null}
+      </div>
     </>
   );
 }
