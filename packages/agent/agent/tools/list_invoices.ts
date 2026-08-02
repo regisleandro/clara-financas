@@ -7,7 +7,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { requireTenantCaller } from "../lib/tenant";
-import { latestInvoiceOrder, oldestInvoiceOrder } from "../lib/invoice-order";
+import { latestInvoiceOrder, oldestInvoiceOrder } from "@clara-financas/db/invoice-order";
 
 /**
  * Recuperação explícita para o histórico que não cabe no snapshot de turno.

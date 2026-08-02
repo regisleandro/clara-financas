@@ -1,4 +1,4 @@
-import { batches } from "@clara-financas/db/schema/ledger";
+import { batches } from "./schema/ledger";
 import { asc, desc, sql, type SQL } from "drizzle-orm";
 
 /**
@@ -20,6 +20,13 @@ import { asc, desc, sql, type SQL } from "drizzle-orm";
  * NULLS LAST é a definição certa. Um documento sem ciclo não é o mais recente —
  * é o que não sabemos datar, e ordená-lo como se fosse o mais novo é afirmar
  * algo que o dado não diz.
+ *
+ * Mora em `@clara-financas/db`, e não no pacote do agente onde nasceu, porque
+ * havia um QUARTO lugar ordenando faturas à mão: `apps/web/lib/starters.ts`,
+ * que monta o atalho "comparar as duas últimas". Ele repetia o `desc()` cru e
+ * portanto o nulls-first — então o atalho podia oferecer a comparação de dois
+ * lotes sem ciclo enquanto a conversa falava de outras duas faturas. A web não
+ * alcança o pacote do agente; alcança este. Uma definição, quatro chamadores.
  */
 export function latestInvoiceOrder(): SQL[] {
   return [

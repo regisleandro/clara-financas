@@ -2,10 +2,12 @@ import "server-only";
 
 import { getDb } from "@clara-financas/db";
 import { batches, documents, transactions } from "@clara-financas/db/schema/ledger";
+import { latestInvoiceOrder } from "@clara-financas/db/invoice-order";
 import { forTenant } from "@clara-financas/db/tenant-scope";
 import { formatCents } from "@clara-financas/ledger";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
+import { describeInvoice } from "@/lib/invoice-name";
 import type { Starter } from "@/components/chat-welcome";
 
 /**
@@ -36,6 +38,7 @@ const shortDate = (iso: string) =>
     new Date(`${iso}T12:00:00Z`),
   );
 
+
 export async function loadStarters(tenantId: string): Promise<Starter[]> {
   const db = getDb();
 
@@ -55,7 +58,12 @@ export async function loadStarters(tenantId: string): Promise<Starter[]> {
         .from(batches)
         .innerJoin(documents, eq(documents.id, batches.documentId))
         .where(inArray(batches.status, ["proposed", "confirmed"]))
-        .orderBy(desc(batches.periodEnd), desc(batches.createdAt));
+        // A MESMA definição de "a última fatura" que a conversa usa. Escrito à
+        // mão aqui, era `desc()` cru — que no PostgreSQL é NULLS FIRST, então
+        // um lote sem ciclo (nota fiscal, extrato, extração que não achou o
+        // período) encabeçava a lista e o atalho oferecia comparar dois
+        // documentos que não são as duas últimas faturas de ninguém.
+        .orderBy(...latestInvoiceOrder());
 
       const [uncategorized] = await tx
         .select({
@@ -86,7 +94,7 @@ export async function loadStarters(tenantId: string): Promise<Starter[]> {
     starters.push({
       title: "Terminar a conferência",
       note: `${pending.issuer ?? "Uma fatura"} está esperando a sua decisão`,
-      prompt: `Retome a conferência do lote ${pending.batchId} e me mostre o que falta decidir.`,
+      prompt: `Retome a conferência da ${describeInvoice(pending)} e me mostre o que falta decidir.`,
     });
   }
 
@@ -95,19 +103,39 @@ export async function loadStarters(tenantId: string): Promise<Starter[]> {
     starters.push({
       title: "Ver a divergência",
       note: `A soma de uma fatura de ${divergent.issuer ?? "cartão"} não fecha`,
-      prompt: `A conferência do lote ${divergent.batchId} deu divergência. Me mostre onde está a diferença.`,
+      prompt: `A conferência da ${describeInvoice(divergent)} deu divergência. Me mostre onde está a diferença.`,
     });
   }
 
   if (confirmed.length >= 2) {
     const [current, previous] = confirmed;
+    /*
+     * Duas faturas do mesmo emissor no mesmo mês descrevem-se igual — e a frase
+     * viraria "compare a fatura do Nubank de junho com a fatura do Nubank de
+     * junho", que não pede nada. Acontece de verdade: fatura parcial e
+     * fechamento do mesmo ciclo, ou o mesmo PDF enviado duas vezes.
+     *
+     * Aí a data de fechamento entra como desempate. Ela é visível na tela (está
+     * na nota do próprio atalho) e não é identificador — continua sendo um fato
+     * da fatura, não um id do banco.
+     */
+    const [atual, anterior] =
+      describeInvoice(current!) === describeInvoice(previous!) &&
+      current!.periodEnd !== null &&
+      previous!.periodEnd !== null
+        ? [
+            `${describeInvoice(current!)} fechada em ${shortDate(current!.periodEnd)}`,
+            `${describeInvoice(previous!)} fechada em ${shortDate(previous!.periodEnd)}`,
+          ]
+        : [describeInvoice(current!), describeInvoice(previous!)];
+
     starters.push({
       title: "Comparar as duas últimas faturas",
       note:
         current?.periodEnd && previous?.periodEnd
           ? `Ciclos até ${shortDate(previous.periodEnd)} e ${shortDate(current.periodEnd)}`
           : "O que subiu, o que caiu e por quê",
-      prompt: `Compare a fatura ${current!.batchId} com a ${previous!.batchId}. O que explica a diferença?`,
+      prompt: `Compare a ${atual} com a ${anterior}. O que explica a diferença?`,
     });
   }
 
@@ -118,7 +146,7 @@ export async function loadStarters(tenantId: string): Promise<Starter[]> {
       note: latest.periodEnd
         ? `Composição da fatura fechada em ${shortDate(latest.periodEnd)}`
         : "Composição por categoria da última fatura",
-      prompt: `Mostre a composição por categoria da fatura ${latest.batchId}.`,
+      prompt: `Mostre a composição por categoria da ${describeInvoice(latest)}.`,
     });
   }
 

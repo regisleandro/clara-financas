@@ -9,7 +9,7 @@ import { formatDocumentLabel, type FinancialDocumentKind } from "@clara-financas
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
 import { todayInSaoPaulo } from "./dates";
-import { latestInvoiceOrder } from "./invoice-order";
+import { latestInvoiceOrder } from "@clara-financas/db/invoice-order";
 
 /**
  * O estado do razão, em uma consulta.

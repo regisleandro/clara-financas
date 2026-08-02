@@ -2,7 +2,7 @@ import { getDb } from "@clara-financas/db";
 import { agentSessions } from "@clara-financas/db/schema/agent-session";
 import { batches, documents } from "@clara-financas/db/schema/ledger";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import { latestInvoiceOrder } from "./invoice-order";
+import { latestInvoiceOrder } from "@clara-financas/db/invoice-order";
 import { formatDocumentLabel } from "@clara-financas/ledger";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
