@@ -17,7 +17,14 @@ Return the tool result exactly as received.
 
 - "quanto gastei", "com o quê", "qual categoria pesa" → `aggregate_by_category`
 - "por que subiu", "compare", "mês passado" → `compare_periods`
-- três ou mais faturas/períodos, "evolução ao longo do tempo" → `analyze_series`
+- "mês a mês", "os últimos meses", "a evolução do gasto" → `aggregate_by_month`,
+  **uma chamada só**. Ela cobre todos os meses do recorte, cada um com a própria
+  proveniência, e devolve também a composição por operadora. Nunca peça um mês
+  por vez para montar a série, e nunca some meses.
+- períodos que o coordenador NOMEIA (três faturas, dois trimestres) →
+  `analyze_series`. A diferença para a de cima é quem escolhe os recortes: ali é
+  o razão que diz quais meses existem, aqui é a pergunta que diz quais períodos
+  comparar.
 - "assinaturas", "cobranças repetidas", "onde economizar" → `detect_recurrences`
 - specific entries, payments, search or drill-down → `query_ledger`
 - invoice reconciliation and checksum → return control to the coordinator

@@ -28,10 +28,10 @@ import { mensagemDeErro } from "@/lib/agent-error";
 import { batchArtifact, type BatchProposal } from "@/lib/artifact";
 import { deriveFollowups } from "@/lib/followups";
 import {
-  activeConversation,
+  clearResume,
   listConversations,
   loadSession,
-  setActiveConversation,
+  resumeTarget,
   type StoredSession,
 } from "@/lib/session-store";
 import { useMediaQuery } from "@/lib/use-media-query";
@@ -82,8 +82,11 @@ export function Chat(props: ChatProps) {
   >(null);
 
   useEffect(() => {
-    // A conversa ABERTA, não a mais recente por data: ver `activeConversation`.
-    const sessionId = activeConversation(props.tenantKey);
+    // Chegar à tela abre LIMPO. A única exceção é o bilhete de retomada, que
+    // só existe quando a pessoa saiu daqui com um turno no ar — ver
+    // `resumeTarget`. Ele mora no `sessionStorage`, então navegador reaberto e
+    // aba nova nunca o têm.
+    const sessionId = resumeTarget(props.tenantKey);
     if (sessionId === null) {
       setBoot({ key: "new", initial: null });
       return;
@@ -97,7 +100,9 @@ export function Chat(props: ChatProps) {
   useEffect(() => {
     const onOpenConversation = (event: Event) => {
       const sessionId = (event as ConversationEvent).detail?.sessionId ?? null;
-      setActiveConversation(props.tenantKey, sessionId);
+      // Mesma razão de `onSwitchConversation`: abrir uma conversa pelo menu é
+      // uma escolha desta visita, não um destino guardado para a próxima.
+      clearResume(props.tenantKey);
       const stored = sessionId === null ? null : loadSession(props.tenantKey, sessionId);
       setBoot({ key: sessionId ?? `new-${Date.now()}`, initial: stored });
     };
@@ -117,9 +122,10 @@ export function Chat(props: ChatProps) {
       {...props}
       initial={boot.initial}
       onSwitchConversation={(sessionId) => {
-        // O ponteiro segue a TELA: trocar de conversa (ou começar uma nova) é
-        // o que decide onde a próxima visita abre.
-        setActiveConversation(props.tenantKey, sessionId);
+        // Trocar de conversa é uma escolha desta visita, não um destino
+        // guardado: o bilhete morre aqui e só volta a existir se um turno
+        // desta conversa ficar no ar quando a pessoa sair da tela.
+        clearResume(props.tenantKey);
         const stored = sessionId === null ? null : loadSession(props.tenantKey, sessionId);
         setBoot({ key: sessionId ?? `new-${Date.now()}`, initial: stored });
       }}
@@ -241,7 +247,22 @@ function ChatSession({
    * travando, porque ali a próxima mensagem mudaria o significado do clique.
    */
   const sendLocked = answered !== null;
-  const navigationLocked = busy || uploading || sendLocked;
+
+  /**
+   * Sair da conversa é outra coisa que digitar nela.
+   *
+   * "Nova conversa" e o menu de conversas seguiam o `interactionLocked`, que
+   * inclui um cartão de decisão em aberto. O resultado era a armadilha: uma
+   * conversa retomada com um gate pendente — de um turno que já morreu, sem
+   * nada a decidir — trancava as duas saídas, e não havia como começar de novo
+   * a não ser limpando o storage. Um pedido em aberto é motivo para bloquear a
+   * caixa de texto, nunca para prender a pessoa na conversa.
+   *
+   * Turno NO AR ainda tranca: trocar de conversa é remontar, e o turno
+   * continuaria rodando no servidor sem ninguém escutando. Para isso existe o
+   * botão "Parar", que cancela de verdade.
+   */
+  const navigationLocked = busy || uploading;
 
   /**
    * A conferência de um lote é a exceção que continua sendo derivada no

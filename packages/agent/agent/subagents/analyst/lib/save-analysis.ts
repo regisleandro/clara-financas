@@ -2,7 +2,7 @@ import {
   AnalysisArtifactSchema,
   type AnalysisRequestScope,
 } from "@clara-financas/views/agent-contracts";
-import { ViewSchema, type View, type ViewInput } from "@clara-financas/views";
+import { basisOf, ViewSchema, type Basis, type View, type ViewInput } from "@clara-financas/views";
 import { sumOf, witnessOf, type Countable } from "@clara-financas/ledger";
 
 import { canonicalAnalysisRequestScope } from "../../../lib/analysis-scope";
@@ -143,12 +143,14 @@ function auditView(view: View, witness: readonly Countable[]): string[] {
     return problems;
   }
 
-  // Só quem se declara SOMA precisa reconstruir somando.
+  // Só quem se declara SOMA precisa reconstruir somando. A base efetiva vem de
+  // `basisOf` — a célula pode não declarar nada e herdar o padrão da FORMA, e
+  // resolver isso aqui à mão seria a segunda cópia da mesma regra.
   const reconstroi = (
-    cell: { amount?: number; basis: string; transactionIds: string[] },
+    cell: { amount?: number; basis?: Basis; transactionIds: string[] },
     subject: string,
   ) => {
-    if (cell.basis !== "sum") return;
+    if (basisOf(view.kind, cell) !== "sum") return;
     if (cell.amount === undefined || cell.transactionIds.length === 0) return;
     const rebuilt = sumOf(cell.transactionIds.map((id) => ({ id, amount: amounts.get(id)! })));
     if (rebuilt.value !== cell.amount) {

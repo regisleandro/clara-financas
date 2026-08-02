@@ -13,6 +13,19 @@
  * (ACL de sessão em `channels/eve.ts`) — o storage aqui é conveniência, não
  * autorização.
  *
+ * São DOIS armazenamentos, com tempos de vida diferentes de propósito:
+ *
+ *  - `localStorage` guarda o ARQUIVO — o registro de conversas e o payload de
+ *    cada uma. Ele sobrevive a tudo, e é o que o menu "Conversas" oferece.
+ *  - `sessionStorage` guarda um BILHETE de retomada, que só existe enquanto um
+ *    turno está no ar. É o que responde "eu saí no meio de alguma coisa?".
+ *
+ * A pergunta que o segundo responde não é "onde eu estava", é "eu estava
+ * esperando algo?". Abrir o navegador e cair na conversa de ontem — com o
+ * cartão pendente de ontem, que já não decide nada — era o custo de tratar as
+ * duas como a mesma pergunta. Chegar à tela começa limpo; voltar de /transacoes
+ * enquanto a Clara trabalha cai de volta no turno em andamento.
+ *
  * Módulo puro fora do DOM: toda função aceita um `Storage` (default
  * `window.localStorage`) e devolve algo inerte quando não há storage — o
  * Next renderiza client components no servidor, e `localStorage` lá não
@@ -52,13 +65,10 @@ const TITLE_MAX = 80;
 const registryKey = (tenantKey: string) => `clara:conversations:${tenantKey}`;
 const sessionKey = (tenantKey: string, sessionId: string) =>
   `clara:session:${tenantKey}:${sessionId}`;
-const activeKey = (tenantKey: string) => `clara:active:${tenantKey}`;
+const resumeKey = (tenantKey: string) => `clara:resume:${tenantKey}`;
 
-/**
- * Qual conversa está ABERTA no dispositivo. `sessionId: null` é uma conversa
- * nova em aberto — diferente de "não há ponteiro", que é o primeiro acesso.
- */
-type ActivePointer = { sessionId: string | null };
+/** O bilhete de retomada: qual conversa estava PROCESSANDO ao sair da tela. */
+type ResumeTicket = { sessionId: string };
 
 function defaultStorage(): Storage | null {
   if (typeof window === "undefined") return null;
@@ -66,6 +76,22 @@ function defaultStorage(): Storage | null {
     return window.localStorage;
   } catch {
     // Safari em navegação privada e iframes com storage bloqueado lançam.
+    return null;
+  }
+}
+
+/**
+ * `sessionStorage`, não `localStorage`, e a diferença é o recurso inteiro.
+ *
+ * Ele morre com a aba: uma janela nova, uma aba nova, o navegador reaberto —
+ * todos chegam sem bilhete, e a conversa começa limpa. Só sobrevive a
+ * navegação DENTRO da aba, que é exatamente ir para /transacoes e voltar.
+ */
+function defaultTabStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage;
+  } catch {
     return null;
   }
 }
@@ -149,47 +175,60 @@ export function latestConversation(
 }
 
 /**
- * Aponta qual conversa está aberta. `null` = conversa nova: quem recarrega a
- * página depois de clicar em "Nova conversa" NÃO deve receber a antiga de volta.
+ * Arma a retomada: esta conversa está PROCESSANDO agora.
+ *
+ * Chamado enquanto o turno está no ar, e não ao abrir uma conversa. Sair da
+ * tela nesse estado é a única situação em que voltar tem de cair onde estava —
+ * a pessoa foi ver /transacoes esperando a Clara terminar, e perder a resposta
+ * por causa disso seria perder trabalho que ela pediu.
  */
-export function setActiveConversation(
+export function armResume(
   tenantKey: string,
-  sessionId: string | null,
-  storage: Storage | null = defaultStorage(),
+  sessionId: string,
+  storage: Storage | null = defaultTabStorage(),
+): void {
+  if (storage === null || sessionId === "") return;
+  writeJson(storage, resumeKey(tenantKey), { sessionId } satisfies ResumeTicket);
+}
+
+/** Desarma: o turno assentou, e a próxima chegada à tela começa limpa. */
+export function clearResume(
+  tenantKey: string,
+  storage: Storage | null = defaultTabStorage(),
 ): void {
   if (storage === null) return;
-  writeJson(storage, activeKey(tenantKey), { sessionId } satisfies ActivePointer);
+  try {
+    storage.removeItem(resumeKey(tenantKey));
+  } catch {
+    // storage bloqueado: sem bilhete, a tela abre limpa — o lado seguro.
+  }
 }
 
 /**
- * A conversa a retomar ao abrir a página.
+ * A conversa a retomar ao chegar na tela, ou `null` para começar limpa.
  *
- * É o PONTEIRO, não a data: ordenar por `updatedAt` fazia a retomada depender
- * de qual gravação venceu a corrida — uma conversa cujo turno fechou sem
- * cursor (ver `saveSession`) nunca subia no registro, e a página voltava numa
- * conversa antiga qualquer. O ponteiro é escrito quando a conversa é aberta ou
- * criada, então ele é a resposta exata para "onde eu estava".
+ * Antes existia um ponteiro em `localStorage` com a conversa "aberta", e ele
+ * respondia a outra pergunta: *onde eu estava da última vez*, para sempre.
+ * Abrir o navegador caía na conversa de ontem, com o cartão de aprovação
+ * pendente de ontem — e não há nada a decidir num turno que já morreu. O
+ * estado limpo é o começo certo; a conversa anterior continua no menu
+ * "Conversas", a um clique, que é onde uma retomada deliberada pertence.
  *
- * Sem ponteiro (primeiro acesso, storage limpo) ou apontando para uma conversa
- * que já não existe, cai na mais recente — melhor que abrir em branco quem tem
- * histórico.
+ * Bilhete apontando para conversa que já não existe é bilhete morto: começa
+ * limpa em vez de cair "na mais recente", que era como a antiga heurística
+ * ressuscitava justamente a conversa que a pessoa deixou para trás.
  */
-export function activeConversation(
+export function resumeTarget(
   tenantKey: string,
+  tabStorage: Storage | null = defaultTabStorage(),
   storage: Storage | null = defaultStorage(),
 ): string | null {
-  if (storage === null) return null;
+  if (tabStorage === null) return null;
+  const ticket = readJson<ResumeTicket>(tabStorage, resumeKey(tenantKey));
+  if (ticket === null || typeof ticket.sessionId !== "string") return null;
+
   const known = listConversations(tenantKey, storage);
-  const fallback = known[0]?.sessionId ?? null;
-
-  const pointer = readJson<ActivePointer>(storage, activeKey(tenantKey));
-  if (pointer === null || typeof pointer !== "object") return fallback;
-  if (pointer.sessionId === null) return null;
-  if (typeof pointer.sessionId !== "string") return fallback;
-
-  return known.some((entry) => entry.sessionId === pointer.sessionId)
-    ? pointer.sessionId
-    : fallback;
+  return known.some((entry) => entry.sessionId === ticket.sessionId) ? ticket.sessionId : null;
 }
 
 export function loadSession(
@@ -270,16 +309,13 @@ export function saveSession(
   }
 
   writeJson(storage, registryKey(tenantKey), next);
-
-  // Uma conversa nova só tem id depois do primeiro turno; é aqui que o
-  // ponteiro passa de "conversa nova" para ela.
-  setActiveConversation(tenantKey, sessionId, storage);
 }
 
 export function removeConversation(
   tenantKey: string,
   sessionId: string,
   storage: Storage | null = defaultStorage(),
+  tabStorage: Storage | null = defaultTabStorage(),
 ): void {
   if (storage === null) return;
   try {
@@ -292,11 +328,13 @@ export function removeConversation(
   );
   writeJson(storage, registryKey(tenantKey), rest);
 
-  // Ponteiro pendurado numa conversa removida abriria em branco na próxima
-  // visita; o fallback do `activeConversation` cobre isso, mas o ponteiro
-  // mentiroso não precisa sobreviver.
-  const pointer = readJson<ActivePointer>(storage, activeKey(tenantKey));
-  if (pointer?.sessionId === sessionId) setActiveConversation(tenantKey, null, storage);
+  // Bilhete pendurado numa conversa removida não precisa sobreviver: o
+  // `resumeTarget` já o ignoraria por não estar no registro, mas guardar um
+  // ponteiro mentiroso é convite para a próxima leitura confiar nele.
+  if (tabStorage !== null) {
+    const ticket = readJson<ResumeTicket>(tabStorage, resumeKey(tenantKey));
+    if (ticket?.sessionId === sessionId) clearResume(tenantKey, tabStorage);
+  }
 }
 
 function truncateTitle(value: string): string {

@@ -48,11 +48,19 @@ export type ToolErrorCode =
   | "artefato_expirado"
   | "artefato_invalido"
   /**
-   * O painel não fecha com o razão que a própria tool leu: um valor não é
-   * explicado pelos lançamentos anexados a ele, ou as linhas não somam o
-   * número em destaque. Recusa DESENHADA — o painel é bloqueado antes de
-   * chegar à tela, porque um número que não reconcilia é o defeito que a
-   * pessoa relata como "os cálculos não fecham".
+   * O painel não DECLARA de onde vem um número: uma linha ou métrica que soma
+   * lançamentos chegou sem `transactionIds`. Tem código porque antes NÃO
+   * tinha — a recusa acontecia na validação do schema, antes do corpo da tool,
+   * e portanto não gerava evento nenhum. O sintoma em produção era a pessoa
+   * pedir uma lista e não receber nada, sem um registro que explicasse.
+   */
+  | "painel_sem_proveniencia"
+  /**
+   * O painel declara, mas a conta não fecha: os ids anexados a um valor não o
+   * reconstroem, ou as linhas não somam o número em destaque. É o passo
+   * seguinte ao anterior — um exige a prova, este a confere. Recusa DESENHADA:
+   * o painel é bloqueado antes da tela, porque um número que não reconcilia é
+   * o defeito que a pessoa relata como "os cálculos não fecham".
    */
   | "painel_nao_reconcilia";
 

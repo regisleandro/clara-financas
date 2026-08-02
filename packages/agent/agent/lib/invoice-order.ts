@@ -1,5 +1,5 @@
 import { batches } from "@clara-financas/db/schema/ledger";
-import { desc, sql, type SQL } from "drizzle-orm";
+import { asc, desc, sql, type SQL } from "drizzle-orm";
 
 /**
  * "A última fatura" — uma definição só, para todo mundo que responde isso.
@@ -28,5 +28,22 @@ export function latestInvoiceOrder(): SQL[] {
     // Desempate estável: sem ele, dois lotes do mesmo instante trocam de lugar
     // entre consultas e "a última fatura" muda sozinha entre um turno e outro.
     desc(batches.id),
+  ];
+}
+
+/**
+ * A mesma definição, do mais antigo para o mais novo — a leitura mês a mês.
+ *
+ * Mora aqui, e não solta no `list_invoices`, porque a regra dos nulos é a mesma
+ * e precisa continuar sendo: um lote sem ciclo não é o mais recente **nem** o
+ * mais antigo, é o que não sabemos datar. `nulls last` nos dois sentidos é o
+ * que mantém essa afirmação coerente — inverter a ordem não pode transformar
+ * "não sei quando" em "foi o primeiro".
+ */
+export function oldestInvoiceOrder(): SQL[] {
+  return [
+    sql`${batches.periodEnd} asc nulls last`,
+    asc(batches.createdAt),
+    asc(batches.id),
   ];
 }

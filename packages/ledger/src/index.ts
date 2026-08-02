@@ -48,6 +48,7 @@ export { issuerKey, UNKNOWN_ISSUER } from "./issuer";
 export {
   formatDocumentLabel,
   formatInvoiceLabel,
+  formatMonthLabel,
   type FinancialDocumentKind,
 } from "./invoice-label";
 export {

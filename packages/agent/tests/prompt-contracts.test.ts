@@ -108,5 +108,114 @@ describe("contratos de interação dos prompts", () => {
     assert.match(prompt, /resolve_invoice_reference\(latest\)/);
     assert.match(prompt, /resolve_invoice_reference\(next_with_divergence\)/);
     assert.match(prompt, /Never choose a batch.+transcript/is);
+    assert.match(prompt, /idempotent/i);
+    assert.match(prompt, /skipActive/);
+  });
+
+  it("o resultado de ferramenta vence o estado lido no início do turno", async () => {
+    const prompt = await read("../agent/instructions.md");
+    assert.match(prompt, /tool result from this turn always beats/i);
+    assert.match(prompt, /activeInvoiceAtTurnStart/);
+
+    const snapshot = await read("../agent/lib/snapshot.ts");
+    assert.match(snapshot, /PRECEDÊNCIA/);
+    assert.match(snapshot, /activeInvoiceAtTurnStart/);
+  });
+
+  it("o estado do razão não oferece id de lançamento", async () => {
+    const prompt = await read("../agent/instructions.md");
+    assert.match(prompt, /No id in that block is an entry id/i);
+
+    const snapshot = await read("../agent/lib/snapshot.ts");
+    assert.match(snapshot, /TIPO DOS IDS/);
+    assert.match(snapshot, /só existe no retorno de `read_batch`/);
+  });
+
+  /*
+   * A regra é cobrada onde o modelo a LÊ, e não onde ela foi escrita primeiro.
+   *
+   * Esta asserção existia em duplicata: na `description` da tool e numa frase do
+   * prompt. Quando o prompt encolheu (a regra de tool voltou para a tool), o
+   * teste ficou vermelho sem que nada tivesse piorado — ele media a localização
+   * do texto, não a chegada dele. A descrição da tool viaja junto da chamada,
+   * então é a superfície certa para cobrar.
+   */
+  it("alvo inválido não cancela o fechamento da divergência", async () => {
+    const prepare = await read("../agent/tools/prepare_invoice_resolution.ts");
+    assert.match(prepare, /is IGNORED and reported back in targetIgnored/);
+    assert.match(prepare, /targetTransactionId is optional/i);
+    assert.doesNotMatch(prepare, /lancamento_nao_encontrado/);
+  });
+
+  /**
+   * O estado do razão diz QUANTOS estão sem categoria; nada dizia como ver
+   * QUAIS. A coordenadora delegava ao guarda-livros — que agrupa por
+   * comerciante para propor categoria, não para listar — e a conversa terminava
+   * em "a consulta não veio pronta", com a tool que responde a pergunta ao
+   * alcance dela e sem uma linha de instrução apontando para lá.
+   */
+  it("ver os lançamentos sem categoria é uma chamada da coordenadora, não uma delegação", async () => {
+    const prompt = await read("../agent/instructions.md");
+    assert.match(prompt, /list_review_queue/);
+    assert.match(prompt, /reasons: \["sem_categoria"\]/);
+    assert.match(prompt, /includeReviewed: true/);
+    assert.match(prompt, /COUNT of uncategorised spending, never the entries/i);
+    assert.match(prompt, /never say a query "não retornou"/i);
+
+    const queue = await read("../agent/tools/list_review_queue.ts");
+    assert.match(queue, /includeReviewed/);
+    assert.match(queue, /uncategorizedSpending/);
+  });
+
+  /**
+   * "Liste as faturas mês a mês" e "quanto gastei mês a mês" são a mesma frase
+   * com dois destinos. Sem a distinção escrita, a coordenadora delegava o
+   * histórico ao analista — que não tem tool de fatura — ou tentava um painel
+   * que a validação recusa, e a resposta não saía.
+   */
+  it('"mês a mês" tem dois caminhos, e os dois estão escritos', async () => {
+    const prompt = await read("../agent/instructions.md");
+    // O roteamento entre os dois caminhos é JUÍZO do coordenador e fica no
+    // prompt; como preencher cada painel é contrato e fica no schema.
+    assert.match(prompt, /HISTORY OF\s+INVOICES/is);
+    assert.match(prompt, /SPEND SERIES/);
+    assert.match(prompt, /aggregate_by_month/);
+
+    const contrato = await read("../../views/src/index.ts");
+    assert.match(contrato, /The invoice history, one row per invoice/);
+    assert.match(contrato, /oldestFirst: true/);
+    // A saída para o painel reprovado: nunca ficar em silêncio.
+    assert.match(prompt, /never acceptable is going\s+silent/is);
+
+    const analyst = await read("../agent/subagents/analyst/instructions.md");
+    assert.match(analyst, /aggregate_by_month/);
+    assert.match(analyst, /uma chamada só/);
+
+    // É pela `description` do subagente que o pai decide delegar.
+    const agent = await read("../agent/subagents/analyst/agent.ts");
+    assert.match(agent, /month-by-month series/);
+    assert.match(agent, /list_invoices/);
+  });
+
+  it("a triagem do guarda-livros carrega o valor de cada grupo", async () => {
+    const prompt = await read("../agent/subagents/categorizer/instructions.md");
+    assert.match(prompt, /`count` e `totalCents`/);
+    assert.match(prompt, /Nunca some dinheiro/i);
+
+    // Antes do prompt, o SCHEMA: os dois campos são obrigatórios em cada grupo,
+    // então uma triagem sem peso nem chega a ser uma resposta válida.
+    const contrato = await read("../../views/src/agent-contracts.ts");
+    assert.match(contrato, /Never add it up yourself/i);
+
+    // O valor tem de existir na TOOL antes de existir no contrato: o modelo
+    // copia, não soma.
+    const rules = await read("../agent/subagents/categorizer/tools/categorize_by_rules.ts");
+    assert.match(rules, /totalCents/);
+  });
+
+  it("identificador técnico não aparece para a pessoa", async () => {
+    const prompt = await read("../agent/instructions.md");
+    assert.match(prompt, /Identifiers are never shown to the person/i);
+    assert.match(prompt, /`batchId`, `documentId`,\s+`transactionId` nor `proposalId`/is);
   });
 });

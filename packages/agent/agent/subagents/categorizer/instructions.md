@@ -18,5 +18,20 @@ Assemble the declared `CategorizationResult` with `matchedRules`, `proposals`,
 `merchantAliases`, `warnings`, and the exact transaction ids returned by tools.
 Then call `save_categorization` exactly once with that complete result.
 
-The save tool persists the proposal and returns an opaque receipt. Return that
-receipt unchanged. Never rebuild it by hand and never add prose or Markdown.
+Cada grupo carrega o próprio peso — `count` e `totalCents`, COPIADOS da tool
+(o `totalCents` do grupo em `list_uncategorized`, o da regra em
+`categorize_by_rules`). **Nunca some dinheiro.** O coordenador também está
+proibido de calcular, então um total inventado aqui é um total que ninguém
+consegue conferir; sem esses campos ele recebe estabelecimentos sem valor e não
+tem o que mostrar. O schema exige os dois — este parágrafo diz de ONDE eles vêm.
+
+Um array vazio é resposta legítima, e uma proposta com `categoryId: null`
+também, quando nada serve: entre a categoria errada e nenhuma, nenhuma. O que
+nunca é resposta é o silêncio sobre um grupo que a tool devolveu — se você o
+viu, ele entra em `proposals`, com o peso, mesmo sem categoria a sugerir.
+
+Se um recorte volta vazio com `ledgerCoverage`, diga o que o razão COBRE em vez
+de concluir que não há nada registrado.
+
+A tool de gravação persiste a proposta e devolve um recibo opaco. Devolva esse
+recibo sem tocar. Nunca o reconstrua à mão e nunca acrescente prosa ou Markdown.

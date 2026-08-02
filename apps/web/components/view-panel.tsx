@@ -1,7 +1,7 @@
 "use client";
 
 import { formatCents } from "@clara-financas/ledger";
-import type { View, ViewMetric, ViewRow } from "@clara-financas/views";
+import type { Basis, View, ViewMetric, ViewRow } from "@clara-financas/views";
 import { ArrowDownRight, ArrowUpRight, Check, ChevronDown, Minus, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 
@@ -33,9 +33,25 @@ const EYEBROW: Record<View["kind"], string> = {
   series: "Evolução",
   recurrences: "Recorrências",
   transactions: "Razão",
+  invoices: "Faturas",
   commitments: "Agenda",
   proposal: "Proposta",
   checksum: "Conferência",
+};
+
+/**
+ * O que sustenta um número que NÃO é soma de lançamentos.
+ *
+ * Sem isto, um total declarado pelo documento e uma agregação do razão são a
+ * mesma tipografia, e a diferença importa: um a pessoa confere clicando, o outro
+ * ela confere no PDF. Uma projeção passando por soma é pior ainda — é o único
+ * número do painel que fala do futuro.
+ */
+const BASIS_LABEL: Partial<Record<Basis, string>> = {
+  document: "do documento",
+  schedule: "agendado",
+  projection: "projeção",
+  delta: "diferença",
 };
 
 /** A cor do marcador de severidade. Segue o significado, não a estética. */
@@ -199,6 +215,10 @@ function Row({ row, showBars }: { row: ViewRow; showBars: boolean }) {
   const [open, setOpen] = useState(false);
   const ids = row.transactionIds ?? [];
   const traceable = ids.length > 0;
+  // `sum` não ganha nota: é o caso comum, e anotar todo número com "soma"
+  // esconderia justamente os poucos que não são.
+  const basisNote =
+    row.amount !== undefined && row.basis !== undefined ? BASIS_LABEL[row.basis] : undefined;
 
   return (
           <li className="border-b border-[var(--clara-fog)] py-4 last:border-0">
@@ -234,10 +254,18 @@ function Row({ row, showBars }: { row: ViewRow; showBars: boolean }) {
                   </button>
                 ) : null}
               </span>
-              <span className="flex min-w-0 items-center justify-end gap-1.5 text-right tabular-nums">
-                {row.trend !== undefined ? <Trend trend={row.trend} /> : null}
-                {row.amount !== undefined ? (
-                  <span className="min-w-0 break-all">{formatCents(row.amount)}</span>
+              <span className="flex min-w-0 flex-col items-end gap-0.5 text-right">
+                <span className="flex min-w-0 items-center justify-end gap-1.5 tabular-nums">
+                  {row.trend !== undefined ? <Trend trend={row.trend} /> : null}
+                  {row.amount !== undefined ? (
+                    <span className="min-w-0 break-all">{formatCents(row.amount)}</span>
+                  ) : null}
+                </span>
+                {/* Só quando a LINHA declarou: o padrão da forma já se lê no
+                    título do painel ("Faturas", "Agenda"), e repetir a origem em
+                    toda linha de uma conferência seria ruído. */}
+                {basisNote !== undefined ? (
+                  <small className="clara-small text-xs">{basisNote}</small>
                 ) : null}
               </span>
             </div>

@@ -1,7 +1,8 @@
 import { getDb } from "@clara-financas/db";
 import { concepts } from "@clara-financas/db/schema/knowledge";
 import { forTenant } from "@clara-financas/db/tenant-scope";
-import { matchRules, parseRules } from "@clara-financas/ledger";
+import { CATEGORIZABLE_KINDS } from "@clara-financas/db/queries/review";
+import { formatCents, matchRules, parseRules } from "@clara-financas/ledger";
 import { and, eq } from "drizzle-orm";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
@@ -9,6 +10,9 @@ import { z } from "zod";
 import { loadCategoryLabels } from "../../../lib/categories";
 import { brief, ledgerCoverage, loadLedger } from "../../../lib/ledger-query";
 import { requireTenantCaller } from "../../../lib/tenant";
+
+/** O recorte de "gasto a categorizar", como Set para comparar com `kind`. */
+const CATEGORIZABLE = new Set<string>(CATEGORIZABLE_KINDS);
 
 /**
  * Aplica as regras aprendidas às transações ainda sem categoria.
@@ -28,7 +32,7 @@ import { requireTenantCaller } from "../../../lib/tenant";
  */
 export default defineTool({
   description:
-    "Checks which uncategorised transactions the already-learned rules would categorise. Writes nothing — returns what would apply.",
+    "Checks which uncategorised transactions the already-learned rules would categorise. Writes nothing — returns what would apply, grouped by rule with the count and total of each group.",
   inputSchema: z.object({
     from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -65,7 +69,13 @@ export default defineTool({
     }
 
     const parsed = parseRules(rules);
-    const uncategorized = ledger.filter((transaction) => transaction.category === null);
+    // O MESMO recorte do estado do razão: sem o filtro de natureza, esta tool
+    // contava pagamento e ajuste como trabalho pendente e devolvia um
+    // `uncategorizedCount` maior que o do bloco lido no início do turno — dois
+    // números para a mesma pergunta, no mesmo contexto.
+    const uncategorized = ledger.filter(
+      (transaction) => transaction.category === null && CATEGORIZABLE.has(transaction.kind),
+    );
 
     if (uncategorized.length === 0) {
       return {
@@ -89,13 +99,47 @@ export default defineTool({
       ];
     });
 
+    // Agrupado por REGRA, com o total já somado aqui: é a forma que o output do
+    // guarda-livros pede (`matchedRules` carrega `count` e `totalCents`), e ele
+    // não pode somar — modelo somando dinheiro é como um número errado entra
+    // numa resposta com cara de certa.
+    const byRule = new Map<
+      string,
+      {
+        conceptId: string;
+        categoryId: string;
+        categoryLabel: string;
+        count: number;
+        totalCents: number;
+        transactionIds: string[];
+      }
+    >();
+    for (const match of matches) {
+      const group = byRule.get(match.byRule) ?? {
+        conceptId: match.byRule,
+        categoryId: match.suggestedCategory,
+        categoryLabel: match.suggestedCategoryLabel,
+        count: 0,
+        totalCents: 0,
+        transactionIds: [],
+      };
+      group.count += 1;
+      group.totalCents += match.amountCents;
+      group.transactionIds.push(match.id);
+      byRule.set(match.byRule, group);
+    }
+
     return {
       rulesLoaded: parsed.length,
       uncategorizedCount: uncategorized.length,
+      uncategorizedTotalCents: uncategorized.reduce((sum, entry) => sum + entry.amount, 0),
       matchedCount: matches.length,
       matches,
+      rules: [...byRule.values()]
+        .sort((a, b) => b.totalCents - a.totalCents)
+        .map((group) => ({ ...group, totalFormatted: formatCents(group.totalCents) })),
       // Dito explicitamente para o modelo não anunciar como feito.
-      note: "Nothing was written. Present this to the person before recording anything.",
+      note: "Nothing was written. Present this to the person before recording anything. Copy count and totalCents from `rules` into matchedRules — do not add them up yourself.",
     };
   },
 });

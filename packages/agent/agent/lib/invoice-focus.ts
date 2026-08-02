@@ -58,13 +58,22 @@ export async function setInvoiceFocus(
  *
  * - active: a fatura que foi aberta/proposta nesta sessão;
  * - latest: a mais nova pelo fim do ciclo, depois criação e id;
- * - next_with_divergence: a primeira divergente DEPOIS da ativa nessa mesma
- *   ordem. Sem foco anterior, começa na primeira divergente.
+ * - next_with_divergence: a primeira divergente a partir da ativa nessa mesma
+ *   ordem — a PRÓPRIA ativa, quando ela ainda está divergente. Sem foco
+ *   anterior, começa na primeira divergente.
+ *
+ * `skipActive` é o que faz a referência ANDAR, e por isso é explícito. Antes,
+ * `next_with_divergence` sempre pulava a fatura ativa: perguntar duas vezes a
+ * mesma coisa devolvia faturas diferentes, e "corrija essa" no turno seguinte
+ * podia mirar um lote que a pessoa nunca viu. Uma leitura que muda o que ela
+ * lê é armadilha numa conversa em que se repete "faça isso" — quem quer a
+ * seguinte pede a seguinte.
  */
 export async function resolveInvoiceFocus(
   tenantId: string,
   sessionId: string,
   reference: InvoiceReference,
+  options: { skipActive?: boolean } = {},
 ): Promise<InvoiceFocus | null> {
   return forTenant(
     tenantId,
@@ -125,8 +134,10 @@ export async function resolveInvoiceFocus(
         const activeIndex = invoices.findIndex(
           (invoice) => invoice.batchId === session.activeBatchId,
         );
+        const startsAt =
+          activeIndex < 0 ? 0 : options.skipActive === true ? activeIndex + 1 : activeIndex;
         selected = invoices
-          .slice(activeIndex < 0 ? 0 : activeIndex + 1)
+          .slice(startsAt)
           .find((invoice) => invoice.checksumResult === "mismatch");
       }
 

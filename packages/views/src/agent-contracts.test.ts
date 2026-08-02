@@ -96,6 +96,8 @@ describe("contratos estruturados dos subagentes", () => {
           categoryId: "groceries",
           categoryLabel: "Mercado",
           reason: "Compra de alimentação.",
+          count: 1,
+          totalCents: 3_997,
           transactionIds: ["txn_1"],
         },
       ],

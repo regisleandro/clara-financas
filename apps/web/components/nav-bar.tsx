@@ -4,12 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import {
-  activeConversation,
-  listConversations,
-  setActiveConversation,
-  type StoredConversation,
-} from "@/lib/session-store";
+import { listConversations, resumeTarget, type StoredConversation } from "@/lib/session-store";
 
 type NavItem = {
   href: string;
@@ -54,9 +49,21 @@ export function NavBar({
   const [conversations, setConversations] = useState<StoredConversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
 
+  /*
+   * Qual conversa aparece marcada — e por que não há ponteiro guardado.
+   *
+   * O destaque seguia um ponteiro em `localStorage` ("a conversa aberta"), que
+   * respondia a *onde eu estava da última vez, para sempre*. Esse ponteiro foi
+   * removido junto com a heurística que fazia abrir o navegador cair na
+   * conversa de ontem: chegar à tela começa limpo. Ver `resumeTarget`.
+   *
+   * Sobra o que é verdade nesta visita: o destaque acompanha a conversa que a
+   * pessoa abriu agora, e no primeiro render acompanha o bilhete de retomada —
+   * exatamente o que o `chat.tsx` vai abrir, para os dois não discordarem.
+   */
   const refreshConversations = () => {
     setConversations(listConversations(tenantKey));
-    setActiveId(activeConversation(tenantKey));
+    setActiveId((atual) => atual ?? resumeTarget(tenantKey));
   };
 
   useEffect(() => {
@@ -162,7 +169,6 @@ export function NavBar({
   }, [name]);
 
   const openConversation = (sessionId: string | null) => {
-    setActiveConversation(tenantKey, sessionId);
     setActiveId(sessionId);
     window.dispatchEvent(
       new CustomEvent<ConversationEvent["detail"]>("clara:open-conversation", {

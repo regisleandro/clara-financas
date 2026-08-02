@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { parseView, parseViewResult, viewTransactionIds, ViewSchema } from "./index";
+import {
+  basisOf,
+  checkView,
+  DEFAULT_BASIS,
+  formatViewIssues,
+  parseView,
+  parseViewResult,
+  VIEW_KINDS,
+  viewTransactionIds,
+  ViewSchema,
+} from "./index";
 
 /**
  * O painel é montado por um modelo, então o schema é a fronteira entre "a
@@ -60,13 +70,20 @@ describe("parseView", () => {
   it("todo número nasce declarado como soma quando não diz o contrário", () => {
     // Compatibilidade: artefato já persistido não traz `basis`, e o caso comum
     // não deve exigir cerimônia de quem monta o painel.
+    //
+    // O campo permanece `undefined` no dado — quem resolve o padrão é
+    // `basisOf`, e é ele que este teste exercita. Um `.default()` no schema
+    // pareceria equivalente e não é: ele gravaria "sum" em toda célula de todo
+    // painel, inclusive nas formas cujo padrão é `document` ou `schedule`, e o
+    // padrão por FORMA deixaria de existir onde mais importa.
     const view = parseView({
       kind: "metric",
       title: "Gastos",
       metric: { label: "Gasto", amount: 5_000, transactionIds: ["t1"] },
     });
 
-    assert.equal(view?.kind === "metric" ? view.metric.basis : null, "sum");
+    assert.equal(view?.kind === "metric" ? view.metric.basis : "faltou o painel", undefined);
+    assert.equal(view === null ? null : basisOf(view.kind, { basis: undefined }), "sum");
   });
 
   it("aceita contagem inteira no texto de uma métrica não financeira", () => {
@@ -177,6 +194,56 @@ describe("parseView", () => {
     assert.equal(view?.rows[0]?.accent, "danger");
   });
 
+  /**
+   * "Liste as faturas mês a mês" — o pedido que não tinha resposta possível.
+   *
+   * O total de uma fatura é fato do DOCUMENTO: é o que ele declara, ou a soma
+   * que a extração leu dele. Não existe conjunto de lançamentos que a
+   * coordenadora escolheu somar, então não há id para exigir. Enquanto não havia
+   * esta forma, as quatro que aceitariam a lista reprovavam na proveniência e a
+   * única que passaria era `commitments` — que desenha "Agenda" sobre um
+   * histórico de faturas. Entre um painel reprovado e a proibição de despejar
+   * números no chat, a pessoa não recebia nada.
+   */
+  it("histórico de faturas desenha sem proveniência — o total é fato do documento", () => {
+    const view = parseView({
+      kind: "invoices",
+      title: "Faturas mês a mês",
+      summary: "Três ciclos registrados, do mais antigo para o mais recente.",
+      rows: [
+        { label: "Nubank 07/05/26", amount: 391_040, detail: "ciclo 31/03–30/04 · vence 07/05" },
+        { label: "Nubank 07/06/26", amount: 512_310, detail: "ciclo 30/04–31/05 · vence 07/06" },
+        {
+          label: "Nubank 07/07/26",
+          amount: 438_792,
+          detail: "ciclo 31/05–30/06 · vence 07/07 · em conferência",
+          accent: "attention",
+        },
+      ],
+    });
+
+    assert.equal(view?.kind, "invoices");
+    assert.equal(view?.rows.length, 3);
+    assert.deepEqual(view === null ? null : viewTransactionIds(view), []);
+  });
+
+  it("o histórico de faturas descarta a métrica — somar faturas seria conta de modelo", () => {
+    // A forma não declara `metric`, e o schema tira o que não declarou. É de
+    // propósito: um "total das faturas" só existiria se o modelo somasse
+    // dinheiro, e é assim que um número inventado chega com cara de certo.
+    // Descartar em silêncio é melhor que reprovar o painel inteiro — a lista,
+    // que é a resposta, continua chegando.
+    const view = parseView({
+      kind: "invoices",
+      title: "Faturas",
+      metric: { label: "Total das faturas", amount: 1_342_142 },
+      rows: [{ label: "Nubank 07/07/26", amount: 438_792 }],
+    });
+
+    assert.equal(view?.kind, "invoices");
+    assert.equal("metric" in (view ?? {}), false);
+  });
+
   it("proposta exige proveniência — decidir sobre lista sem ids é decidir no escuro", () => {
     const view = parseView({
       kind: "proposal",
@@ -202,6 +269,90 @@ describe("parseView", () => {
 
     assert.equal(view?.kind, "proposal");
     assert.deepEqual(view === null ? [] : viewTransactionIds(view), ["t1", "t2", "t3"]);
+  });
+
+  /**
+   * A regra de proveniência deixou de ser uma lista de `kind` isentos e passou a
+   * ser uma declaração POR LINHA. Estes testes cobrem os dois casos que a lista
+   * não alcançava — e que existem no produto hoje.
+   */
+  it("ajuste no nível da fatura entra na proposta declarando a base", () => {
+    // `prepare_invoice_resolution` devolve `targetTransactionId: null` porque
+    // não HÁ linha culpada: o ajuste é da fatura. Sob a regra por `kind`, esta
+    // proposta era inexprimível — e é a mais comum quando a conta não fecha.
+    const view = parseView({
+      kind: "proposal",
+      title: "Ajuste para fechar a fatura",
+      rows: [
+        {
+          label: "Ajuste de arredondamento",
+          amount: 3,
+          detail: "diferença da fatura, sem item culpado",
+          basis: "document",
+        },
+      ],
+    });
+
+    assert.equal(view?.kind, "proposal");
+    assert.equal(view?.rows[0]?.basis, "document");
+  });
+
+  it("projeção anual não se passa por soma das cobranças observadas", () => {
+    const projected = parseView({
+      kind: "recurrences",
+      title: "Assinaturas",
+      rows: [
+        { label: "Streaming · custo anual", amount: 83_880, basis: "projection" },
+        { label: "Streaming · cobranças vistas", amount: 13_980, transactionIds: ["t1", "t2"] },
+      ],
+    });
+
+    assert.equal(projected?.kind, "recurrences");
+    // A linha projetada não entra na proveniência clicável: não há o que abrir.
+    assert.deepEqual(projected === null ? [] : viewTransactionIds(projected), ["t1", "t2"]);
+  });
+
+  it("declarar base não vale para o que é soma de lançamentos — mas a regra é por linha", () => {
+    const issues = checkView({
+      kind: "breakdown",
+      title: "Composição",
+      rows: [
+        // Sem ids e sem base: é o defeito de sempre.
+        { label: "Restaurantes", amount: 124_000, transactionIds: [] },
+        { label: "Mercado", amount: 98_000, transactionIds: ["t1"] },
+      ],
+    } as never);
+
+    assert.equal(issues.length, 1);
+    assert.deepEqual(issues[0]?.path, ["rows", 0, "transactionIds"]);
+    // A mensagem tem de dizer as DUAS saídas, senão o modelo só sabe desistir.
+    assert.match(formatViewIssues(issues)[0] ?? "", /transactionIds/);
+    assert.match(formatViewIssues(issues)[0] ?? "", /basis/);
+  });
+
+  it("toda forma declara o que sustenta seus números", () => {
+    // O `Record` é exaustivo pelo tipo: uma forma nova não compila sem entrar
+    // aqui. Este teste guarda o outro lado — que nenhuma sobrou de fora da
+    // união, e que os três casos de fato do documento seguem sendo o que são.
+    for (const kind of VIEW_KINDS) {
+      assert.ok(DEFAULT_BASIS[kind] !== undefined, `${kind} sem base declarada`);
+    }
+    assert.equal(DEFAULT_BASIS.invoices, "document");
+    assert.equal(DEFAULT_BASIS.checksum, "document");
+    assert.equal(DEFAULT_BASIS.commitments, "schedule");
+    assert.equal(DEFAULT_BASIS.breakdown, "sum");
+    // A série é a forma que main não tinha: seus pontos SÃO somas de
+    // lançamentos, e é o destaque (a variação) que declara `delta` por conta.
+    assert.equal(DEFAULT_BASIS.series, "sum");
+  });
+
+  it("recusa base inventada — o vocabulário é fechado como o do accent", () => {
+    const view = parseView({
+      kind: "breakdown",
+      title: "Composição",
+      rows: [{ label: "Restaurantes", amount: 124_000, basis: "porque_eu_disse" }],
+    });
+    assert.equal(view, null);
   });
 
   it("recusa accent inventado — o marcador tem vocabulário fechado", () => {

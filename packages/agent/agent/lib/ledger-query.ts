@@ -208,6 +208,32 @@ export async function loadLedger(
 }
 
 /**
+ * A operadora de cada documento, para compor com as linhas do razão.
+ *
+ * A operadora não vive na transação: é do DOCUMENTO (`documents.issuer`), e o
+ * domínio a recebe por composição justamente para que duas linhas da mesma
+ * fatura não possam discordar sobre de onde vieram (ver `IssuedTransaction` em
+ * `@clara-financas/ledger`). Uma consulta separada é barata pelo mesmo motivo
+ * que o filtro por operadora já usa: há um documento por fatura, não um por
+ * lançamento.
+ */
+export async function loadIssuersByDocument(
+  tenantId: string,
+): Promise<Map<string, string | null>> {
+  const rows = await forTenant(
+    tenantId,
+    async (tx) =>
+      tx
+        .select({ id: documents.id, issuer: documents.issuer })
+        .from(documents)
+        .where(eq(documents.tenantId, tenantId)),
+    getDb(),
+  );
+
+  return new Map(rows.map((row) => [row.id, row.issuer]));
+}
+
+/**
  * Que períodos o razão de fato cobre.
  *
  * Serve para responder vazio de forma útil. Um recorte sem dados é ambíguo: o

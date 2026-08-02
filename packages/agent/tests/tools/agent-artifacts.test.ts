@@ -245,6 +245,11 @@ describe("artefatos opacos entre subagentes e coordenadora", () => {
             categoryId: "groceries",
             categoryLabel: "Mercado",
             reason: "Compra de alimentação.",
+            // O peso do grupo é obrigatório no contrato: sem ele a coordenadora
+            // recebe um comerciante sem valor e não tem o que mostrar. Vem
+            // COPIADO da tool que agrupou — nunca somado pelo modelo.
+            count: 1,
+            totalCents: 4_500,
             transactionIds: [target.id],
           },
         ],
