@@ -69,11 +69,15 @@ export async function saveAnalysis(
   const { artifactId } = await persistArtifact("analysis", artifact, ctx);
   if (!behaviorV2Enabled(tenantId)) return view;
 
+  // Uma chamada produz um painel; o analista junta os recibos de várias
+  // chamadas numa entrega só quando a pergunta pede mais de um. A lista existe
+  // para que ele TENHA como fazer isso — antes, a instrução mandava e o
+  // contrato não permitia.
   return {
-    artifactId,
+    artifactIds: [artifactId],
     artifactKind: "analysis" as const,
     nextAction: "present_analysis" as const,
-    viewKind: view.kind,
+    viewKinds: [view.kind],
     warnings,
   };
 }

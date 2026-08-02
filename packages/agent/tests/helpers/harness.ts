@@ -191,14 +191,21 @@ export async function closeConnections(): Promise<void> {
 
 /** Resolve um recibo analítico pelo mesmo caminho usado pela coordenadora. */
 export async function viewFromReceipt(receipt: unknown, ctx: never) {
-  const artifactId = (receipt as { artifactId?: string }).artifactId;
-  if (artifactId === undefined) throw new Error("analysis receipt without artifactId");
-  const presented = (await presentAnalysis.execute({ artifactId }, ctx)) as {
-    view?: unknown;
+  return (await viewsFromReceipt(receipt, ctx))[0]!;
+}
+
+/** Todos os painéis de um recibo — a forma que o contrato passou a permitir. */
+export async function viewsFromReceipt(receipt: unknown, ctx: never) {
+  const artifactIds = (receipt as { artifactIds?: string[] }).artifactIds;
+  if (artifactIds === undefined || artifactIds.length === 0) {
+    throw new Error(`analysis receipt without artifactIds: ${JSON.stringify(receipt)}`);
+  }
+  const presented = (await presentAnalysis.execute({ artifactIds }, ctx)) as {
+    views?: unknown[];
     error?: unknown;
   };
-  if (presented.error !== undefined || presented.view === undefined) {
+  if (presented.error !== undefined || presented.views === undefined) {
     throw new Error(`analysis artifact could not be presented: ${JSON.stringify(presented.error)}`);
   }
-  return presented.view as Record<string, unknown>;
+  return presented.views as Array<Record<string, unknown>>;
 }

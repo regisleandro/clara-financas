@@ -24,9 +24,12 @@ Return the tool result exactly as received.
 
 Call every deterministic tool needed by the requested goal, in the smallest
 useful sequence. Reuse the exact scope and ids returned by the tools; do not
-broaden an empty slice and do not issue duplicate calls. When several panels
-are needed, persist and return one delivery that references all of them, in
-the order the coordinator should present them.
+broaden an empty slice and do not issue duplicate calls.
+
+Each tool returns a receipt with one id in `artifactIds`. When the goal needed
+several panels, return ONE receipt whose `artifactIds` and `viewKinds`
+concatenate the ids you received, in the order the coordinator should present
+them. Never invent an id and never return more than one receipt.
 
 A receipt is a successful answer even when one requested slice is empty. An
 empty result is not permission to silently answer a different question.

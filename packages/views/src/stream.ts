@@ -119,16 +119,37 @@ export function findPresentedViews(
         continue;
       }
       const pending = requested.get(callId)!;
-      const candidate =
-        pending.toolName === PRESENT_VIEW_TOOL ? pending.input : asRecord(result?.output)?.view;
-      const parsed = parseViewResult(candidate);
-      if (parsed.ok) views.push(parsed.view);
-      else onInvalid?.(parsed.issues, callId);
+      for (const candidate of viewCandidates(pending, output)) {
+        const parsed = parseViewResult(candidate);
+        if (parsed.ok) views.push(parsed.view);
+        else onInvalid?.(parsed.issues, callId);
+      }
       requested.delete(callId);
     }
   }
 
   return views;
+}
+
+/**
+ * Os painéis que UMA chamada produziu.
+ *
+ * `present_view` traz o painel no INPUT (é a coordenadora que o desenha);
+ * `present_analysis` e `present_categorization` trazem no OUTPUT, porque o
+ * painel veio de um artefato validado que o modelo nunca tocou.
+ *
+ * A lista existe porque uma resposta pode ter mais de um painel. `view`
+ * singular continua sendo lido: artefato de sessão já persistida foi gravado
+ * assim, e uma conversa retomada não pode perder o painel por causa da forma.
+ */
+function viewCandidates(
+  pending: { toolName: string; input: unknown },
+  output: Record<string, unknown> | undefined,
+): unknown[] {
+  if (pending.toolName === PRESENT_VIEW_TOOL) return [pending.input];
+  const plural = output?.views;
+  if (Array.isArray(plural)) return plural;
+  return output?.view === undefined ? [] : [output.view];
 }
 
 /**
@@ -168,11 +189,11 @@ export function findMessageViews(message: unknown, onInvalid?: OnInvalidView): V
     }
     // Parte materializada já tem o input completo — aqui falha de schema é
     // definitiva, nunca efeito de streaming pela metade.
-    const parsed = parseViewResult(
-      toolName === PRESENT_VIEW_TOOL ? part.input : asRecord(part.output)?.view,
-    );
-    if (parsed.ok) views.push(parsed.view);
-    else onInvalid?.(parsed.issues, asString(part.toolCallId));
+    for (const candidate of viewCandidates({ toolName, input: part.input }, output)) {
+      const parsed = parseViewResult(candidate);
+      if (parsed.ok) views.push(parsed.view);
+      else onInvalid?.(parsed.issues, asString(part.toolCallId));
+    }
   }
 
   return views;

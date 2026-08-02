@@ -81,10 +81,10 @@ describe("artefatos opacos entre subagentes e coordenadora", () => {
       ctx,
     )) as Record<string, unknown>;
     assert.deepEqual(Object.keys(receipt).sort(), [
-      "artifactId",
+      "artifactIds",
       "artifactKind",
       "nextAction",
-      "viewKind",
+      "viewKinds",
       "warnings",
     ]);
     assert.equal(receipt.nextAction, "present_analysis");
@@ -142,7 +142,7 @@ describe("artefatos opacos entre subagentes e coordenadora", () => {
         tx
           .select({ payload: agentArtifacts.payload })
           .from(agentArtifacts)
-          .where(eq(agentArtifacts.id, (receipt as { artifactId: string }).artifactId))
+          .where(eq(agentArtifacts.id, (receipt as { artifactIds: string[] }).artifactIds[0]!))
           .limit(1),
       getDb(),
     );
@@ -186,10 +186,10 @@ describe("artefatos opacos entre subagentes e coordenadora", () => {
     const receipt = (await aggregateByCategory.execute(
       { scope: { kind: "invoice", batchId: currentBatchId } },
       ctx,
-    )) as { artifactId: string };
+    )) as { artifactIds: string[] };
     const otherSession = ctxFor(tenantId, "usr_test", `ses_other_${tenantId}`);
     const refused = (await presentAnalysis.execute(
-      { artifactId: receipt.artifactId },
+      { artifactIds: receipt.artifactIds },
       otherSession,
     )) as { error: { code: string } };
     assert.equal(refused.error.code, "artefato_nao_encontrado");
@@ -209,7 +209,7 @@ describe("artefatos opacos entre subagentes e coordenadora", () => {
       getDb(),
     );
     const expired = (await presentAnalysis.execute(
-      { artifactId: expiredArtifactId },
+      { artifactIds: [expiredArtifactId] },
       ctx,
     )) as { error: { code: string; retryable: boolean } };
     assert.equal(expired.error.code, "artefato_expirado");

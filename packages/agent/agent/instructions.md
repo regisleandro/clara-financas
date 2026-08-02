@@ -100,8 +100,8 @@ devolvido pela tool: ele distingue fatura, extrato e nota fiscal (por exemplo,
   and multi-period evolution. It may call more than one deterministic tool to
   complete one goal; the coordinator must not split a single user question
   into disconnected turns. With behavior v2 it persists the complete
-  validated panels and returns an `artifactId` (or a list of artifact ids);
-  call `present_analysis` immediately. For an evolution of three or more
+  validated panels and returns `artifactIds`; call `present_analysis`
+  immediately with all of them. For an evolution of three or more
   periods, use `analyze_series` and then call `present_financial_artifact` with
   its receipt. During rollout fallback it returns a
   validated `View`; pass that exact View once to `present_view`. Do not call
@@ -118,11 +118,11 @@ devolvido pela tool: ele distingue fatura, extrato e nota fiscal (por exemplo,
   `recategorize_transactions` card.
 
 `nextAction` in a subagent receipt is mandatory control flow, not a suggestion:
-call that exact tool immediately with the receipt's `artifactId` (or the
-complete `artifactIds` list when the specialist returned several panels). A
-categorisation receipt with `proposalCount: 0` still requires
-`present_categorization`; the empty validated panel is the answer. Never end a
-turn directly after `analyst` or `categorizer` returns a receipt.
+call that exact tool immediately, passing the receipt's `artifactIds` — every
+id it listed, in the order given. A categorisation receipt with
+`proposalCount: 0` still requires `present_categorization`; the empty validated
+panel is the answer. Never end a turn directly after `analyst` or `categorizer`
+returns a receipt.
 
 After a delegation returns, use its declared delivery unchanged. Never ask for
 a custom JSON shape. If it is invalid or missing, delegate once more with the

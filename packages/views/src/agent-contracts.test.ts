@@ -24,14 +24,52 @@ describe("contratos estruturados dos subagentes", () => {
 
   it("recibo analítico não permite números financeiros", () => {
     const result = AnalysisReceiptSchema.parse({
-      artifactId: "art_abc123",
+      artifactIds: ["art_abc123"],
       artifactKind: "analysis",
       nextAction: "present_analysis",
-      viewKind: "metric",
+      viewKinds: ["metric"],
       warnings: [],
       amount: 1000,
     });
     assert.equal("amount" in result, false);
+  });
+
+  it("o recibo carrega VÁRIOS painéis — era o que o prompt já mandava", () => {
+    /*
+     * As instruções mandavam o coordenador passar "a lista completa de
+     * `artifactIds`" e o analista devolver "uma entrega que referencie todos
+     * eles". `artifactIds` não existia em schema nenhum: o modelo obedecia, a
+     * validação reprovava a forma, e o turno morria SEM NENHUMA TOOL TER
+     * FALHADO — o cenário mais difícil de diagnosticar que existe aqui.
+     *
+     * Que o plural era a intenção dá para provar pelo frontend, que já era
+     * `views: View[]` com um comentário dizendo que a Clara pode desenhar mais
+     * de um painel na mesma resposta.
+     */
+    const result = AnalysisReceiptSchema.parse({
+      artifactIds: ["art_abc123", "art_def456"],
+      artifactKind: "analysis",
+      nextAction: "present_analysis",
+      viewKinds: ["breakdown", "comparison"],
+      warnings: [],
+    });
+
+    assert.equal(result.artifactIds.length, 2);
+    assert.deepEqual(result.viewKinds, ["breakdown", "comparison"]);
+  });
+
+  it("recibo sem nenhum artefato é recusado", () => {
+    // "Apresente" sem nada para apresentar não é uma resposta possível.
+    assert.equal(
+      AnalysisReceiptSchema.safeParse({
+        artifactIds: [],
+        artifactKind: "analysis",
+        nextAction: "present_analysis",
+        viewKinds: [],
+        warnings: [],
+      }).success,
+      false,
+    );
   });
 
   it("artefato recusa troca silenciosa do escopo", () => {

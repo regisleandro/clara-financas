@@ -35,20 +35,43 @@ export const AnalysisArtifactSchema = z
     }
   });
 
+/**
+ * O recibo do analista — no PLURAL, porque uma resposta pode ter vários painéis.
+ *
+ * Este schema dizia `artifactId`, singular, enquanto as instruções mandavam o
+ * coordenador usar "a lista completa de `artifactIds` quando o especialista
+ * devolveu vários painéis" e o analista, "devolva uma entrega que referencie
+ * todos eles". `artifactIds` não existia em lugar nenhum do código.
+ *
+ * O efeito não era um aviso: o modelo obedecia à instrução, o `outputSchema`
+ * reprovava a forma, e o turno morria SEM NENHUMA TOOL TER FALHADO — o cenário
+ * que a própria telemetria documenta como o mais difícil de diagnosticar, e o
+ * candidato mais forte para "a conversa trava".
+ *
+ * O plural era a intenção original, e dá para provar: `ActiveArtifact` no
+ * frontend é `{ kind: "view"; views: View[] }` desde antes disto, com um
+ * comentário explicando que a Clara pode desenhar mais de um painel na mesma
+ * resposta. A tela esperava vários; só o contrato do agente não sabia.
+ */
 export const AnalysisReceiptSchema = z.object({
-  artifactId: z.string().regex(/^art_[a-z0-9]+$/),
+  artifactIds: z.array(z.string().regex(/^art_[a-z0-9]+$/)).min(1).max(4),
   artifactKind: z.literal("analysis"),
   nextAction: z.literal("present_analysis"),
-  viewKind: z.enum([
-    "metric",
-    "breakdown",
-    "comparison",
-    "recurrences",
-    "transactions",
-    "commitments",
-    "proposal",
-    "checksum",
-  ]),
+  /** Uma forma por artefato, na mesma ordem de `artifactIds`. */
+  viewKinds: z
+    .array(
+      z.enum([
+        "metric",
+        "breakdown",
+        "comparison",
+        "recurrences",
+        "transactions",
+        "commitments",
+        "proposal",
+        "checksum",
+      ]),
+    )
+    .min(1),
   warnings: z.array(z.string()).default([]),
 });
 

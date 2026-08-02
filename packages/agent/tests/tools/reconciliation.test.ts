@@ -7,6 +7,7 @@ import detectRecurrences from "../../agent/subagents/analyst/tools/detect_recurr
 import queryLedger from "../../agent/subagents/analyst/tools/query_ledger";
 import { saveAnalysis } from "../../agent/subagents/analyst/lib/save-analysis";
 import commitBatch from "../../agent/tools/commit_batch";
+import presentAnalysis from "../../agent/tools/present_analysis";
 import proposeBatch from "../../agent/tools/propose_batch";
 import {
   closeConnections,
@@ -15,6 +16,7 @@ import {
   freshTenant,
   seedDocument,
   viewFromReceipt,
+  viewsFromReceipt,
 } from "../helpers/harness";
 
 /**
@@ -302,6 +304,64 @@ describe("os painéis fecham com o razão", () => {
     assert.match(subiu?.detail ?? "", /% do aumento/, "e precisa dizer de que é fração");
   });
 
+  it("uma resposta com VÁRIOS painéis atravessa a cadeia inteira", async () => {
+    /*
+     * O caminho que o prompt mandava percorrer e o contrato não permitia.
+     *
+     * As instruções diziam ao coordenador para passar "a lista completa de
+     * `artifactIds`" e ao analista para "devolver uma entrega que referencie
+     * todos eles" — e `artifactIds` não existia em schema nenhum. O modelo
+     * obedecia, o `outputSchema` reprovava a forma, e o turno morria sem
+     * nenhuma tool ter falhado.
+     *
+     * Aqui as duas análises são feitas, os ids são juntados como o analista
+     * junta, e os dois painéis chegam do outro lado.
+     */
+    const composicao = (await aggregateByCategory.execute(
+      { scope: { kind: "invoice", batchId: atualId } },
+      ctx,
+    )) as { artifactIds: string[] };
+    const comparacao = (await comparePeriods.execute(
+      {
+        current: { kind: "invoice", batchId: atualId },
+        previous: { kind: "invoice", batchId: anteriorId },
+      },
+      ctx,
+    )) as { artifactIds: string[] };
+
+    const reciboJunto = {
+      artifactIds: [...composicao.artifactIds, ...comparacao.artifactIds],
+      artifactKind: "analysis" as const,
+      nextAction: "present_analysis" as const,
+      viewKinds: ["breakdown", "comparison"],
+      warnings: [],
+    };
+
+    const paineis = await viewsFromReceipt(reciboJunto, ctx);
+
+    assert.equal(paineis.length, 2, "os dois painéis chegam");
+    assert.equal(paineis[0]?.kind, "breakdown");
+    assert.equal(paineis[1]?.kind, "comparison", "e na ordem em que o analista os listou");
+  });
+
+  it("um id inválido no meio da lista não vira meia apresentação", async () => {
+    // Ou os painéis daquela resposta aparecem juntos, ou a recusa diz o que
+    // houve. Meia resposta é pior que nenhuma: o texto fala de dois painéis e
+    // a tela mostra um.
+    const composicao = (await aggregateByCategory.execute(
+      { scope: { kind: "invoice", batchId: atualId } },
+      ctx,
+    )) as { artifactIds: string[] };
+
+    const resultado = (await presentAnalysis.execute(
+      { artifactIds: [...composicao.artifactIds, "art_naoexiste"] },
+      ctx,
+    )) as { error?: { code: string }; views?: unknown[] };
+
+    assert.ok(resultado.error, "recusa em vez de apresentar pela metade");
+    assert.equal(resultado.views, undefined);
+  });
+
   it("recorte vazio publica painel válido", async () => {
     const recibo = await aggregateByCategory.execute(
       { scope: { kind: "calendar_month", month: "2026-01" } },
@@ -409,9 +469,9 @@ describe("o guard recusa painel que não fecha", () => {
       { kind: "all" },
       guardCtx,
       testemunha,
-    )) as { error?: unknown; artifactId?: string };
+    )) as { error?: unknown; artifactIds?: string[] };
 
     assert.equal(resultado.error, undefined);
-    assert.ok(resultado.artifactId);
+    assert.ok(resultado.artifactIds?.length);
   });
 });
