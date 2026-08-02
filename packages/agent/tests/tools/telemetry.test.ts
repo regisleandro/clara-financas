@@ -154,4 +154,57 @@ describe("telemetria de execução", () => {
     assert.equal(row?.status, "ok");
     assert.equal((row?.inputSummary as Record<string, unknown>).artifactId, "art_probe");
   });
+
+  /*
+   * `nextAction` sempre foi "control flow obrigatório" escrito em prosa, e a
+   * única verificação era uma regex conferindo que a FRASE estava no prompt —
+   * um teste de que a documentação existe, não de que a regra vale.
+   *
+   * Impor de verdade não é possível neste framework: hooks são observe-only e
+   * `defineDynamic` não assina `action.result`, então não há como exigir do
+   * modelo uma chamada específica. O que faltava, e é o que estes testes
+   * travam, é a omissão parar de ser INVISÍVEL — quando o turno terminava sem
+   * o painel, o log não tinha nada, porque nenhuma tool havia falhado.
+   */
+  const turnoCompleto = { type: "turn.completed" as const, data: {} };
+
+  it("recibo entregue e turno encerrado sem present_* deixa rastro", async () => {
+    const hooks = telemetry.events!;
+    hooks["actions.requested"]!(requested("r1", "agent", { name: "analyst" }) as never, ctx);
+    await hooks["action.result"]!(
+      resulted("r1", { artifactIds: ["art_x"], nextAction: "present_analysis" }) as never,
+      ctx,
+    );
+    await hooks["turn.completed"]!(turnoCompleto as never, ctx);
+
+    const registro = (await events()).find(
+      (row) => row.errorCode === "recibo_nao_apresentado",
+    );
+    assert.ok(registro, "a omissão precisa virar evento com nome");
+    // Recuperável, não falha: a resposta existe, o painel é que não chegou.
+    assert.equal(registro?.status, "recuperavel");
+    assert.match(registro?.errorMessage ?? "", /present_analysis/);
+  });
+
+  it("apresentar o recibo limpa a pendência — nada é registrado", async () => {
+    const hooks = telemetry.events!;
+    const antes = (await events()).filter((row) => row.errorCode === "recibo_nao_apresentado")
+      .length;
+
+    hooks["actions.requested"]!(requested("r2", "agent", { name: "analyst" }) as never, ctx);
+    await hooks["action.result"]!(
+      resulted("r2", { artifactIds: ["art_y"], nextAction: "present_analysis" }) as never,
+      ctx,
+    );
+    hooks["actions.requested"]!(
+      requested("r3", "present_analysis", { artifactIds: ["art_y"] }) as never,
+      ctx,
+    );
+    await hooks["action.result"]!(resulted("r3", { presented: ["breakdown"] }) as never, ctx);
+    await hooks["turn.completed"]!(turnoCompleto as never, ctx);
+
+    const depois = (await events()).filter((row) => row.errorCode === "recibo_nao_apresentado")
+      .length;
+    assert.equal(depois, antes, "o caminho correto não pode gerar alarme");
+  });
 });

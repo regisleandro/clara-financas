@@ -71,7 +71,19 @@ describe("contratos de interação dos prompts", () => {
     assert.match(analyst, /return that View unchanged/i);
     assert.match(coordinator, /call `present_analysis`/i);
     assert.match(coordinator, /rollout fallback.+`present_view`/is);
-    assert.match(coordinator, /`nextAction`.+mandatory control flow/is);
+    /*
+     * A regex que conferia a frase "mandatory control flow" saiu daqui.
+     *
+     * Ela testava que a DOCUMENTAÇÃO existe, não que a regra vale — e a regra
+     * não valia: o modelo podia receber o recibo e encerrar o turno, e nada
+     * acusava. Quem cobre isso agora é `tools/telemetry.test.ts`, com o
+     * comportamento: recibo entregue e turno encerrado sem `present_*` vira o
+     * evento `recibo_nao_apresentado`.
+     *
+     * Imposição dura não existe neste framework (hooks são observe-only,
+     * `defineDynamic` não assina `action.result`), então a instrução continua
+     * no prompt — mas a verificação passou a ser de efeito, não de texto.
+     */
     assert.match(coordinator, /`proposalCount: 0` still requires/is);
     assert.match(coordinator, /SAME requested scope/i);
     assert.doesNotMatch(coordinator, /redo the query ONCE over the reported interval/i);
