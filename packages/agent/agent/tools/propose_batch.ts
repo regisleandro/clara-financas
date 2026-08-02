@@ -132,6 +132,12 @@ export default defineTool({
               "Linhas com mesma data, valor e comerciante já CONFIRMADAS vindas de outro documento — possível dupla contagem (fatura parcial + fechada). AVISE a pessoa antes de abrir o commit; ela decide com os ids em mãos.",
           }
         : {}),
+      // Categoria que a pessoa não tem foi derrubada para `null` na fronteira.
+      // Vai no retorno pelo mesmo motivo do aviso acima: um descarte que a
+      // coordenadora não enxerga é um descarte que ela não conta a ninguém.
+      ...(result.droppedCategories === undefined
+        ? {}
+        : { droppedCategories: result.droppedCategories }),
       next: "If the verification looks good, call `commit_batch` to open the decision. Do not ask in prose whether you may record it.",
     };
   },

@@ -218,4 +218,24 @@ describe("contratos de interação dos prompts", () => {
     assert.match(prompt, /Identifiers are never shown to the person/i);
     assert.match(prompt, /`batchId`, `documentId`,\s+`transactionId` nor `proposalId`/is);
   });
+
+  /**
+   * A taxonomia CRESCE, e a extração precisa saber disso.
+   *
+   * O coordenador lia as categorias só do bundle `constitution`. Categoria que
+   * a Clara criou vive em `learnings` — então `entertainment`, aprovada há uma
+   * semana, nunca era oferecida ao extrator, e o mesmo gasto voltava sem
+   * categoria a cada fatura. A instrução até dizia "porque a taxonomia desta
+   * pessoa cresce"; ela só lia o lugar errado.
+   */
+  it("a taxonomia oferecida ao extrator inclui o que a pessoa aprovou depois", async () => {
+    const prompt = await read("../agent/instructions.md");
+    assert.match(prompt, /\*\*both\*\* bundles/i);
+    assert.match(prompt, /`learnings` holds every category this person approved/i);
+
+    // E a fronteira derruba o que não existe, em vez de gravar a invenção.
+    const escrita = await read("../agent/lib/write-proposed-batch.ts");
+    assert.match(escrita, /loadValidCategories/);
+    assert.match(escrita, /droppedCategories/);
+  });
 });

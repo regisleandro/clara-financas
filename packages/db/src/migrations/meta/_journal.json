@@ -183,6 +183,13 @@
       "when": 1785695382450,
       "tag": "0025_repair_category_slug",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1785695382451,
+      "tag": "0026_orphan_categories_to_null",
+      "breakpoints": true
     }
   ]
 }
