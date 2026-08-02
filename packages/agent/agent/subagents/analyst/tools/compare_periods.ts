@@ -92,12 +92,16 @@ export default defineTool({
         metric: {
           label: "Diferença",
           amount: totalDelta,
+          // Diferença, não soma: os ids são a união dos dois lados, e sem
+          // declarar isso quem confere tentaria somá-los para chegar ao valor.
+          basis: "delta" as const,
           detail: `${formatCents(previousTotal.value)} → ${formatCents(currentTotal.value)}`,
           transactionIds: totalIds,
         },
         rows: categories.map((entry) => ({
           label: categoryLabel(labels, entry.category),
           amount: entry.delta,
+          basis: "delta" as const,
           detail: `${formatCents(entry.previous.value)} → ${formatCents(entry.current.value)}`,
           share: entry.shareOfChange,
           trend: entry.delta > 0 ? "up" : entry.delta < 0 ? "down" : "flat",

@@ -83,6 +83,9 @@ export default defineTool({
         rows: recurrences.map((recurrence) => ({
           label: recurrence.merchant,
           amount: recurrence.annualizedCents,
+          // Projeção para 365 dias, não a soma das cobranças: os ids somam
+          // outra coisa, e é por isso que conferir dava sempre errado.
+          basis: "projection" as const,
           detail: `${recurrence.confirmed ? "Padrão confirmado" : "Padrão provável"} · ${recurrence.occurrences} ocorrências · última ${formatCents(recurrence.latestAmount)}`,
           transactionIds: recurrence.transactionIds,
         })),

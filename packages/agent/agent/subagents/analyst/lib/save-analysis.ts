@@ -2,7 +2,7 @@ import {
   AnalysisArtifactSchema,
   type AnalysisRequestScope,
 } from "@clara-financas/views/agent-contracts";
-import { ViewSchema, type View } from "@clara-financas/views";
+import { ViewSchema, type View, type ViewInput } from "@clara-financas/views";
 import { sumOf, witnessOf, type Countable } from "@clara-financas/ledger";
 
 import { canonicalAnalysisRequestScope } from "../../../lib/analysis-scope";
@@ -29,7 +29,7 @@ type ArtifactContext = Parameters<typeof persistArtifact>[2];
  * prompt, que depende de alguém lembrar.
  */
 export async function saveAnalysis(
-  viewInput: View,
+  viewInput: ViewInput,
   requestedScope: AnalysisRequestScope,
   ctx: ArtifactContext,
   /** Os lançamentos lidos para montar este painel. */
@@ -102,34 +102,31 @@ function auditView(view: View, witness: readonly Countable[]): string[] {
   const rows = "rows" in view ? view.rows : [];
 
   /*
-   * A forma do painel determina o que cada número SIGNIFICA, e portanto qual
-   * equação vale. Checar tudo como soma seria trocar um defeito por outro:
-   * numa comparação o valor é uma diferença e os ids são a união dos dois
-   * lados, então exigir que os ids somem o valor reprovaria o painel CERTO.
+   * Cada número DECLARA como foi construído (`basis`), e a equação verificada
+   * é a daquela forma. Checar tudo como soma seria trocar um defeito por
+   * outro: numa comparação o valor é uma diferença e os ids são a união dos
+   * dois lados, então exigir que os ids somem o valor reprovaria o painel
+   * CERTO.
    *
-   *  - soma    → o valor reconstrói pelos próprios ids, e as partes somam o todo
-   *  - delta   → os ids são a união dos lados; o que se verifica é que as
-   *              variações por linha somam a variação total
-   *  - projeção→ o valor é uma estimativa (custo anualizado); só a proveniência
-   *              é verificável aqui
-   *  - documento → sem lançamento por trás, por natureza
+   *  - sum        → o valor reconstrói pelos próprios ids
+   *  - delta      → os ids são a união dos lados; verifica-se que as variações
+   *                 por linha somam a variação total
+   *  - projection → estimativa (custo anualizado); só a proveniência é
+   *                 verificável aqui
+   *  - document   → sem lançamento por trás, por natureza
+   *  - count      → não é dinheiro
    *
-   * O que AINDA não é verificável neste ponto: a álgebra interna de delta e
-   * projeção (se a diferença bate com os dois lados, se o fator é o declarado).
-   * Isso exige que a fórmula viaje no painel — `basis` em `ViewSchema` — e está
-   * construído em `@clara-financas/ledger/figure`, esperando a migração do
-   * contrato. Até lá, esta função é honesta sobre o que cobre.
+   * Antes a forma era inferida do `kind` da view, o que é grosso demais: uma
+   * diferença dentro de uma composição passava batida, porque o painel inteiro
+   * era tratado como soma.
+   *
+   * O que AINDA não é verificável: a álgebra interna de delta e projeção — se
+   * a diferença bate com os dois lados, se o fator é o declarado. Isso exige
+   * que as figuras aninhadas viajem no painel, e não só a etiqueta. As equações
+   * existem e são testadas em `@clara-financas/ledger/figure`; o que falta é o
+   * contrato carregá-las. Esta função é honesta sobre o que cobre.
    */
-  const shape =
-    view.kind === "checksum"
-      ? "documento"
-      : view.kind === "comparison"
-        ? "delta"
-        : view.kind === "recurrences"
-          ? "projecao"
-          : "soma";
-
-  if (shape === "documento") return problems;
+  if (view.kind === "checksum") return problems;
 
   // Proveniência REAL: todo id citado precisa existir no recorte que a própria
   // tool leu. Vale para qualquer forma — é o que pega o painel montado com um
@@ -146,26 +143,21 @@ function auditView(view: View, witness: readonly Countable[]): string[] {
     return problems;
   }
 
-  if (shape === "soma") {
-    if (metric?.amount !== undefined && metric.transactionIds.length > 0) {
-      const rebuilt = sumOf(metric.transactionIds.map((id) => ({ id, amount: amounts.get(id)! })));
-      if (rebuilt.value !== metric.amount) {
-        problems.push(
-          `o número em destaque diz ${metric.amount} mas seus lançamentos somam ${rebuilt.value}`,
-        );
-      }
+  // Só quem se declara SOMA precisa reconstruir somando.
+  const reconstroi = (
+    cell: { amount?: number; basis: string; transactionIds: string[] },
+    subject: string,
+  ) => {
+    if (cell.basis !== "sum") return;
+    if (cell.amount === undefined || cell.transactionIds.length === 0) return;
+    const rebuilt = sumOf(cell.transactionIds.map((id) => ({ id, amount: amounts.get(id)! })));
+    if (rebuilt.value !== cell.amount) {
+      problems.push(`${subject} diz ${cell.amount} mas seus lançamentos somam ${rebuilt.value}`);
     }
+  };
 
-    for (const row of rows) {
-      if (row.amount === undefined || row.transactionIds.length === 0) continue;
-      const rebuilt = sumOf(row.transactionIds.map((id) => ({ id, amount: amounts.get(id)! })));
-      if (rebuilt.value !== row.amount) {
-        problems.push(
-          `a linha "${row.label}" diz ${row.amount} mas seus lançamentos somam ${rebuilt.value}`,
-        );
-      }
-    }
-  }
+  if (metric !== undefined) reconstroi(metric, "o número em destaque");
+  for (const row of rows) reconstroi(row, `a linha "${row.label}"`);
 
   /*
    * As partes somam o todo — em painéis que são uma PARTIÇÃO.
@@ -180,7 +172,7 @@ function auditView(view: View, witness: readonly Countable[]): string[] {
    * gasto enquanto a lista mostra também pagamentos. Exigir a soma reprovaria o
    * painel certo, que é o erro simétrico ao que estamos consertando.
    */
-  const additive = view.kind === "breakdown" || shape === "delta";
+  const additive = view.kind === "breakdown" || view.kind === "comparison";
   if (
     additive &&
     metric?.amount !== undefined &&

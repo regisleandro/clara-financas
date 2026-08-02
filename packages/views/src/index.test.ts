@@ -36,13 +36,37 @@ describe("parseView", () => {
     assert.equal(view, null);
   });
 
-  it("recusa centavos crus no texto de uma métrica financeira", () => {
+  it("uma contagem com rótulo que contém 'total' continua sendo contagem", () => {
+    /*
+     * A regra anterior adivinhava pelo RÓTULO: uma regex procurava palavras
+     * como "total" e "valor" e, achando texto inteiro, recusava o painel
+     * inteiro. Consequência: "Total de assinaturas: 6" — resposta correta,
+     * calculada certo — era reprovada na validação, a Clara dizia "veja o
+     * painel ao lado" e o lado ficava vazio. A gêmea dessa regex na interface
+     * fazia o mesmo número virar R$ 0,06.
+     *
+     * Agora o painel DECLARA (`basis`), e não há o que adivinhar.
+     */
     const view = parseView({
       kind: "metric",
-      title: "Total da fatura",
-      metric: { label: "Total", text: "5000000" },
+      title: "Assinaturas",
+      metric: { label: "Total de assinaturas", text: "6", basis: "count" },
     });
-    assert.equal(view, null);
+
+    assert.notEqual(view, null, "contagem declarada não pode reprovar o painel");
+    assert.equal(view?.kind === "metric" ? view.metric.basis : null, "count");
+  });
+
+  it("todo número nasce declarado como soma quando não diz o contrário", () => {
+    // Compatibilidade: artefato já persistido não traz `basis`, e o caso comum
+    // não deve exigir cerimônia de quem monta o painel.
+    const view = parseView({
+      kind: "metric",
+      title: "Gastos",
+      metric: { label: "Gasto", amount: 5_000, transactionIds: ["t1"] },
+    });
+
+    assert.equal(view?.kind === "metric" ? view.metric.basis : null, "sum");
   });
 
   it("aceita contagem inteira no texto de uma métrica não financeira", () => {

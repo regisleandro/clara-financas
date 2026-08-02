@@ -30,6 +30,31 @@ export const ProvenanceSchema = z.object({
   transactionIds: z.array(z.string().min(1)).min(1),
 });
 
+/**
+ * Como o número foi construído — a fórmula viajando junto com o valor.
+ *
+ * Sem isto, o valor é um inteiro solto e quem o recebe precisa ADIVINHAR o que
+ * ele significa. As duas adivinhações que existiam custaram caro:
+ *
+ *  - a interface decidia se um número era dinheiro por uma regex sobre o
+ *    rótulo, e `{ label: "Total de assinaturas", text: "6" }` virava R$ 0,06;
+ *  - a validação, com a mesma regex, RECUSAVA o painel inteiro nesse caso — a
+ *    Clara calculava certo, o schema reprovava, e a resposta apontava para um
+ *    lado vazio;
+ *  - a conferência de painel inferia a forma pelo `kind` da view, então uma
+ *    diferença dentro de uma composição passaria batida.
+ *
+ * `sum` é o padrão porque é o caso comum e porque artefato já persistido não
+ * declara nada. Ver `@clara-financas/ledger/figure` para as equações que cada
+ * forma satisfaz.
+ */
+export const BasisSchema = z
+  .enum(["sum", "delta", "projection", "document", "count"])
+  .default("sum")
+  .describe(
+    "How the number was built: `sum` of its own transactions, `delta` between two figures, `projection` from a real figure, `document` fact with no ledger behind it, or `count` (not money).",
+  );
+
 const RowSchema = z.object({
   label: z.string().min(1).describe("Row label, in Brazilian Portuguese. Use the `label` a tool returned, never the raw identifier."),
   amount: cents.optional(),
@@ -53,34 +78,20 @@ const RowSchema = z.object({
     .describe(
       "Row severity marker: `danger` for what is overdue or imminent, `attention` for what deserves a look, `positive` for what is already settled. Omit for neutral rows.",
     ),
+  basis: BasisSchema,
   transactionIds: z.array(z.string().min(1)).default([]),
 });
 
 /** Um número em destaque, com legenda. É o topo de quase toda resposta. */
-const MetricSchema = z
-  .object({
-    label: z.string().min(1),
-    amount: cents.optional(),
-    /** Usado quando o destaque não é dinheiro — "6 assinaturas", "62%". */
-    text: z.string().optional(),
-    detail: z.string().optional(),
-    transactionIds: z.array(z.string().min(1)).default([]),
-  })
-  .superRefine((metric, ctx) => {
-    const moneyLabel =
-      /\b(valor|total|gasto|gastos|saldo|diferença|ajuste|custo|preço|pagamento|fatura|economia)\b/i;
-    if (
-      metric.text !== undefined &&
-      moneyLabel.test(metric.label) &&
-      /^-?\d+$/.test(metric.text.trim())
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["text"],
-        message: "centavos devem usar amount; text é apenas para conteúdo não monetário",
-      });
-    }
-  });
+const MetricSchema = z.object({
+  label: z.string().min(1),
+  amount: cents.optional(),
+  /** Usado quando o destaque não é dinheiro — "6 assinaturas", "62%". */
+  text: z.string().optional(),
+  detail: z.string().optional(),
+  basis: BasisSchema,
+  transactionIds: z.array(z.string().min(1)).default([]),
+});
 
 const base = {
   title: z.string().min(1).describe("Short panel title, in Brazilian Portuguese."),
@@ -275,6 +286,17 @@ export const ViewSchema = ViewShapeSchema.superRefine((view, ctx) => {
 });
 
 export type View = z.infer<typeof ViewSchema>;
+
+/**
+ * O painel como quem o MONTA escreve, antes do parse.
+ *
+ * Difere de `View` só nos campos com default: `basis` é obrigatório na saída
+ * — todo número exibido declara como foi construído — e opcional na entrada,
+ * porque `sum` é o caso comum e repetir `basis: "sum"` em cada célula seria
+ * ruído que ninguém lê. Quem constrói uma diferença ou uma projeção declara;
+ * quem constrói uma soma não precisa dizer nada.
+ */
+export type ViewInput = z.input<typeof ViewSchema>;
 export type ViewKind = View["kind"];
 export type ViewRow = z.infer<typeof RowSchema>;
 export type ViewMetric = z.infer<typeof MetricSchema>;
