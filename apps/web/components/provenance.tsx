@@ -26,7 +26,7 @@ type Entry = {
 
 type State =
   | { status: "loading" }
-  | { status: "ready"; entries: Entry[]; requested: number }
+  | { status: "ready"; entries: Entry[]; requested: number; remaining: number }
   | { status: "error" };
 
 const dayLabel = (iso: string) =>
@@ -52,10 +52,21 @@ export function Provenance({ ids }: { ids: readonly string[] }) {
     })
       .then(async (response) => {
         if (!response.ok) throw new Error("falhou");
-        return (await response.json()) as { entries: Entry[]; requested: number };
+        return (await response.json()) as {
+          entries: Entry[];
+          requested: number;
+          remaining: number;
+        };
       })
       .then((data) => {
-        if (alive) setState({ status: "ready", entries: data.entries, requested: data.requested });
+        if (alive) {
+          setState({
+            status: "ready",
+            entries: data.entries,
+            requested: data.requested,
+            remaining: data.remaining,
+          });
+        }
       })
       .catch(() => {
         // Falhar aqui não pode derrubar o painel: o número continua válido, o
@@ -67,6 +78,33 @@ export function Provenance({ ids }: { ids: readonly string[] }) {
       alive = false;
     };
   }, [key]);
+
+  /**
+   * A próxima página, anexada à lista que já está na tela.
+   *
+   * Anexar e não substituir: quem clicou em "ver mais" quer a conta INTEIRA à
+   * vista para somar, não a segunda metade no lugar da primeira.
+   */
+  async function loadMore() {
+    if (state.status !== "ready" || state.remaining === 0) return;
+    const offset = state.entries.length;
+    try {
+      const response = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids: [...ids], offset }),
+      });
+      if (!response.ok) return;
+      const data = (await response.json()) as { entries: Entry[]; remaining: number };
+      setState((current) =>
+        current.status === "ready"
+          ? { ...current, entries: [...current.entries, ...data.entries], remaining: data.remaining }
+          : current,
+      );
+    } catch {
+      // Falhar ao paginar não pode apagar o que já está à vista.
+    }
+  }
 
   if (state.status === "loading") {
     return <p className="clara-small mt-3">Buscando os lançamentos…</p>;
@@ -99,9 +137,36 @@ export function Provenance({ ids }: { ids: readonly string[] }) {
       {/* Pedir 12 e receber 9 significa que algo saiu do razão — um lote
           descartado, por exemplo. Mostrar a lista curta sem dizer nada faria
           a soma parecer errada. */}
-      {state.requested > state.entries.length ? (
-        <p className="clara-small mt-3">
-          {state.requested - state.entries.length} de {state.requested} não estão mais no razão.
+      {/*
+        A SOMA do que está listado.
+        Sem ela, conferir um número exigia somar a coluna de cabeça — e o
+        resultado quase nunca batia com o rótulo, porque a lista podia estar
+        paginada ou incompleta. Mostrar o total do que está à vista transforma
+        "confie em mim" em "confira".
+      */}
+      <p className="clara-small mt-3 flex items-baseline justify-between gap-3 border-t border-[var(--clara-border)] pt-3">
+        <span>
+          {state.entries.length === 1
+            ? "1 lançamento listado"
+            : `${state.entries.length} lançamentos listados`}
+        </span>
+        <strong className="tabular-nums">
+          {formatCents(state.entries.reduce((total, entry) => total + entry.amountCents, 0))}
+        </strong>
+      </p>
+
+      {state.remaining > 0 ? (
+        <button type="button" className="clara-link mt-2 text-xs" onClick={loadMore}>
+          Ver mais {state.remaining === 1 ? "1 lançamento" : `${state.remaining} lançamentos`}
+        </button>
+      ) : null}
+
+      {/* Pedir 12 e receber 9 significa que algo saiu do razão — um lote
+          descartado, por exemplo. */}
+      {state.requested > state.entries.length + state.remaining ? (
+        <p className="clara-small mt-2">
+          {state.requested - state.entries.length - state.remaining} de {state.requested} não estão
+          mais no razão.
         </p>
       ) : null}
     </div>

@@ -102,8 +102,27 @@ export default defineTool({
           label: categoryLabel(labels, entry.category),
           amount: entry.delta,
           basis: "delta" as const,
-          detail: `${formatCents(entry.previous.value)} → ${formatCents(entry.current.value)}`,
-          share: entry.shareOfChange,
+          /*
+           * A contribuição vai como TEXTO, com a base nomeada — e `share` não
+           * é emitido.
+           *
+           * `share` tem contrato: "vira barra de proporção", isto é, fração do
+           * número em destaque. `shareOfChange` tem outro denominador (só os
+           * aumentos, porque misturar quedas diluiria a explicação), então
+           * emiti-lo ali entregava ao painel uma fração de uma base que ele não
+           * mostra. O resultado era uma barra de 100% ao lado de "Diferença
+           * R$ 2,00" — matematicamente defensável, visualmente uma mentira.
+           *
+           * E o número não se perdia por acaso: `view-panel.tsx` desenha barra
+           * só em `breakdown`, então o valor que sustenta "restaurantes
+           * explicam 62% do aumento" existia no dado e não aparecia em lugar
+           * nenhum. Dito por extenso, ele aparece e diz de que é fração.
+           */
+          detail: `${formatCents(entry.previous.value)} → ${formatCents(entry.current.value)}${
+            entry.delta > 0 && entry.shareOfChange > 0
+              ? ` · ${Math.round(entry.shareOfChange * 100)}% do aumento`
+              : ""
+          }`,
           trend: entry.delta > 0 ? "up" : entry.delta < 0 ? "down" : "flat",
           transactionIds: [
             ...new Set([...entry.current.transactionIds, ...entry.previous.transactionIds]),

@@ -60,7 +60,16 @@ const RowSchema = z.object({
   amount: cents.optional(),
   /** Texto livre à direita — participação, variação, contagem. */
   detail: z.string().optional(),
-  /** 0 a 1. Vira barra de proporção; ausente, não desenha barra. */
+  /**
+   * 0 a 1. Vira barra de proporção; ausente, não desenha barra.
+   *
+   * O denominador é o número em DESTAQUE do painel — é isso que a barra
+   * comunica. Uma fração de qualquer outra base não cabe aqui: numa comparação,
+   * a contribuição da categoria para o aumento tem como base só os aumentos, e
+   * desenhá-la como proporção do delta líquido produzia barra de 100% ao lado
+   * de "Diferença R$ 2,00". Fração de outra base vai por extenso no `detail`,
+   * dizendo de que é fração.
+   */
   share: z.number().min(0).max(1).optional(),
   /** `up` = piorou, `down` = melhorou. Só faz sentido em comparação. */
   trend: z.enum(["up", "down", "flat"]).optional(),

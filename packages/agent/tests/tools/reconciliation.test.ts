@@ -272,6 +272,36 @@ describe("os painéis fecham com o razão", () => {
     }
   });
 
+  it("comparação diz de que a contribuição é fração, sem barra enganosa", async () => {
+    /*
+     * `share` no contrato significa "fração do número em destaque" — é isso que
+     * a barra comunica. `shareOfChange` tem outro denominador (só os aumentos),
+     * então emiti-lo ali dava ao painel uma fração de uma base que ele não
+     * mostra: barra de 100% ao lado de "Diferença R$ 2,00".
+     *
+     * E o número não se perdia por acaso: o painel só desenha barra em
+     * composição, então o valor que sustenta "restaurantes explicam 62% do
+     * aumento" existia no dado e não aparecia em lugar nenhum.
+     */
+    const view = (await viewFromReceipt(
+      await comparePeriods.execute(
+        {
+          current: { kind: "invoice", batchId: atualId },
+          previous: { kind: "invoice", batchId: anteriorId },
+        },
+        ctx,
+      ),
+      ctx,
+    )) as { rows: Array<{ label: string; amount: number; share?: number; detail: string }> };
+
+    assert.ok(
+      view.rows.every((row) => row.share === undefined),
+      "fração de outra base não pode virar barra",
+    );
+    const subiu = view.rows.find((row) => row.amount > 0);
+    assert.match(subiu?.detail ?? "", /% do aumento/, "e precisa dizer de que é fração");
+  });
+
   it("recorte vazio publica painel válido", async () => {
     const recibo = await aggregateByCategory.execute(
       { scope: { kind: "calendar_month", month: "2026-01" } },

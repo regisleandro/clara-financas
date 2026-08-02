@@ -161,14 +161,25 @@ describe("artefatos opacos entre subagentes e coordenadora", () => {
     );
     const view = (await viewFromReceipt(receipt, ctx)) as {
       kind: string;
-      metric: { amount: number; transactionIds: string[] };
-      rows: Array<{ share: number; transactionIds: string[] }>;
+      metric: { amount: number; basis: string; transactionIds: string[] };
+      rows: Array<{ share?: number; basis: string; detail: string; transactionIds: string[] }>;
     };
     assert.equal(view.kind, "comparison");
     assert.equal(view.metric.amount, 1_000);
     assert.equal(view.metric.transactionIds.length, 5);
     assert.ok(view.rows.every((row) => row.transactionIds.length > 0));
-    assert.ok(view.rows.every((row) => row.share >= 0 && row.share <= 1));
+
+    // O valor é uma DIFERENÇA, e os ids são a união dos dois lados: sem
+    // declarar isso, quem confere tentaria somá-los para chegar ao número.
+    assert.equal(view.metric.basis, "delta");
+    assert.ok(view.rows.every((row) => row.basis === "delta"));
+
+    // `share` significa "fração do número em destaque", que é o que a barra
+    // comunica. A contribuição para o AUMENTO tem outro denominador, então vai
+    // por extenso — e some da barra, onde diria 100% ao lado de uma diferença
+    // pequena.
+    assert.ok(view.rows.every((row) => row.share === undefined));
+    assert.ok(view.rows.some((row) => /% do aumento/.test(row.detail)));
   });
 
   it("um recibo não atravessa sessões e expiração falha de forma recuperável", async () => {
