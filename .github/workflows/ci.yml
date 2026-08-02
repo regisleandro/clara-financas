@@ -20,7 +20,6 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main]
 
 concurrency:
   # Um push novo no mesmo ramo torna o run anterior irrelevante. Em `main` não
