@@ -13,7 +13,10 @@ describe("contratos de interação dos prompts", () => {
 
   it("aprovação acontece no cartão, sem um sim duplicado em prosa", async () => {
     const prompt = await read("../agent/instructions.md");
-    assert.match(prompt, /do not ask for a prose "sim"/i);
+    // `\s+` e não espaço literal: a frase quebra de linha conforme o parágrafo
+    // é reescrito, e um teste que falha por reflow verifica formatação, não
+    // conteúdo.
+    assert.match(prompt, /do not ask for a\s+prose "sim"/i);
 
     const commit = await read("../agent/tools/commit_batch.ts");
     assert.match(commit, /the call opens the approval card/i);

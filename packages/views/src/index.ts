@@ -117,7 +117,7 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
   /** Um número que responde a pergunta, com o detalhe que o sustenta. */
   z.object({
     ...base,
-    kind: z.literal("metric"),
+    kind: z.literal("metric").describe("One question, one answer: 'quanto gastei com mercado?'."),
     metric: MetricSchema,
     rows: z.array(RowSchema).max(20).default([]),
   }),
@@ -125,7 +125,7 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
   /** Composição: para onde o dinheiro foi. Barras proporcionais. */
   z.object({
     ...base,
-    kind: z.literal("breakdown"),
+    kind: z.literal("breakdown").describe("Where the money went, by category. Rows must sum to the metric."),
     metric: MetricSchema.optional(),
     rows: z.array(RowSchema).min(1).max(30),
   }),
@@ -133,7 +133,7 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
   /** Dois períodos lado a lado, com o que explica a diferença. */
   z.object({
     ...base,
-    kind: z.literal("comparison"),
+    kind: z.literal("comparison").describe("Two periods: 'por que subiu?'. Row deltas must sum to the metric delta."),
     metric: MetricSchema.optional(),
     previousLabel: z.string().min(1),
     currentLabel: z.string().min(1),
@@ -160,7 +160,7 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
    */
   z.object({
     ...base,
-    kind: z.literal("series"),
+    kind: z.literal("series").describe("Evolution across three or more periods. One row per period; the metric is the change between first and last."),
     metric: MetricSchema.optional(),
     rows: z.array(RowSchema).min(2).max(12),
   }),
@@ -168,14 +168,14 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
   /** Assinaturas e cobranças que repetem, com custo anual. */
   z.object({
     ...base,
-    kind: z.literal("recurrences"),
+    kind: z.literal("recurrences").describe("What repeats monthly, with annual cost."),
     rows: z.array(RowSchema).min(1).max(30),
   }),
 
   /** Lista de lançamentos — o razão, rastreável até o documento. */
   z.object({
     ...base,
-    kind: z.literal("transactions"),
+    kind: z.literal("transactions").describe("Specific ledger entries, when the person asks to see them."),
     metric: MetricSchema.optional(),
     rows: z.array(RowSchema).min(1).max(50),
   }),
@@ -193,7 +193,7 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
    */
   z.object({
     ...base,
-    kind: z.literal("commitments"),
+    kind: z.literal("commitments").describe("What is coming due. Use after list_commitments — a due date read out in prose cannot be scanned. Put days remaining in `detail` ('vence em 3 dias · 12/08') and urgency in `accent`: danger when overdue or within a week, attention for this month. These rows carry no transactionIds: a reminder is not a ledger entry."),
     metric: MetricSchema.optional(),
     rows: z.array(RowSchema).min(1).max(30),
   }),
@@ -212,7 +212,7 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
    */
   z.object({
     ...base,
-    kind: z.literal("proposal"),
+    kind: z.literal("proposal").describe("What you are about to change, BEFORE changing it: a categorisation triage, a reclassification, or the reach of a learned rule from apply_learned_rules with dryRun. One row per entry, `label` the merchant and `detail` the move ('Sem categoria → Assinaturas'), with the transactionIds that back it. The decision itself still opens on the corresponding tool."),
     metric: MetricSchema.optional(),
     rows: z.array(RowSchema).min(1).max(50),
   }),
@@ -229,7 +229,7 @@ const ViewShapeSchema = z.discriminatedUnion("kind", [
    */
   z.object({
     ...base,
-    kind: z.literal("checksum"),
+    kind: z.literal("checksum").describe("The verification of an invoice. When the document declares no total, pass declaredTotal: null and result: 'no_declared_total' — never invent a zero. Always pass the proposal's batchId."),
     batchId: z.string().min(1).describe("Batch that produced this verification."),
     declaredTotal: cents.nullable().describe("Null when the document declares no total."),
     extractedTotal: cents,
