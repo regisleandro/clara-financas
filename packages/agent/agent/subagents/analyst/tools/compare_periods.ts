@@ -70,6 +70,7 @@ export default defineTool({
         },
         requestedScope,
         ctx,
+        [],
         ["lado_vazio"],
       );
     }
@@ -106,6 +107,10 @@ export default defineTool({
       },
       requestedScope,
       ctx,
+      // A testemunha é o razão dos DOIS lados: numa comparação a proveniência
+      // de cada linha é a união do período atual com o anterior, e conferir
+      // contra um só reprovaria o painel certo.
+      [...current, ...previous],
     );
   },
 });

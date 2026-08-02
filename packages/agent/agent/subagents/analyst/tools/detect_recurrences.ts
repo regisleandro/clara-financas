@@ -70,6 +70,7 @@ export default defineTool({
         },
         scope,
         ctx,
+        [],
       );
     }
 
@@ -87,6 +88,11 @@ export default defineTool({
       },
       scope,
       ctx,
+      // O valor de cada linha é o custo ANUALIZADO — uma projeção a partir das
+      // cobranças reais, não a soma delas. A testemunha serve para conferir que
+      // a proveniência é real; a álgebra da projeção só fica verificável quando
+      // `basis` viajar no painel (ver `@clara-financas/ledger/figure`).
+      ledger,
     );
   },
 });

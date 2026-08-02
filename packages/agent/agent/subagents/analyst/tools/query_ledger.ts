@@ -98,6 +98,7 @@ export default defineTool({
         },
         scope,
         ctx,
+        [],
       );
     }
 
@@ -141,6 +142,10 @@ export default defineTool({
       },
       scope,
       ctx,
+      // Todas as linhas lidas, inclusive as que não são gasto: a lista mostra
+      // pagamentos e o destaque não os conta, então a testemunha precisa
+      // cobrir as duas coisas.
+      rows,
     );
   },
 });

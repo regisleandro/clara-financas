@@ -90,16 +90,38 @@ describe("artefatos opacos entre subagentes e coordenadora", () => {
     assert.equal(receipt.nextAction, "present_analysis");
 
     const view = (await viewFromReceipt(receipt, ctx)) as {
-      metric: { amount: number; transactionIds: string[] };
+      metric: { label: string; amount: number; detail: string; transactionIds: string[] };
       rows: Array<{ label: string; amount: number; share?: number; detail: string }>;
     };
-    assert.equal(view.metric.amount, 13_000);
-    assert.equal(view.metric.transactionIds.length, 3);
-    assert.ok(view.rows.every((row) => row.share === undefined || (row.share >= 0 && row.share <= 1)));
+
+    /*
+     * Este teste FIXAVA o defeito como contrato.
+     *
+     * Ele exigia `metric.amount === 13_000` (líquido) enquanto as linhas
+     * somavam 15_000 (bruto) — as duas asserções conviviam no mesmo bloco e
+     * ninguém notou, porque nenhum CI jamais rodou esta suíte. Somar a coluna
+     * na tela dava 20 reais a mais que o número em destaque logo acima dela.
+     *
+     * A invariante correta é a que a pessoa verifica de cabeça: as linhas
+     * fecham com o destaque.
+     */
+    const somaDasLinhas = view.rows.reduce((total, row) => total + row.amount, 0);
+    assert.equal(somaDasLinhas, view.metric.amount, "as linhas precisam somar o destaque");
+
+    // Bruto em tudo: compras no topo (10.000 + 5.000), com o crédito de 2.000
+    // nomeado no detalhe em vez de embutido numa escala diferente.
+    assert.equal(view.metric.label, "Compras no período");
+    assert.equal(view.metric.amount, 15_000);
+    assert.match(view.metric.detail, /créditos.+líquido/i);
+
     const market = view.rows.find((row) => row.label === "Mercado");
     assert.equal(market?.amount, 10_000);
-    assert.match(market?.detail ?? "", /Créditos.+líquido/);
     assert.equal(market?.share, 2 / 3);
+    // A proveniência da linha acompanha o valor da linha: só as compras. Antes
+    // ela trazia junto o estorno, então abrir a origem de R$ 100,00 listava
+    // lançamentos que somavam R$ 80,00.
+    assert.match(market?.detail ?? "", /créditos/i);
+    assert.ok(view.rows.every((row) => row.share === undefined || (row.share >= 0 && row.share <= 1)));
   });
 
   it("mês vazio preserva agosto e não substitui pela última fatura", async () => {

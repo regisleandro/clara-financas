@@ -46,7 +46,15 @@ export type ToolErrorCode =
   | "referencia_de_fatura_nao_encontrada"
   | "artefato_nao_encontrado"
   | "artefato_expirado"
-  | "artefato_invalido";
+  | "artefato_invalido"
+  /**
+   * O painel não fecha com o razão que a própria tool leu: um valor não é
+   * explicado pelos lançamentos anexados a ele, ou as linhas não somam o
+   * número em destaque. Recusa DESENHADA — o painel é bloqueado antes de
+   * chegar à tela, porque um número que não reconcilia é o defeito que a
+   * pessoa relata como "os cálculos não fecham".
+   */
+  | "painel_nao_reconcilia";
 
 export type ToolError = {
   error: {

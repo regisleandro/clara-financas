@@ -27,6 +27,20 @@ export {
   type FinancialSeriesDriver,
   type FinancialSeriesPoint,
 } from "./series";
+export {
+  sumOf,
+  deltaOf,
+  project,
+  documentFact,
+  countOf,
+  reconcile,
+  rowsSumToMetric,
+  witnessOf,
+  type Figure,
+  type Basis,
+  type Countable,
+  type Violation,
+} from "./figure";
 export { categoryLabel, categorySlug, type CategoryLabels } from "./categories";
 export { issuerKey, UNKNOWN_ISSUER } from "./issuer";
 export {
