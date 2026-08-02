@@ -18,6 +18,7 @@ import recategorize from "../../agent/tools/recategorize_transactions";
 import {
   closeConnections,
   ctxFor,
+  ctxForChild,
   dropTenant,
   freshTenant,
   seedDocument,
@@ -268,5 +269,87 @@ describe("artefatos opacos entre subagentes e coordenadora", () => {
       ctx,
     )) as { changed: number; unchanged: number };
     assert.equal(applied.changed, 1);
+  });
+});
+
+describe("o artefato atravessa do subagente para a coordenadora", () => {
+  /*
+   * O núcleo do design v2, e ele não tinha teste NENHUM.
+   *
+   * `persistArtifact` grava com `ctx.session.parent?.sessionId ?? sessionId` e
+   * `readArtifact` lê com a sessão do próprio chamador: as duas pontas só se
+   * encontram se o filho declarar quem é o pai. Como o harness montava um
+   * contexto sem `session.parent`, pai e filho eram a MESMA sessão em todo
+   * teste — os dois lados coincidiam por acidente e o handoff nunca era
+   * exercitado.
+   */
+  let tenant: string;
+  let coordenadora: never;
+  let analista: never;
+  let batchId: string;
+
+  before(async () => {
+    tenant = await freshTenant();
+    coordenadora = ctxFor(tenant);
+    analista = ctxForChild(coordenadora);
+
+    const documentId = await seedDocument(tenant, { filename: "handoff.pdf", issuer: "Nubank" });
+    const proposta = (await proposeBatch.execute(
+      {
+        documentId,
+        issuer: "Nubank",
+        declaredTotal: 9_000,
+        transactions: [
+          {
+            date: "2026-06-10",
+            originalDescription: "Mercado",
+            merchant: "Mercado",
+            amount: 9_000,
+            kind: "purchase" as const,
+            category: "groceries",
+            extractionConfidence: "alta" as const,
+          },
+        ],
+      },
+      coordenadora,
+    )) as { batchId: string };
+    await commitBatch.execute({ batchId: proposta.batchId }, coordenadora);
+    batchId = proposta.batchId;
+  });
+
+  after(async () => {
+    await dropTenant(tenant);
+    await closeConnections();
+  });
+
+  it("o que o analista grava, a coordenadora lê", async () => {
+    const recibo = (await aggregateByCategory.execute(
+      { scope: { kind: "invoice", batchId } },
+      analista,
+    )) as { artifactIds: string[] };
+
+    const apresentado = (await presentAnalysis.execute(
+      { artifactIds: recibo.artifactIds },
+      coordenadora,
+    )) as { views?: Array<{ kind: string }>; error?: unknown };
+
+    assert.equal(apresentado.error, undefined, "o handoff precisa atravessar a fronteira");
+    assert.equal(apresentado.views?.length, 1);
+  });
+
+  it("outra conversa não alcança o artefato, mesmo com o id na mão", async () => {
+    // O id sozinho nunca é autoridade: tenant e sessão fazem parte da chave.
+    const recibo = (await aggregateByCategory.execute(
+      { scope: { kind: "invoice", batchId } },
+      analista,
+    )) as { artifactIds: string[] };
+
+    const outraConversa = ctxFor(tenant, "usr_test", "ses_outra_conversa");
+    const apresentado = (await presentAnalysis.execute(
+      { artifactIds: recibo.artifactIds },
+      outraConversa,
+    )) as { error?: { code: string } };
+
+    assert.equal(apresentado.error?.code, "artefato_nao_encontrado");
   });
 });

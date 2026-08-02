@@ -48,6 +48,32 @@ export function ctxFor(
   } as never;
 }
 
+/**
+ * O contexto de um SUBAGENTE — sessão própria, apontando para a do pai.
+ *
+ * É o que faltava para testar o núcleo do design de artefatos: o especialista
+ * grava numa sessão filha e a coordenadora lê da sua. `persistArtifact` usa
+ * `ctx.session.parent?.sessionId ?? sessionId` na escrita e
+ * `requireSessionCaller(ctx).sessionId` na leitura — as duas pontas só se
+ * encontram se o filho declarar quem é o pai.
+ *
+ * Sem isto, todo teste rodava com pai e filho na MESMA sessão, então os dois
+ * lados coincidiam por acidente e o handoff nunca era exercitado. Um mecanismo
+ * central sem cobertura é um mecanismo que ninguém sabe se funciona.
+ */
+export function ctxForChild(parentCtx: never, childSessionId = `ses_child_${randomUUID().slice(0, 8)}`) {
+  const parent = parentCtx as unknown as {
+    session: { id: string; auth: unknown };
+  };
+  return {
+    session: {
+      id: childSessionId,
+      parent: { sessionId: parent.session.id },
+      auth: parent.session.auth,
+    },
+  } as never;
+}
+
 /** Um tenant novo, com a constituição semeada (as categorias válidas). */
 export async function freshTenant(): Promise<string> {
   const tenantId = `tnt_test_${randomUUID().replace(/-/g, "").slice(0, 12)}`;

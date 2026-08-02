@@ -11,7 +11,22 @@ import { and, eq, lte } from "drizzle-orm";
 import { toolError, type ToolError } from "./errors";
 import { requireSessionCaller, type AuthenticatedContext } from "./tenant";
 
-const ARTIFACT_TTL_MS = 24 * 60 * 60 * 1_000;
+/**
+ * Sete dias, e não vinte e quatro horas.
+ *
+ * O artefato é staging entre agentes, então um prazo curto parecia certo. Mas a
+ * conversa não vive só no turno: ela é retomada do `localStorage`, e o link
+ * "Ver detalhes" de uma resposta antiga continua na tela para sempre. Com 24
+ * horas, abrir no dia seguinte a conversa de ontem e clicar naquele link dava
+ * `artefato_expirado` — um painel que existiu, que a resposta em texto ainda
+ * menciona, e que sumiu sem a pessoa ter feito nada.
+ *
+ * Sete dias cobre a semana em que uma conversa continua sendo consultada. Não
+ * é a solução completa: um artefato mais velho que isso ainda expira, e o certo
+ * ali é a interface oferecer refazer a análise em vez de mostrar um erro. Fica
+ * registrado como o que falta.
+ */
+const ARTIFACT_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 
 type ArtifactContext = AuthenticatedContext & {
   session: AuthenticatedContext["session"] & { parent?: { sessionId?: string } };
