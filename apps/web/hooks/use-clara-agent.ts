@@ -27,6 +27,30 @@ import { findPendingRequest, resolveApprovalOption } from "@clara-financas/views
  * operação de sessão (`session.cancel`), e o hook só tem o que oferecer ao
  * botão "Parar" se for ele quem segura o handle. Ver `cancel` abaixo.
  */
+/**
+ * Um recado de falha que traz junto o que fazer a respeito.
+ *
+ * Todos os avisos de erro do produto eram texto e nada mais: a pessoa lia que
+ * não deu, o toast sumia em segundos e o caminho de volta era descobrir sozinha
+ * qual gesto repetir. Quando existe uma ação exata que refaz a tentativa — e
+ * nos casos daqui sempre existe, porque a falha foi no ENVIO e o estado local
+ * foi devolvido — ela é parte do recado, não um extra.
+ *
+ * `retry` é sempre a mesma chamada que acabou de falhar, com os mesmos
+ * argumentos. Nada aqui inventa um caminho alternativo: se a causa persistir, a
+ * falha volta, e voltar é informação melhor que um botão que finge ter feito.
+ */
+function toastComRetry(mensagem: string, retry: () => void): void {
+  toast.error(mensagem, {
+    action: { label: "Tentar de novo", onClick: retry },
+  });
+}
+
+/** A mensagem do erro quando ela existe; o texto do produto quando não. */
+function textoDoErro(error: unknown, padrao: string): string {
+  return error instanceof Error && error.message !== "" ? error.message : padrao;
+}
+
 export function useClaraAgent({
   agentHost,
   tenantKey,
@@ -43,6 +67,8 @@ export function useClaraAgent({
   // `lib/answered-state.ts` para o bug que a forma global causava.
   const [answeredRequest, setAnsweredRequest] = useState<AnsweredRequest | null>(null);
   const [uploading, setUploading] = useState(false);
+  /** O arquivo sendo enviado agora, ou `null`. É o que a conversa anuncia. */
+  const [uploadingName, setUploadingName] = useState<string | null>(null);
   /** Porcentagem do upload direto, ou `null` fora dele (hash, parser, registro). */
   const [progress, setProgress] = useState<number | null>(null);
 
@@ -90,8 +116,18 @@ export function useClaraAgent({
   });
 
   const busy = agent.status === "submitted" || agent.status === "streaming";
-  const queuedMessagesRef = useRef<string[]>([]);
-  const [queuedMessageCount, setQueuedMessageCount] = useState(0);
+  /**
+   * O que a pessoa escreveu enquanto a Clara trabalhava.
+   *
+   * Era um `useRef`: não renderizava, sumia no refresh, e o único sinal era um
+   * `<p>` de 12px que o CSS esconde em telas estreitas. No celular a pessoa
+   * escrevia, o campo esvaziava e nada acontecia — trabalho dela desaparecendo
+   * sem aviso, que é a pior coisa que uma caixa de texto pode fazer.
+   *
+   * Estado, então, para que as mensagens em espera possam ser DESENHADAS na
+   * conversa, no lugar onde ela as escreveu.
+   */
+  const [queuedMessages, setQueuedMessages] = useState<string[]>([]);
   const pending = findPendingRequest(agent.data.messages);
   const answered = resolveAnswered(pending, answeredRequest);
   const isWelcome = agent.data.messages.length === 0;
@@ -128,10 +164,12 @@ export function useClaraAgent({
     ).catch((error: unknown) => {
       if (answeringRequestRef.current === requestId) answeringRequestRef.current = null;
       setAnsweredRequest((current) => (current?.requestId === requestId ? null : current));
-      toast.error(
-        error instanceof Error && error.message !== ""
-          ? error.message
-          : "Não consegui enviar a resposta. Tente de novo.",
+      // O pedido segue aberto do outro lado — a resposta não chegou lá. Por isso
+      // repetir a mesma intenção é seguro: `answerRef` resolve de novo contra o
+      // `pending` corrente, e desiste sozinho se ele já não existir.
+      toastComRetry(
+        textoDoErro(error, "Não consegui enviar a resposta. Tente de novo."),
+        () => answerRef.current(optionId),
       );
     });
   };
@@ -183,15 +221,20 @@ export function useClaraAgent({
       ).catch((error: unknown) => {
         if (answeringRequestRef.current === requestId) answeringRequestRef.current = null;
         setAnsweredRequest((current) => (current?.requestId === requestId ? null : current));
-        toast.error(
-          error instanceof Error && error.message !== ""
-            ? error.message
-            : "Não foi possível enviar a resposta.",
+        toastComRetry(
+          textoDoErro(error, "Não foi possível enviar a resposta."),
+          () => void answerTextRef.current(text, sensitive),
         );
       });
     } catch (error) {
       answeringRequestRef.current = null;
-      toast.error(error instanceof Error ? error.message : "Não foi possível enviar a resposta.");
+      // Falhou ANTES do envio (o selamento da senha). Repetir refaz o selamento;
+      // o texto continua aqui, então a pessoa não precisa digitá-lo de novo — o
+      // que importa quando o que ela digitou era uma senha.
+      toastComRetry(
+        textoDoErro(error, "Não foi possível enviar a resposta."),
+        () => void answerTextRef.current(text, sensitive),
+      );
     }
   };
 
@@ -231,7 +274,10 @@ export function useClaraAgent({
       // A mensagem da rota é do eve, em inglês ("Session does not belong to
       // this user."): serve para depurar, não para a tela.
       console.warn("[clara] cancelamento recusado", { turnId, error });
-      toast.error("Não consegui interromper agora — a Clara ainda está trabalhando.");
+      toastComRetry(
+        "Não consegui interromper agora — a Clara ainda está trabalhando.",
+        () => cancelRef.current(),
+      );
     });
   };
 
@@ -241,10 +287,11 @@ export function useClaraAgent({
     setAnsweredRequest(null);
     onTurnStartRef.current();
     void Promise.resolve(agent.send({ message })).catch((error: unknown) => {
-      toast.error(
-        error instanceof Error && error.message !== ""
-          ? error.message
-          : "Não consegui enviar sua mensagem. Tente de novo.",
+      // A mensagem não virou turno; reenviá-la é literalmente o que a pessoa
+      // faria, e o texto dela já se foi do compositor.
+      toastComRetry(
+        textoDoErro(error, "Não consegui enviar sua mensagem. Tente de novo."),
+        () => dispatchMessageRef.current(message),
       );
     });
   };
@@ -253,18 +300,17 @@ export function useClaraAgent({
   // mantém o compositor conversável durante uma análise longa e preserva a
   // ordem em que a pessoa escreveu as perguntas.
   useEffect(() => {
-    if (busy || queuedMessagesRef.current.length === 0) return;
-    const next = queuedMessagesRef.current.shift();
-    setQueuedMessageCount(queuedMessagesRef.current.length);
+    if (busy || queuedMessages.length === 0) return;
+    const [next, ...resto] = queuedMessages;
+    setQueuedMessages(resto);
     if (next !== undefined) dispatchMessageRef.current(next);
-  }, [busy]);
+  }, [busy, queuedMessages]);
 
   sendRef.current = (message: string) => {
     const normalized = message.trim();
     if (normalized === "") return;
     if (busy) {
-      queuedMessagesRef.current.push(normalized);
-      setQueuedMessageCount(queuedMessagesRef.current.length);
+      setQueuedMessages((atual) => [...atual, normalized]);
       return;
     }
     dispatchMessageRef.current(normalized);
@@ -278,6 +324,11 @@ export function useClaraAgent({
    */
   async function upload(file: File) {
     setUploading(true);
+    // O NOME do arquivo, para a conversa poder dizer o que está lendo. Antes do
+    // `agent.send` não existe turno, então o `ExecutionTrace` — que é derivado
+    // de eventos reais — não tem o que mostrar. Para o caso de uso principal do
+    // produto, o feedback era um número de 10px dentro de um botão de 32px.
+    setUploadingName(file.name);
     setProgress(null);
     try {
       // O `catch` faltava, e o buraco era exatamente o caminho não previsto:
@@ -291,7 +342,9 @@ export function useClaraAgent({
       );
 
       if (!result.ok) {
-        toast.error(result.error);
+        // O `File` continua na memória: reenviar não exige abrir o seletor de
+        // arquivos outra vez, que é o gesto mais caro do fluxo no celular.
+        toastComRetry(result.error, () => void upload(file));
         return;
       }
       if (result.warning !== null) toast.warning(result.warning);
@@ -307,16 +360,40 @@ export function useClaraAgent({
         },
       });
     } catch (error) {
-      toast.error(
-        error instanceof Error && error.message !== ""
-          ? error.message
-          : "Não consegui enviar esse arquivo. Tente de novo.",
+      toastComRetry(
+        textoDoErro(error, "Não consegui enviar esse arquivo. Tente de novo."),
+        () => void upload(file),
       );
     } finally {
       setUploading(false);
+      setUploadingName(null);
       setProgress(null);
     }
   }
+
+  /**
+   * Reenvia a última pergunta da pessoa.
+   *
+   * O eve não expõe "limpar o erro" — a API tem `reset`, `send` e `stop` —,
+   * então um botão que só apagasse o aviso seria teatro: o turno continuaria
+   * sem ter acontecido. Reenviar é o que a pessoa quer dizer com "tentar de
+   * novo", e o erro sai da tela porque um turno novo começou de verdade.
+   *
+   * Sem pergunta anterior (falha na retomada, antes de qualquer mensagem) não
+   * há o que reenviar, e a tela oferece só recomeçar.
+   */
+  const lastUserText = useMemo(() => {
+    for (let index = agent.data.messages.length - 1; index >= 0; index -= 1) {
+      const message = agent.data.messages[index];
+      if (message?.role !== "user") continue;
+      const text = message.parts
+        .map((part) => (part.type === "text" ? part.text : ""))
+        .join("")
+        .trim();
+      if (text !== "") return text;
+    }
+    return null;
+  }, [agent.data.messages]);
 
   // Título da conversa no registro: a primeira mensagem da pessoa.
   const firstUserText = useMemo(() => {
@@ -371,6 +448,7 @@ export function useClaraAgent({
     agent,
     busy,
     uploading,
+    uploadingName,
     progress,
     pending,
     answered,
@@ -382,7 +460,14 @@ export function useClaraAgent({
     upload,
     /** Envia uma mensagem de texto (turno novo). */
     send: (message: string) => sendRef.current(message),
-    queuedMessageCount,
+    /** As mensagens em espera, na ordem em que foram escritas. */
+    queuedMessages,
+    /** A última pergunta, ou `null` — é o que "tentar de novo" reenvia. */
+    lastUserText,
+    /** Reenvia a última pergunta. Sem pergunta anterior, não faz nada. */
+    retry: () => {
+      if (lastUserText !== null) dispatchMessageRef.current(lastUserText);
+    },
     /** Interrompe o turno em voo no servidor (não é `stop()`). */
     cancel: () => cancelRef.current(),
     /** Responde o gate pendente (aprovar/negar/opção). */

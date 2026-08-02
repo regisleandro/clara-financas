@@ -24,6 +24,7 @@ import { ExecutionTrace } from "@/components/execution-trace";
 import { useArtifactSelection } from "@/hooks/use-artifact-selection";
 import { useClaraAgent } from "@/hooks/use-clara-agent";
 import { deriveActivity } from "@/lib/activity";
+import { mensagemDeErro } from "@/lib/agent-error";
 import { batchArtifact, type BatchProposal } from "@/lib/artifact";
 import { deriveFollowups } from "@/lib/followups";
 import {
@@ -108,7 +109,7 @@ export function Chat(props: ChatProps) {
   // Antes de ler o storage não há o que desenhar além do esqueleto do layout;
   // um frame em branco evita hidratar com estado errado e piscar a boas-vindas
   // de quem tem conversa a retomar.
-  if (boot === null) return <div className="h-[calc(100dvh-var(--clara-nav-height))]" />;
+  if (boot === null) return <ChatBootSkeleton />;
 
   return (
     <ChatSession
@@ -127,6 +128,41 @@ export function Chat(props: ChatProps) {
 }
 
 type ConversationEvent = CustomEvent<{ sessionId: string | null }>;
+
+/**
+ * A moldura da conversa enquanto o storage não respondeu.
+ *
+ * Antes era um `<div>` vazio com altura de tela. Na hidratação rápida isso não
+ * custa nada, mas este é também o HTML que o servidor manda: em conexão ou
+ * aparelho lento a pessoa olha para uma tela branca sem saber se abriu.
+ *
+ * O que aparece aqui é só o que é VERDADE nos dois desfechos possíveis — o
+ * cabeçalho e o campo de escrita existem tanto na conversa retomada quanto na
+ * nova. Não há bolha de mensagem falsa: metade das vezes não haveria mensagem
+ * nenhuma, e prometer conteúdo que não vem é pior que não prometer nada.
+ *
+ * A entrada tem atraso (`.clara-boot`, em `globals.css`): quando o storage
+ * responde no primeiro frame — o caso comum — o esqueleto nunca chega a ser
+ * pintado, em vez de piscar.
+ */
+function ChatBootSkeleton() {
+  return (
+    <div className="clara-chat-layout clara-boot" aria-hidden="true">
+      <div className="clara-chat-column">
+        <div className="clara-chat-heading">
+          <div>
+            <div className="clara-boot-bar" style={{ width: 132, height: 9 }} />
+            <div className="clara-boot-bar" style={{ width: 232, height: 30, marginTop: 14 }} />
+          </div>
+        </div>
+        <div className="clara-boot-spacer" />
+        <div className="clara-composer-wrap">
+          <div className="clara-boot-composer" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ChatSession({
   agentHost,
@@ -152,11 +188,14 @@ function ChatSession({
     agent,
     busy,
     uploading,
+    uploadingName,
     progress,
     pending,
     answered,
     isWelcome,
-    queuedMessageCount,
+    queuedMessages,
+    lastUserText,
+    retry,
   } = clara;
   const { canCancel, cancelling } = clara;
 
@@ -190,12 +229,19 @@ function ChatSession({
     pending?.toolName === "commit_batch" &&
     answered === null &&
     pendingProposal?.batchId === proposal?.batchId;
-  // Uma decisão é uma ação pendente, não um bloqueio da conversa. O runtime
-  // enfileira mensagens enviadas enquanto o cartão aguarda aprovação e as
-  // retoma após a decisão. O compositor só fica indisponível durante upload
-  // ou na janela minúscula em que o clique do cartão já foi enviado.
-  const interactionLocked = uploading || answered !== null;
-  const navigationLocked = busy || interactionLocked;
+  /*
+   * Escrever nunca é bloqueado; ENVIAR é que espera.
+   *
+   * O compositor inteiro ficava indisponível durante o upload — um PDF de 20MB
+   * deixa a caixa de texto morta por dezenas de segundos, justamente quando a
+   * pessoa quer dizer o que enviou. Digitar e enfileirar não dependem de nada
+   * do servidor; só o envio depende, e a fila já cuida disso.
+   *
+   * A janela em que uma decisão foi clicada e ainda não chegou continua
+   * travando, porque ali a próxima mensagem mudaria o significado do clique.
+   */
+  const sendLocked = answered !== null;
+  const navigationLocked = busy || uploading || sendLocked;
 
   /**
    * A conferência de um lote é a exceção que continua sendo derivada no
@@ -402,14 +448,62 @@ function ChatSession({
               </div>
             ) : null}
 
+            {/*
+              O upload acontece ANTES de existir turno, então o `ExecutionTrace`
+              — que é derivado de eventos reais e não inventa progresso — não tem
+              o que mostrar. Sem esta linha, enviar uma fatura (o caso de uso
+              principal) dava como feedback um número de 10px dentro do botão de
+              anexo, com a tela ainda mostrando as sugestões de boas-vindas.
+            */}
+            {uploadingName !== null ? (
+              <div className="clara-message-row">
+                <p className="clara-queued">
+                  Lendo <strong>{uploadingName}</strong>
+                  <small>
+                    {progress === null ? "preparando o documento…" : `enviando · ${progress}%`}
+                  </small>
+                </p>
+              </div>
+            ) : null}
+
+            {/*
+              As mensagens que a pessoa escreveu enquanto a Clara trabalhava.
+              Elas ficavam invisíveis: o campo esvaziava e o único sinal era um
+              texto de 12px no rodapé, que o CSS esconde em telas estreitas. No
+              celular, escrever durante um turno parecia não fazer nada.
+              Desenhá-las aqui devolve o que a pessoa escreveu ao lugar onde ela
+              espera vê-lo.
+            */}
+            {queuedMessages.map((texto, indice) => (
+              <div key={`fila-${indice}`} className="clara-message-row opacity-60">
+                <p className="clara-queued">
+                  {texto}
+                  <small>aguardando a Clara terminar</small>
+                </p>
+              </div>
+            ))}
+
             {agent.error ? (
+              /*
+               * Um erro precisa SEMPRE ter uma saída clicável.
+               *
+               * Antes, a mensagem crua do eve ia para a tela — em inglês, escrita
+               * para depurar — e o botão de recomeçar só aparecia quando havia
+               * conversa retomada (`initial !== null`). Numa conversa NOVA que
+               * falhava não havia botão nenhum: só um texto âmbar, e nada a
+               * fazer além de recarregar a página sem que nada dissesse isso.
+               */
               <div className="clara-card space-y-4 p-5">
-                <p className="text-[var(--clara-amber)]">{agent.error.message}</p>
-                {/* Retomada pode falhar de forma terminal (sessão expirada no
-                    servidor, token de continuação consumido). O caminho
-                    honesto é recomeçar — o razão está no banco; o que se
-                    perde é só o fio da conversa. */}
-                {initial !== null ? (
+                <p className="text-[var(--clara-amber)]">{mensagemDeErro(agent.error.message)}</p>
+                <div className="flex flex-wrap gap-2">
+                  {lastUserText !== null ? (
+                    <button type="button" onClick={retry} className="clara-pill h-8 px-4 text-xs">
+                      Tentar de novo
+                    </button>
+                  ) : null}
+                  {/* Recomeçar é o caminho honesto quando a sessão morreu de
+                      vez: o razão está no banco; o que se perde é o fio da
+                      conversa. */}
                   <button
                     type="button"
                     onClick={startNewConversation}
@@ -417,7 +511,7 @@ function ChatSession({
                   >
                     Começar nova conversa
                   </button>
-                ) : null}
+                </div>
               </div>
             ) : null}
           </ConversationContent>
@@ -441,7 +535,7 @@ function ChatSession({
               onSubmit={(message, event) => {
                 event.preventDefault();
                 const text = message.text?.trim();
-                if (text === undefined || text === "" || interactionLocked) return;
+                if (text === undefined || text === "" || sendLocked) return;
                 clara.send(text);
               }}
             >
@@ -470,7 +564,8 @@ function ChatSession({
               <PromptInputBody>
                 <PromptInputTextarea
                   placeholder="Pergunte sobre seus gastos ou envie um documento"
-                  disabled={interactionLocked}
+                  // Digitar não espera o upload: só o envio depende do servidor.
+                  disabled={sendLocked}
                   rows={1}
                   className="order-1 min-h-11 basis-full px-3 py-2.5 sm:order-none sm:basis-0"
                 />
@@ -488,7 +583,7 @@ function ChatSession({
                 <PromptInputSubmit
                   status={agent.status === "error" ? "ready" : agent.status}
                   onStop={() => clara.cancel()}
-                  disabled={interactionLocked && !busy ? true : busy && !canCancel}
+                  disabled={sendLocked && !busy ? true : busy && !canCancel}
                   size="sm"
                   className="clara-pill clara-pill-primary mb-0.5 size-10 min-h-10 w-10 p-0 text-sm"
                 >
@@ -497,8 +592,8 @@ function ChatSession({
               </InputGroupAddon>
             </PromptInput>
             <p className="mt-2 text-center text-xs text-muted-foreground">
-              {queuedMessageCount > 0
-                ? `${queuedMessageCount} mensagem${queuedMessageCount === 1 ? "" : "ns"} aguardando a Clara terminar.`
+              {queuedMessages.length > 0
+                ? `${queuedMessages.length} mensagem${queuedMessages.length === 1 ? "" : "ns"} aguardando a Clara terminar.`
                 : pending !== null && answered === null
                   ? "Você pode continuar escrevendo; a decisão ficará aguardando no cartão acima."
                   : busy

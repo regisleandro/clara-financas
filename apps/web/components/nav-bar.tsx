@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
   activeConversation,
@@ -74,6 +74,21 @@ export function NavBar({
 
   useEffect(() => {
     setRailOpen(false);
+  }, [pathname]);
+
+  /*
+   * A aba da área corrente precisa estar À VISTA.
+   *
+   * Em 360px as seis abas não cabem, e a barra abre sempre no começo: quem
+   * estava em Agenda ou Aprendizados via um cabeçalho onde nenhuma aba parecia
+   * selecionada — a marca de "onde estou" existia, mas fora da tela. Rolar o
+   * mínimo para trazê-la resolve sem mover nada quando ela já está visível
+   * (`nearest`), e é por isso que roda também na troca de rota.
+   */
+  const tabsRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const active = tabsRef.current?.querySelector<HTMLElement>(".clara-workspace-tab.is-active");
+    active?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [pathname]);
 
   const isActive = (href: string) =>
@@ -224,7 +239,7 @@ export function NavBar({
           >
             <MenuIcon className="size-5" />
           </button>
-          <nav className="clara-workspace-tabs" aria-label="Áreas principais">
+          <nav ref={tabsRef} className="clara-workspace-tabs" aria-label="Áreas principais">
             {CORE_ITEMS.map((item) => renderWorkspaceTab(item))}
             <span className="clara-workspace-tab-divider" aria-hidden="true" />
             {SECONDARY_ITEMS.map((item) => renderWorkspaceTab(item, true))}

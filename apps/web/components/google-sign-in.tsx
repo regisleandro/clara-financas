@@ -18,8 +18,12 @@ export function GoogleSignIn({ label }: { label: string }) {
         callbackURL: "/conversa",
       });
     } catch {
-      toast.error("Não foi possível entrar com o Google. Tente de novo.");
       setPending(false);
+      // A porta de entrada do produto: uma falha aqui sem caminho de volta é a
+      // pessoa parada na tela de login com um recado que some em segundos.
+      toast.error("Não foi possível entrar com o Google.", {
+        action: { label: "Tentar de novo", onClick: () => void handleClick() },
+      });
     }
   }
 

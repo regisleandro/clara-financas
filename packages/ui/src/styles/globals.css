@@ -508,6 +508,28 @@
     background: color-mix(in srgb, var(--clara-fog) 96%, transparent);
   }
 
+  /*
+   * As abas rolam por dentro — e agora DIZEM que rolam.
+   *
+   * A barra de rolagem está escondida de propósito (ela é grossa e feia sobre
+   * uma faixa de 58px), mas escondê-la sem pôr nada no lugar significava que em
+   * 360px as duas últimas áreas do produto ficavam fora da tela sem um único
+   * pixel indicando que existiam. A pessoa não deixava de ir lá por não querer:
+   * deixava por não saber.
+   *
+   * A pista é a técnica de sombra com `background-attachment`, e ela se liga e
+   * desliga sozinha, sem JavaScript e sem medir nada:
+   *
+   *  - as duas primeiras camadas são TAMPAS na cor da faixa, com
+   *    `attachment: local` — elas acompanham o conteúdo, então ficam sobre a
+   *    borda só enquanto aquele lado está no começo (ou no fim) da rolagem;
+   *  - as duas últimas são as SOMBRAS, com `attachment: scroll` — presas às
+   *    bordas visíveis do elemento.
+   *
+   * Resultado: rolou para a direita, a tampa da esquerda vai junto e descobre a
+   * sombra daquele lado; cabe tudo na tela, as duas tampas cobrem as duas
+   * sombras e nada aparece. A ordem importa — a primeira camada é a de cima.
+   */
   .clara-workspace-tabs {
     display: flex;
     min-width: 0;
@@ -515,6 +537,23 @@
     gap: 3px;
     overflow-x: auto;
     scrollbar-width: none;
+    background-image:
+      linear-gradient(to right, var(--clara-fog), var(--clara-fog)),
+      linear-gradient(to left, var(--clara-fog), var(--clara-fog)),
+      linear-gradient(to right, color-mix(in srgb, var(--clara-ink) 14%, transparent), transparent),
+      linear-gradient(to left, color-mix(in srgb, var(--clara-ink) 14%, transparent), transparent);
+    background-repeat: no-repeat;
+    background-position:
+      left center,
+      right center,
+      left center,
+      right center;
+    background-size:
+      10px 100%,
+      10px 100%,
+      18px 100%,
+      18px 100%;
+    background-attachment: local, local, scroll, scroll;
   }
 
   .clara-workspace-tabs::-webkit-scrollbar {
@@ -852,6 +891,35 @@
     background: #5b9b30;
   }
 
+  /*
+   * Uma mensagem escrita durante o turno, esperando a vez.
+   *
+   * Ela não existia na tela: o campo esvaziava e o único sinal era um texto de
+   * 12px no rodapé, escondido por CSS em telas estreitas. Desenhá-la com o
+   * mesmo recuo das mensagens da pessoa, mais discreta, diz as duas coisas ao
+   * mesmo tempo — foi recebida, ainda não foi enviada.
+   */
+  /*
+   * A linha da mensagem é um grid de duas colunas (marcador, conteúdo). Sem
+   * declarar a coluna, o bloco cai na faixa de 30px do marcador e o texto
+   * quebra letra a letra — foi o que a primeira versão fez.
+   */
+  .clara-queued {
+    grid-column: 2;
+    border: 1px dashed var(--clara-border);
+    border-radius: var(--clara-radius-card);
+    padding: 10px 14px;
+    color: var(--clara-graphite);
+    font-size: 0.9375rem;
+  }
+
+  .clara-queued small {
+    display: block;
+    margin-top: 4px;
+    color: var(--clara-slate);
+    font-size: 0.75rem;
+  }
+
   .clara-conversation-content {
     width: 100%;
     max-width: 672px;
@@ -1031,6 +1099,66 @@
     color: var(--clara-slate);
     font-size: 0.6rem;
     text-align: left;
+  }
+
+  /*
+   * O esqueleto de abertura (`ChatBootSkeleton`).
+   *
+   * A entrada é ATRASADA de propósito. O storage costuma responder no primeiro
+   * frame, e um esqueleto que aparece e some em 16ms é pura piscada: fica mais
+   * agitado que a tela branca que ele veio corrigir. Com 140ms de espera ele só
+   * chega quando a espera é real — hidratação lenta, aparelho fraco — que é o
+   * único caso em que ele tem algo a dizer.
+   *
+   * Nada aqui pulsa. Uma barra que respira sugere que dados estão chegando por
+   * um canal; aqui não há canal nenhum, só uma leitura local que já deveria ter
+   * terminado. A forma parada é honesta e o `aria-hidden` no elemento mantém
+   * isto fora do leitor de tela, onde moldura vazia não significa nada.
+   */
+  /*
+   * `backwards`, e não `opacity: 0` no estado base.
+   *
+   * A primeira versão nascia invisível e contava com a animação para aparecer —
+   * o que quer dizer que num ambiente onde a animação não roda o esqueleto
+   * nunca aparece, e o modo de falha é a tela branca que ele existe para
+   * cobrir. Com o estado base visível e `backwards`, o atraso é a EXCEÇÃO: quem
+   * não anima simplesmente vê o esqueleto na hora.
+   */
+  .clara-boot {
+    animation: clara-boot-in 160ms ease-out 140ms backwards;
+  }
+
+  @keyframes clara-boot-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  .clara-boot-bar {
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--clara-ink) 8%, transparent);
+  }
+
+  /* Ocupa o lugar da conversa, empurrando o composer para o rodapé — é a mesma
+     distribuição que o layout real terá, então nada se desloca na troca. */
+  .clara-boot-spacer {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .clara-boot-composer {
+    width: 100%;
+    max-width: var(--clara-composer-max);
+    height: 62px;
+    margin-inline: auto;
+    border: 1px solid color-mix(in srgb, var(--clara-ink) 18%, transparent);
+    border-radius: 12px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .clara-boot {
+      animation-duration: 1ms;
+    }
   }
 
   .clara-details-panel {
