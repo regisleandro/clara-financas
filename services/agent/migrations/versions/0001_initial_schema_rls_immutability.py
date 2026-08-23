@@ -209,10 +209,29 @@ def upgrade() -> None:
         """
     )
 
+    # -- 6. Schema do Agno (sessões/runs do AgentOS) ------------------------
+    # `PostgresDb` do Agno roda `CREATE SCHEMA IF NOT EXISTS "agno"` a cada
+    # boot, conectado como `clara_app` — e o Postgres exige o privilégio
+    # CREATE no BANCO para essa instrução, mesmo quando o schema já existe
+    # (o `IF NOT EXISTS` só decide se a criação é pulada DEPOIS de checar
+    # permissão, não antes). Pré-criar o schema aqui não bastou sozinho:
+    # sem este GRANT no banco, a criação falhava em silêncio a cada boot (o
+    # Agno só avisa e segue sem persistir sessão), e a conversa nunca
+    # sobrevivia a um reinício do processo — achado rodando o serviço de
+    # verdade, não suposto.
+    op.execute('CREATE SCHEMA IF NOT EXISTS "agno" AUTHORIZATION clara_owner')
+    op.execute('GRANT USAGE, CREATE ON SCHEMA "agno" TO clara_app')
+    op.execute(
+        "DO $$ BEGIN "
+        "EXECUTE format('GRANT CREATE ON DATABASE %I TO clara_app', current_database()); "
+        "END $$;"
+    )
+
 
 def downgrade() -> None:
     op.execute('DROP TRIGGER IF EXISTS clara_batches_immutable_trigger ON "batches"')
     op.execute("DROP FUNCTION IF EXISTS clara_batches_immutable()")
     op.execute('DROP TRIGGER IF EXISTS clara_transactions_immutable_trigger ON "transactions"')
     op.execute("DROP FUNCTION IF EXISTS clara_transactions_immutable()")
+    op.execute('DROP SCHEMA IF EXISTS "agno" CASCADE')
     Base.metadata.drop_all(bind=op.get_bind())
