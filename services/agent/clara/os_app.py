@@ -14,9 +14,13 @@ from agno.db.postgres import PostgresDb
 from agno.os import AgentOS
 from agno.os.interfaces.agui import AGUI
 from agno.os.middleware import JWTMiddleware
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
 from clara.agents.coordinator import build_coordinator_team
+from clara.api.router import router as ledger_api_router
 from clara.settings import get_settings
+from clara.tools.tenant import CrossTenantCallError, UnauthenticatedTenantError
 
 settings = get_settings()
 
@@ -32,6 +36,17 @@ agent_os = AgentOS(
 )
 
 app = agent_os.get_app()
+app.include_router(ledger_api_router)
+
+
+@app.exception_handler(UnauthenticatedTenantError)
+async def _unauthenticated(request: Request, exc: UnauthenticatedTenantError) -> JSONResponse:
+    return JSONResponse(status_code=401, content={"error": str(exc)})
+
+
+@app.exception_handler(CrossTenantCallError)
+async def _cross_tenant(request: Request, exc: CrossTenantCallError) -> JSONResponse:
+    return JSONResponse(status_code=403, content={"error": str(exc)})
 
 # `verify_audience`/`audience` são obrigatórios aqui: `audience_claim` sozinho
 # só nomeia QUAL claim ler, não exige que ela bata com nada — sem os dois, um
