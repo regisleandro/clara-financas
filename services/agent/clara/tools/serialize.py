@@ -3,6 +3,13 @@
 As funções de domínio devolvem dataclasses (mais convenientes para o código
 Python interno); esta camada, na fronteira com o `@tool`, converte para dict
 puro em JSON. Datas viram ISO 8601; nada de objeto opaco chega ao modelo.
+
+Também é o PONTO ÚNICO onde a proveniência é exigida (FR-016): todo painel
+passa por aqui antes de alcançar o modelo, porque toda tool de painel já
+termina com `to_tool_result(panel)` — inclusive as que devolvem mais de um,
+uma chamada por painel (ver `aggregate_by_month_tool`, `analyze_series_tool`).
+Um painel sem proveniência nunca chega à conversa; a tool recebe o erro
+estruturado no lugar do painel.
 """
 
 from __future__ import annotations
@@ -12,6 +19,9 @@ from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel
+
+from clara.tools.errors import ToolError, refused
+from clara.views.panels import PanelUnion, ProvenanceError, require_provenance
 
 
 def _default(value: Any) -> Any:
@@ -25,6 +35,12 @@ def to_tool_result(value: Any) -> Any:
     consiga devolver ao modelo: dict puro, com datas em ISO 8601."""
     import json
 
+    if isinstance(value, PanelUnion):
+        try:
+            require_provenance(value)
+        except ProvenanceError as exc:
+            error: ToolError = refused("painel_sem_proveniencia", str(exc))
+            return error
     if isinstance(value, BaseModel):
         return value.model_dump(mode="json")
     if dataclasses.is_dataclass(value) and not isinstance(value, type):

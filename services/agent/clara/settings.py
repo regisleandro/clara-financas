@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     blob_read_write_token: str | None = None
     """Ausente em desenvolvimento: os PDFs então vêm do filesystem local."""
 
+    scheduler_base_url: str | None = None
+    """De onde o scheduler do AgentOS chama de volta o próprio serviço para
+    disparar a varredura diária. `None` cai no default do Agno
+    (http://127.0.0.1:7777) — vale para dev; produção atrás de mais de uma
+    réplica precisa apontar para uma URL estável que alcance esta instância."""
+
 
 _settings: Settings | None = None
 
