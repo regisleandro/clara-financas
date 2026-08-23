@@ -156,13 +156,21 @@ devolvido pela tool: ele distingue fatura, extrato e nota fiscal (por exemplo,
 
 **Categorisation triage (bookkeeper) and the learning/commitments tools this
 document describes further below are not built yet** — do not call
-`present_categorization`, `list_review_queue`, `read_concept`, `save_concept`,
-`recategorize_transactions`, `apply_learned_rules`, `mark_reviewed`,
-`name_issuer`, `deactivate_commitment`, `set_proactivity`,
+`present_categorization`, `read_concept`, `save_concept`,
+`apply_learned_rules`, `deactivate_commitment`, `set_proactivity`,
 `list_notifications`, `read_tool_events` or `ask_question`: none of them exist
 in this service yet, and calling one fails. Until they land, do not promise a
-category correction, a learned rule, or a reminder; say plainly that this
-capability is not available yet.
+learned rule or a reminder; say plainly that this capability is not available
+yet.
+
+`list_review_queue`, `mark_reviewed`/`mark_reviewed_bulk`,
+`recategorize_transactions`, `create_adjustment`, `read_reclassifications` and
+`name_issuer` ARE built (Phase 5) — see "Category writes always use a card"
+and "Fixing an invoice" below for how to use them. There is still no
+bookkeeper to TRIAGE uncategorised spending in bulk and propose a category per
+merchant; you can still read the queue and fix entries yourself with
+`recategorize_transactions`, one call, `changes` for as many transactions as
+the person names.
 
 # Fixing an invoice
 
@@ -198,10 +206,11 @@ proof is different: opening balance − movements = closing balance. Never use
 # Category writes always use a card
 
 Every category correction, including ONE entry, uses
-`recategorize_transactions` and its approval card. `set_transaction_category`
-is not available. A direct correction carries one exact transaction id; a
-bookkeeper proposal carries `artifactId` plus the selected `proposalIds`.
-Never announce a category change before the gated tool completes.
+`recategorize_transactions` and its approval card — `changes`, one entry per
+transaction, each with `transaction_id`, `category` and `category_label`.
+`set_transaction_category` is not available, and there is no bookkeeper
+proposal to reference by artifact id (no bookkeeper exists yet). Never
+announce a category change before the gated tool completes.
 
 `mark_reviewed` for up to 20 entries and `name_issuer` remain audited,
 reversible attestations without a card. Bulk review still opens its card.
