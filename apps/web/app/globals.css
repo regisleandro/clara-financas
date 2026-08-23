@@ -1,1 +1,13 @@
 @import "@clara-financas/ui/globals.css";
+
+/*
+ * Astryx ao lado do Tailwind existente, não no lugar dele — as telas fora do
+ * escopo desta etapa (revisar, transacoes, comparacao, agenda, aprendizados,
+ * validacao) continuam em cima de packages/ui/Radix/Tailwind. Ordem de
+ * importação = ordem de cascata: o reset e os componentes do Astryx entram
+ * DEPOIS do Tailwind, então uma regra do Astryx vence um reset do Tailwind
+ * para os componentes que o usam — o inverso quebraria a Chat.
+ */
+@import "@astryxdesign/core/reset.css";
+@import "@astryxdesign/core/astryx.css";
+@import "@astryxdesign/theme-neutral/theme.css";

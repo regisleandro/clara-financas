@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Toaster } from "@clara-financas/ui/components/sonner";
 
 import "./globals.css";
+import { Providers } from "./providers";
 
 export const metadata: Metadata = {
   title: "Clara — Assistente Financeiro",
@@ -31,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR">
       <body className="min-h-dvh antialiased">
-        {children}
+        <Providers>{children}</Providers>
         <Toaster richColors position="top-center" />
       </body>
     </html>

@@ -1,7 +1,7 @@
 import { env } from "@clara-financas/env/web";
 
 import { Chat } from "@/components/chat";
-import { loadFollowups, loadStarters } from "@/lib/starters";
+import { loadStarters } from "@/lib/starters";
 import { getTenantContext } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
@@ -17,20 +17,12 @@ export default async function ConversaPage() {
   // Os atalhos são derivados no SERVIDOR, junto da página. Passá-los prontos
   // evita um segundo round-trip só para descobrir o que oferecer, e mantém a
   // consulta ao razão do lado que já tem o escopo do tenant.
-  const [starters, followups] = context
-    ? await Promise.all([loadStarters(context.tenantId), loadFollowups(context.tenantId)])
-    : [[], []];
+  //
+  // `followups` (seguidos de uma resposta) e `tenantKey` (chave da retomada
+  // local) saíram daqui: os dois dependiam do que ainda não existe do lado do
+  // serviço Python — `present_view`/painéis (Fase 4, US2) e a retomada de
+  // conversa entre recarregamentos de página. Ver `components/chat.tsx`.
+  const starters = context ? await loadStarters(context.tenantId) : [];
 
-  return (
-    <Chat
-      agentHost={agentHost}
-      name={firstName}
-      starters={starters}
-      followups={followups}
-      // Chave do armazenamento LOCAL de conversas (retomada por dispositivo).
-      // O tenantId não é segredo para o próprio usuário — ele já viaja como
-      // claim no JWT que o navegador segura.
-      tenantKey={context?.tenantId ?? "anon"}
-    />
-  );
+  return <Chat agentHost={agentHost} name={firstName} starters={starters} />;
 }
