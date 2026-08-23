@@ -1,23 +1,16 @@
 import "server-only";
 
-import { loadCategoryLabels } from "@clara-financas/db/category-labels";
-
-import { loadLedgerView } from "@/lib/ledger";
-import {
-  buildOverview,
-  type Overview,
-} from "@/lib/overview-model";
+import { fetchOverview } from "@/lib/ledger-api";
+import { adaptOverview, type Overview } from "@/lib/overview-model";
 
 export type { Overview } from "@/lib/overview-model";
 
 export async function loadOverview(
+  agentHost: string,
   tenantId: string,
+  userId: string,
   selection: { month?: string; issuer?: string } = {},
 ): Promise<Overview> {
-  const [{ rows }, labels] = await Promise.all([
-    loadLedgerView(tenantId),
-    loadCategoryLabels(tenantId),
-  ]);
-
-  return buildOverview(rows, labels, selection);
+  const response = await fetchOverview(agentHost, tenantId, userId, selection);
+  return adaptOverview(response);
 }

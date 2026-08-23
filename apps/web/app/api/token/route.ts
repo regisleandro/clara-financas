@@ -1,6 +1,4 @@
-import { env } from "@clara-financas/env/server";
-import { SignJWT } from "jose";
-
+import { mintAgentToken, TOKEN_TTL_SECONDS } from "@/lib/agent-token";
 import { getTenantContext } from "@/lib/tenant";
 
 /**
@@ -15,8 +13,6 @@ import { getTenantContext } from "@/lib/tenant";
  * Vida curta de propósito: o token viaja no navegador e não deve sobreviver
  * a uma troca de contexto.
  */
-const TOKEN_TTL_SECONDS = 10 * 60;
-
 export async function POST() {
   const context = await getTenantContext();
 
@@ -28,19 +24,7 @@ export async function POST() {
     return Response.json({ error: "tenant_not_ready", status: context.status }, { status: 409 });
   }
 
-  const secret = new TextEncoder().encode(env.AGENT_TOKEN_SECRET);
-
-  const token = await new SignJWT({
-    tenantId: context.tenantId,
-    userId: context.userId,
-  })
-    .setProtectedHeader({ alg: "HS256" })
-    .setSubject(context.userId)
-    .setIssuer(env.APP_ORIGIN)
-    .setAudience("clara-agent")
-    .setIssuedAt()
-    .setExpirationTime(`${TOKEN_TTL_SECONDS}s`)
-    .sign(secret);
+  const token = await mintAgentToken(context.tenantId, context.userId);
 
   return Response.json({
     token,

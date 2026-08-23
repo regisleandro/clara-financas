@@ -1,19 +1,6 @@
-import {
-  aggregateByCategory,
-  countsTowardDeclaredTotal,
-  sumOf,
-  categoryLabel,
-  comparePeriods,
-  issuerKey,
-  spendable,
-  totalSpend,
-  type CategoryLabels,
-  type Transaction,
-} from "@clara-financas/ledger";
+import type { OverviewResponse } from "@/lib/ledger-api";
 
 export const ALL_ISSUERS = "todas";
-
-export type OverviewRow = Transaction & { documentIssuer: string | null };
 
 export type Overview = {
   selectedMonth: string | null;
@@ -67,43 +54,24 @@ const dayLabel = (iso: string) =>
     timeZone: "UTC",
   }).format(new Date(`${iso}T12:00:00Z`));
 
-export function buildOverview(
-  rows: OverviewRow[],
-  labels: CategoryLabels,
-  requested: { month?: string; issuer?: string } = {},
-): Overview {
-  const spending = spendable(rows);
-  const months = [...new Set(spending.map((row) => row.date.slice(0, 7)))]
-    .sort((a, b) => b.localeCompare(a))
-    .map((month) => ({ value: month, label: shortMonthLabel(month) }));
-
-  const issuerLabels = new Map<string, string>();
-  for (const row of spending) {
-    const key = issuerKey(row.documentIssuer);
-    if (!issuerLabels.has(key)) {
-      issuerLabels.set(key, row.documentIssuer ?? "Sem origem identificada");
-    }
-  }
-  const issuers = [...issuerLabels.entries()]
-    .map(([value, label]) => ({ value, label }))
-    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
-
-  const selectedMonth = months.some((month) => month.value === requested.month)
-    ? requested.month!
-    : (months[0]?.value ?? null);
-  const selectedIssuer =
-    requested.issuer !== undefined && issuerLabels.has(requested.issuer)
-      ? requested.issuer
-      : ALL_ISSUERS;
+/**
+ * Traduz a resposta do serviço Python (`/api/ledger/overview`) para o que a
+ * tela `/inicio` desenha — só formatação de rótulo em português, nenhum
+ * cálculo. A soma, a comparação e a agregação por categoria já vieram
+ * prontas de `clara/tools/overview.py`, a mesma função que a conversa usa.
+ */
+export function adaptOverview(response: OverviewResponse): Overview {
+  const months = response.months.map((month) => ({ value: month, label: shortMonthLabel(month) }));
+  const issuers = response.issuers.map((issuer) => ({ value: issuer.key, label: issuer.label }));
   const originLabel =
-    selectedIssuer === ALL_ISSUERS
+    response.selectedIssuer === ALL_ISSUERS
       ? "Todas as origens"
-      : (issuerLabels.get(selectedIssuer) ?? "Origem");
+      : (issuers.find((issuer) => issuer.value === response.selectedIssuer)?.label ?? "Origem");
 
-  if (selectedMonth === null) {
+  if (response.selectedMonth === null) {
     return {
       selectedMonth: null,
-      selectedIssuer,
+      selectedIssuer: response.selectedIssuer,
       months,
       issuers,
       periodLabel: "—",
@@ -119,125 +87,48 @@ export function buildOverview(
     };
   }
 
-  const originRows =
-    selectedIssuer === ALL_ISSUERS
-      ? spending
-      : spending.filter((row) => issuerKey(row.documentIssuer) === selectedIssuer);
-  const current = originRows.filter((row) => row.date.startsWith(selectedMonth));
-  const previousMonth = shiftMonth(selectedMonth, -1);
-  const previous = originRows.filter((row) => row.date.startsWith(previousMonth));
-  /*
-   * Compras, e não o líquido — a mesma escala que a conversa usa.
-   *
-   * O destaque desta tela era `totalSpend` (líquido, com estornos abatidos)
-   * enquanto o painel da conversa passou a mostrar compras. A mesma pergunta
-   * respondida por dois números, dependendo de onde a pessoa olhava. E a
-   * curva ao lado do número já acumulava só positivos, então nem com ele mesmo
-   * o destaque batia.
-   *
-   * Créditos e líquido não se perdem: vão nomeados, como no painel.
-   */
-  const compras = sumOf(current.filter((row) => countsTowardDeclaredTotal(row) && row.amount > 0));
-  const creditos = sumOf(current.filter((row) => countsTowardDeclaredTotal(row) && row.amount < 0));
-  const total = compras.value;
-  const liquido = totalSpend(current).value;
-  const previousTotal = sumOf(
-    previous.filter((row) => countsTowardDeclaredTotal(row) && row.amount > 0),
-  ).value;
-  const currentDates = current.map((row) => row.date).sort();
-
   return {
-    selectedMonth,
-    selectedIssuer,
+    selectedMonth: response.selectedMonth,
+    selectedIssuer: response.selectedIssuer,
     months,
     issuers,
-    periodLabel: longMonthLabel(selectedMonth),
+    periodLabel: longMonthLabel(response.selectedMonth),
     originLabel,
-    total,
-    credits: creditos.value,
-    net: liquido,
+    total: response.total,
+    credits: response.credits,
+    net: response.net,
     comparison:
-      previousTotal === 0
+      response.comparison === null
         ? null
         : {
-            deltaPercent:
-              Math.round(((total - previousTotal) / previousTotal) * 1000) / 10,
-            delta: total - previousTotal,
-            previousTotal,
-            previousLabel: longMonthLabel(previousMonth).toLocaleLowerCase("pt-BR"),
+            deltaPercent: response.comparison.deltaPercent,
+            delta: response.comparison.delta,
+            previousTotal: response.comparison.previousTotal,
+            previousLabel: longMonthLabel(response.comparison.previousMonth).toLocaleLowerCase(
+              "pt-BR",
+            ),
           },
-    spark: buildSpark(current.map((row) => ({ date: row.date, amount: row.amount }))),
+    spark: response.spark,
     rangeLabels:
-      currentDates.length === 0
+      response.range === null
         ? { from: "", to: "" }
+        : { from: dayLabel(response.range.from), to: dayLabel(response.range.to) },
+    categories: response.categories.map((category) => ({
+      label: category.label,
+      value: category.value,
+      share: category.share,
+      countLabel: `${category.count} ${category.count === 1 ? "lançamento" : "lançamentos"}`,
+    })),
+    insight:
+      response.insight === null
+        ? null
         : {
-            from: dayLabel(currentDates[0]!),
-            to: dayLabel(currentDates[currentDates.length - 1]!),
+            headline: `${capitalize(response.insight.label)} subiu ${Math.round(
+              response.insight.deltaRatio * 100,
+            )}%. É o que mais explica o mês.`,
+            href: "/conversa",
           },
-    categories: aggregateByCategory(current)
-      .filter((bucket) => bucket.gross.value > 0)
-      .slice(0, 6)
-      .map((bucket) => ({
-        label: categoryLabel(labels, bucket.category),
-        // Compras, como o destaque acima e como as barras do painel.
-        value: bucket.gross.value,
-        share: bucket.share,
-        countLabel: `${bucket.count} ${
-          bucket.count === 1 ? "lançamento" : "lançamentos"
-        }`,
-      })),
-    insight: buildInsight(current, previous, labels),
   };
-}
-
-/** Gasto acumulado ao longo do período, em até 12 passos. */
-function buildSpark(entries: Array<{ date: string; amount: number }>): number[] {
-  if (entries.length === 0) return [];
-
-  const ordered = [...entries].sort((a, b) => a.date.localeCompare(b.date));
-  const total = ordered.reduce((sum, entry) => sum + Math.max(0, entry.amount), 0);
-  if (total === 0) return [];
-
-  const steps = 12;
-  const perStep = Math.ceil(ordered.length / steps);
-  const result: number[] = [];
-  let running = 0;
-
-  for (let index = 0; index < ordered.length; index += 1) {
-    running += Math.max(0, ordered[index]!.amount);
-    if ((index + 1) % perStep === 0 || index === ordered.length - 1) {
-      result.push(Math.round((running / total) * 100));
-    }
-  }
-  return result.slice(0, steps);
-}
-
-function buildInsight(
-  current: Transaction[],
-  previous: Transaction[],
-  labels: CategoryLabels,
-): Overview["insight"] {
-  if (previous.length === 0 || current.length === 0) return null;
-
-  const { categories } = comparePeriods(current, previous);
-  const leader = categories.find(
-    (entry) =>
-      entry.category !== null && entry.delta > 0 && entry.shareOfChange >= 0.25,
-  );
-  if (leader === undefined || leader.deltaRatio === null) return null;
-
-  return {
-    headline: `${capitalize(categoryLabel(labels, leader.category))} subiu ${Math.round(
-      leader.deltaRatio * 100,
-    )}%. É o que mais explica o mês.`,
-    href: "/conversa",
-  };
-}
-
-function shiftMonth(yearMonth: string, delta: number): string {
-  const [year, month] = yearMonth.split("-").map(Number) as [number, number];
-  const date = new Date(Date.UTC(year, month - 1 + delta, 1));
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 function capitalize(value: string): string {

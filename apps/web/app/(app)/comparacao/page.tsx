@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { env } from "@clara-financas/env/web";
 import { formatCents } from "@clara-financas/ledger";
 
 import { OverviewFilters } from "@/components/overview-filters";
@@ -23,7 +24,8 @@ export default async function ComparacaoPage({
   if (!context) redirect("/entrar");
 
   const query = await searchParams;
-  const overview = await loadOverview(context.tenantId, {
+  const agentHost = context.agentHost ?? env.NEXT_PUBLIC_AGENT_HOST;
+  const overview = await loadOverview(agentHost, context.tenantId, context.userId, {
     month: query.mes,
     issuer: query.origem,
   });
