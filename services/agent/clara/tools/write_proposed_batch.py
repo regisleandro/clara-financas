@@ -212,7 +212,16 @@ def write_proposed_batch(
         )
 
     checksum = verify_checksum(
-        transactions=[{"amount": p["amount"], "kind": p["kind"]} for p in prepared],  # type: ignore[dict-item]
+        transactions=[
+            {
+                "id": p["id"],
+                "amount": p["amount"],
+                "kind": p["kind"],
+                "extraction_confidence": p["extraction_confidence"],
+                "page": p["page"],
+            }
+            for p in prepared
+        ],  # type: ignore[misc]
         declared_total=input.declared_total,
         declared_subtotals=input.declared_subtotals,
     )

@@ -14,8 +14,12 @@ from clara.agents.extractor import build_extractor_agent
 from clara.agents.models import coordinator_model
 from clara.instructions.dynamic import coordinator_instructions
 from clara.tools.commit_batch_tool import commit_batch_tool
+from clara.tools.list_documents_tool import list_documents_tool
+from clara.tools.list_invoices_tool import list_invoices_tool
 from clara.tools.prepare_batch_registration_tool import prepare_batch_registration_tool
 from clara.tools.propose_batch import propose_batch, propose_batch_from_extraction
+from clara.tools.read_batch_tool import read_batch_tool
+from clara.tools.reject_batch_tool import reject_batch_tool
 
 
 def build_coordinator_team() -> Team:
@@ -29,6 +33,10 @@ def build_coordinator_team() -> Team:
             propose_batch_from_extraction,
             prepare_batch_registration_tool,
             commit_batch_tool,
+            read_batch_tool,
+            reject_batch_tool,
+            list_invoices_tool,
+            list_documents_tool,
         ],
         respond_directly=False,
         markdown=False,
