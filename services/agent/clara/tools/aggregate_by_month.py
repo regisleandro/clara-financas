@@ -8,6 +8,8 @@ para a mesma pergunta.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from sqlalchemy.orm import Session
 
 from clara.db.queries.ledger import ledger_coverage, load_ledger
@@ -22,6 +24,14 @@ from clara.tools.analysis_scope import (
     scope_filter,
 )
 from clara.views.panels import BreakdownPanel, Metric, MetricPanel, Row, SeriesPanel
+
+
+@dataclass(frozen=True)
+class _IssuerTotal:
+    label: str
+    value: int
+    count: int
+    transaction_ids: list[str]
 
 
 def _month_label(month: str) -> str:
@@ -53,7 +63,7 @@ def aggregate_by_month(
     months: int | None = None,
 ) -> tuple[MetricPanel | SeriesPanel, BreakdownPanel | None]:
     scope: AnalysisScope = canonical_analysis_scope(
-        RangeScope(**{"from": from_, "to": to}, issuer=issuer)
+        RangeScope.model_validate({"from": from_, "to": to, "issuer": issuer})
         if from_ is not None and to is not None
         else AllScope(issuer=issuer)
     )
@@ -124,20 +134,20 @@ def aggregate_by_month(
 
     # Composição por operadora: só quando há mais de uma, senão repetiria o
     # total da série numa linha só (ruído).
-    by_issuer = []
+    by_issuer: list[_IssuerTotal] = []
     for row in matrix.issuers:
-        cells = [row.by_month[p] for p in positions if row.by_month[p] is not None]
+        cells = [cell for p in positions if (cell := row.by_month[p]) is not None]
         if not cells:
             continue
         by_issuer.append(
-            {
-                "label": row.issuer or "Sem operadora",
-                "value": sum(c.value for c in cells),
-                "count": sum(c.count for c in cells),
-                "transaction_ids": [tid for c in cells for tid in c.transaction_ids],
-            }
+            _IssuerTotal(
+                label=row.issuer or "Sem operadora",
+                value=sum(c.value for c in cells),
+                count=sum(c.count for c in cells),
+                transaction_ids=[tid for c in cells for tid in c.transaction_ids],
+            )
         )
-    by_issuer.sort(key=lambda r: -r["value"])
+    by_issuer.sort(key=lambda r: -r.value)
 
     if len(by_issuer) < 2:
         return series_panel, None
@@ -150,13 +160,11 @@ def aggregate_by_month(
         ),
         rows=[
             Row(
-                label=r["label"],
-                amount=r["value"],
-                detail=f"{r['count']} {'lançamento' if r['count'] == 1 else 'lançamentos'}",
-                share=(
-                    min(1.0, abs(r["value"] / displayed_total)) if displayed_total != 0 else None
-                ),
-                transaction_ids=r["transaction_ids"],
+                label=r.label,
+                amount=r.value,
+                detail=f"{r.count} {'lançamento' if r.count == 1 else 'lançamentos'}",
+                share=(min(1.0, abs(r.value / displayed_total)) if displayed_total != 0 else None),
+                transaction_ids=r.transaction_ids,
             )
             for r in by_issuer
         ],

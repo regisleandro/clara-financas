@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from clara.db.queries.ledger import LedgerFilter
 from clara.instructions.dates import month_range
+from clara.ledger.types import LedgerEntry
 
 
 class CalendarMonthScope(BaseModel):
@@ -95,7 +96,7 @@ def scope_label(scope: AnalysisScope) -> str:
     return "Todo o razão" if scope.issuer is None else f"Todo o razão · {scope.issuer}"
 
 
-def draft_note(entries: list) -> str:  # noqa: ANN001 - lista de LedgerEntry (dict com "status")
+def draft_note(entries: list[LedgerEntry]) -> str:
     """O aviso que acompanha todo painel montado sobre rascunho — uma frase
     no resumo, não um campo que a interface pode engolir."""
     drafts = sum(1 for e in entries if e["status"] == "proposed")
