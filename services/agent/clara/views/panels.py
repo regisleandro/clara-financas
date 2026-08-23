@@ -25,13 +25,15 @@ Accent = Literal["attention", "danger", "positive"]
 
 Kind = Literal[
     "metric", "breakdown", "comparison", "transactions", "invoices",
-    "commitments", "proposal", "checksum",
+    "commitments", "proposal", "checksum", "series", "recurrences",
 ]
 
 # `sum` é o único valor que promete fechar com os próprios ids — por isso é o
 # único que os exige. `document`: total que o documento declara (checksum,
 # invoices — fato do documento, não agregação escolhida). `schedule`: um
-# compromisso futuro que não saiu de lançamento nenhum.
+# compromisso futuro que não saiu de lançamento nenhum. `projection`
+# (recurrences): custo anualizado, uma PROJEÇÃO a partir das cobranças reais,
+# não a soma delas — os ids provam a origem, a álgebra não fecha contra eles.
 DEFAULT_BASIS: dict[Kind, Basis] = {
     "metric": "sum",
     "breakdown": "sum",
@@ -41,6 +43,8 @@ DEFAULT_BASIS: dict[Kind, Basis] = {
     "commitments": "schedule",
     "proposal": "sum",
     "checksum": "document",
+    "series": "sum",
+    "recurrences": "projection",
 }
 
 
@@ -176,9 +180,29 @@ class ChecksumPanel(PanelBase):
         return self
 
 
+class SeriesPanel(PanelBase):
+    """Uma série no tempo — um mês, uma fatura, um período por linha. As
+    linhas AQUI por acaso somam o destaque (os períodos são disjuntos); em
+    `analyze_financial_series` o destaque é a diferença entre o primeiro e o
+    último ponto, e por isso aquele caso usa `comparison`, não `series`."""
+
+    kind: Literal["series"] = "series"
+    metric: Metric | None = None
+    rows: list[Row] = Field(min_length=1, max_length=50)
+
+
+class RecurrencesPanel(PanelBase):
+    """Cobranças recorrentes. Sem `metric`: não há um total único que resuma
+    "todas as assinaturas" sem somar projeções de cadências diferentes."""
+
+    kind: Literal["recurrences"] = "recurrences"
+    rows: list[Row] = Field(min_length=1, max_length=50)
+
+
 PanelUnion = (
     MetricPanel | BreakdownPanel | ComparisonPanel | TransactionsPanel
     | InvoicesPanel | CommitmentsPanel | ProposalPanel | ChecksumPanel
+    | SeriesPanel | RecurrencesPanel
 )
 Panel = Annotated[PanelUnion, Field(discriminator="kind")]
 
@@ -188,7 +212,7 @@ class ProvenanceError(ValueError):
 
 
 def check_provenance(panel: MetricPanel | BreakdownPanel | ComparisonPanel | TransactionsPanel
-                      | CommitmentsPanel | ProposalPanel) -> list[str]:
+                      | CommitmentsPanel | ProposalPanel | SeriesPanel | RecurrencesPanel) -> list[str]:
     """As regras semânticas de proveniência, fora do schema — para poderem se
     explicar. Devolve mensagens acionáveis em vez de recusar em silêncio."""
     issues: list[str] = []

@@ -35,3 +35,24 @@ class TransactionLike(TypedDict, total=False):
     kind: EntryKind
     extraction_confidence: Confidence
     page: int | None
+
+
+class LedgerEntry(TypedDict):
+    """Uma linha do razão como as análises a recebem — porta do `Transaction`
+    de `packages/ledger/src/types.ts`. `issuer` não é coluna da transação: é
+    do documento (`documents.issuer`), e chega aqui por composição na
+    consulta (`clara/db/queries/ledger.py`), nunca gravada na linha."""
+
+    id: str
+    date: str
+    amount: int
+    kind: EntryKind
+    category: str | None
+    merchant: str | None
+    merchant_key: str | None
+    original_description: str
+    extraction_confidence: Confidence
+    status: str
+    source_document_id: str
+    page: int | None
+    issuer: str | None

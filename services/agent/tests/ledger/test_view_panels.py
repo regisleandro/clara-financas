@@ -16,7 +16,9 @@ from clara.views.panels import (
     MetricPanel,
     ProposalPanel,
     ProvenanceError,
+    RecurrencesPanel,
     Row,
+    SeriesPanel,
     require_provenance,
 )
 
@@ -125,3 +127,34 @@ def test_ajuste_no_nivel_da_fatura_declara_basis_document() -> None:
 def test_comparison_exige_pelo_menos_uma_linha() -> None:
     with pytest.raises(ValidationError):
         ComparisonPanel(title="Maio contra junho", rows=[])
+
+
+def test_series_exige_provenencia_por_linha() -> None:
+    panel = SeriesPanel(title="Gasto mês a mês", rows=[Row(label="Junho/2026", amount=10000)])
+    with pytest.raises(ProvenanceError):
+        require_provenance(panel)
+
+
+def test_series_passa_com_transaction_ids() -> None:
+    panel = SeriesPanel(
+        title="Gasto mês a mês",
+        rows=[Row(label="Junho/2026", amount=10000, transaction_ids=["t1", "t2"])],
+    )
+    require_provenance(panel)
+
+
+def test_recurrences_com_basis_projection_nao_exige_soma_fechada() -> None:
+    """O valor é a PROJEÇÃO anualizada, não a soma das cobranças reais — os
+    ids provam a origem, sem prometer que a álgebra fecha contra eles."""
+    panel = RecurrencesPanel(
+        title="Cobranças recorrentes",
+        rows=[
+            Row(
+                label="Netflix",
+                amount=60000,
+                basis="projection",
+                transaction_ids=["t1", "t2", "t3"],
+            )
+        ],
+    )
+    require_provenance(panel)

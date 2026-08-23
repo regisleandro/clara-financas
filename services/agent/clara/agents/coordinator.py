@@ -13,13 +13,20 @@ from agno.team import Team
 from clara.agents.extractor import build_extractor_agent
 from clara.agents.models import coordinator_model
 from clara.instructions.dynamic import coordinator_instructions
+from clara.tools.aggregate_by_category_tool import aggregate_by_category_tool
+from clara.tools.aggregate_by_month_tool import aggregate_by_month_tool
+from clara.tools.analyze_series_tool import analyze_series_tool
 from clara.tools.commit_batch_tool import commit_batch_tool
+from clara.tools.compare_periods_tool import compare_periods_tool
+from clara.tools.detect_recurrences_tool import detect_recurrences_tool
 from clara.tools.list_documents_tool import list_documents_tool
 from clara.tools.list_invoices_tool import list_invoices_tool
 from clara.tools.prepare_batch_registration_tool import prepare_batch_registration_tool
 from clara.tools.propose_batch import propose_batch, propose_batch_from_extraction
+from clara.tools.query_ledger_tool import query_ledger_tool
 from clara.tools.read_batch_tool import read_batch_tool
 from clara.tools.reject_batch_tool import reject_batch_tool
+from clara.tools.resolve_invoice_reference_tool import resolve_invoice_reference_tool
 
 
 def build_coordinator_team() -> Team:
@@ -37,6 +44,17 @@ def build_coordinator_team() -> Team:
             reject_batch_tool,
             list_invoices_tool,
             list_documents_tool,
+            resolve_invoice_reference_tool,
+            # Analista (US2) — leitura pura, sem gate: nenhuma delas grava
+            # nada, então não há razão para isolá-las num subagente à parte
+            # (diferente do extrator, que precisa não herdar o contexto do
+            # razão). Ver docs/ledger-python.md para a redução de escopo.
+            query_ledger_tool,
+            aggregate_by_category_tool,
+            aggregate_by_month_tool,
+            compare_periods_tool,
+            analyze_series_tool,
+            detect_recurrences_tool,
         ],
         respond_directly=False,
         markdown=False,
