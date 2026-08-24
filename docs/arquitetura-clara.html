@@ -431,7 +431,16 @@
 
     <main class="main">
       <header>
-        <div class="eyebrow">Arquitetura atual · julho de 2026</div>
+        <div class="eyebrow">Arquitetura anterior · julho de 2026</div>
+        <div class="warning" style="margin-top: 0; margin-bottom: 20px;">
+          <strong>Este diagrama descreve o agent plane ANTERIOR (Eve, TypeScript), não o atual.</strong>
+          Desde a reescrita para Agno (Python), o agente vive em <code>services/agent</code> como um
+          serviço separado, sem subagentes de analista/categorizador, com o gate de aprovação como
+          <code>requires_confirmation=True</code> nativo do Agno em vez de estado durável do Eve, e
+          falando com o navegador pelo protocolo AG-UI. A arquitetura real e as decisões da reescrita
+          estão em <code>docs/ledger-python.md</code> e no <code>README.md</code> — este arquivo fica
+          como registro histórico do desenho pré-reescrita, não como referência atual.
+        </div>
         <h1>Clara é uma aplicação financeira orientada por conversa.</h1>
         <p class="lead">
           Um app Next.js controla identidade, tenant, uploads e telas. Um agente Eve separado

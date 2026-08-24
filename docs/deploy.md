@@ -1,37 +1,46 @@
-# Deploy na Vercel
+# Deploy
 
-A Clara são **dois deployments separados**, em dois projetos Vercel distintos:
+A Clara são **dois serviços separados**, em duas linguagens:
 
-| Projeto | O que é | Origem |
-| --- | --- | --- |
-| **control plane** | App Next.js: interface, login, tenants, upload | raiz do repositório |
-| **agente** | Instância eve: coordenadora, extrator, analista | `packages/agent` |
+| Serviço | O que é | Onde mora | Deploy |
+| --- | --- | --- | --- |
+| **control plane** | App Next.js: interface, login, tenants, upload | raiz do repositório, `apps/web` | Vercel |
+| **agente** | Serviço Python (Agno + AgentOS): coordenadora, extrator, o razão inteiro | `services/agent` | **em aberto** — `uvicorn`/Docker, host ainda não escolhido |
 
-Eles não são um só de propósito. O agente roda no modelo silo (Etapa 4: um
-projeto por tenant), e o navegador fala com ele **cross-origin**, autenticado
-por um JWT de vida curta que o control plane emite. Montar o eve dentro do Next
-com `withEve` obrigaria a refazer essa integração depois — a decisão está
-registrada em `apps/web/next.config.ts`.
+Eles não são um só de propósito: o navegador fala com o agente **cross-origin**,
+autenticado por um JWT de vida curta que o control plane emite. Essa fronteira
+já existia antes da reescrita para Agno (Python) e foi preservada — juntar os
+dois no mesmo processo obrigaria a desfazer depois uma decisão já registrada em
+`apps/web/next.config.ts`.
+
+**Esta seção descreve o control plane em detalhe — ele já roda em produção,
+como antes.** O agente Python ainda não tem host de produção; a parte que
+existe hoje é o `Dockerfile`/`docker-compose.yml` de `services/agent` e o
+roteiro manual de banco em `README.md`. Ver `docs/ledger-python.md` para o
+que falta antes de escolher onde hospedá-lo (a lacuna do `scripts/dev-db.sh`
+não migrado, principalmente).
 
 ## A dependência circular, e como sair dela
 
-Cada plano precisa da URL do outro:
+Cada lado precisa da URL do outro:
 
 - o **agente** precisa de `APP_ORIGIN` — é a origem liberada no CORS e o issuer
   esperado do token;
 - o **control plane** precisa de `NEXT_PUBLIC_AGENT_HOST` — é para onde o
   navegador abre a conexão.
 
-Quem tentar deployar um e depois o outro entra num vaivém de redeploys.
+Quem tentar publicar um e depois o outro sem saber a URL final entra num
+vaivém de redeploys.
 
-A tentação é derivar o domínio do nome do projeto. **Não funciona**: se o nome
-já estiver tomado por outra conta da Vercel, ela acrescenta um sufixo aleatório
-sem avisar. Aconteceu neste projeto — `clara-financas` estava ocupado e o
-domínio virou `clara-financas-six.vercel.app`. O `APP_ORIGIN` configurado por
-suposição apontava para o app de um estranho, e o sintoma seria um preflight de
-CORS falhando sem mensagem útil.
+A tentação é derivar o domínio do nome do projeto. **Não funciona na Vercel**:
+se o nome já estiver tomado por outra conta, ela acrescenta um sufixo
+aleatório sem avisar. Aconteceu neste projeto — `clara-financas` estava
+ocupado e o domínio virou `clara-financas-six.vercel.app`. Um `APP_ORIGIN`
+configurado por suposição apontaria para o app de um estranho, e o sintoma
+seria um preflight de CORS falhando sem mensagem útil.
 
-Crie os projetos, **leia os domínios de volta** e só então preencha:
+Crie o projeto do control plane, **leia o domínio de volta** e só então
+preencha `APP_ORIGIN` no agente:
 
 ```bash
 vercel project ls
@@ -40,98 +49,92 @@ curl -s "https://api.vercel.com/v9/projects/<id>/domains?teamId=<team>" \
   -H "Authorization: Bearer $TOKEN" | jq '.domains[].name'
 ```
 
-Os domínios reais deste deployment:
+Domínio real deste deployment:
 
 ```
 control plane  https://clara-financas-six.vercel.app
-agente         https://clara-financas-agent.vercel.app
 ```
 
-## Passo a passo
+## Passo a passo (control plane)
 
-### 1. Criar e vincular os projetos
+### 1. Criar e vincular o projeto
 
 ```bash
-pnpm deploy:setup      # vincula a raiz ao projeto do control plane
-pnpm agent:link        # `eve link`: vincula packages/agent ao projeto do agente
+pnpm deploy:setup      # vincula a raiz ao projeto do control plane na Vercel
 ```
-
-`eve link` cria ou vincula o projeto e já puxa as variáveis de ambiente dele.
 
 ### 2. Preparar o banco
 
-O banco de produção precisa das migrações **antes** do primeiro deploy — a
-aplicação não as roda sozinha.
+O banco de produção precisa das migrações **antes** do primeiro deploy — nem
+o control plane nem o agente as rodam sozinhos.
 
 ```bash
 DATABASE_ADMIN_URL='postgres://…' pnpm db:migrate
 ```
 
-Depois do primeiro deploy, o CI assume: o workflow
-`.github/workflows/db-migrate.yml` aplica as migrações quando um arquivo novo
-em `packages/db/src/migrations/` chega à `main` (e pode ser disparado à mão
-pelo `workflow_dispatch`). Ele lê o secret `DATABASE_ADMIN_URL` do environment
-`production` — a credencial de dono continua fora da Vercel.
+Isso aplica as tabelas que `apps/web` ainda possui pelo caminho Drizzle
+(`user`, `session`, `account`, `verification`, e as telas não migradas — ver
+`docs/ledger-python.md`). Depois do primeiro deploy, o CI assume: o workflow
+`.github/workflows/db-migrate.yml` aplica migrações novas quando chegam à
+`main`.
+
+**O razão em si (documentos, faturas, transações, RLS, triggers de
+imutabilidade) é migrado separadamente, pelo Alembic do agente Python** — ver
+"Banco de dados" em `README.md`. As duas migrações apontam para o MESMO
+banco, tabelas disjuntas; nenhuma delas conhece a outra.
 
 **Banco que nasceu de `db:push`** (tabelas existem, journal vazio): o
 `db:migrate` morre em "relation already exists" na migração 0000. O caminho é
 o baseline — `pnpm -F @clara-financas/db db:baseline` imprime um relatório do
 estado real (RLS, políticas, triggers) e, com
 `--apply --through <última-tag-já-refletida>`, registra as migrações antigas
-como aplicadas sem executá-las. Atenção: `db:push` não cria o que só existe
-nas migrações manuais (políticas de RLS, triggers de imutabilidade) — se o
-relatório mostrar isso faltando, aplique antes de declarar o baseline.
+como aplicadas sem executá-las.
 
 Dois papéis distintos, e a diferença é de segurança, não de estilo:
 
-- `DATABASE_ADMIN_URL` — dono do schema. Só o `drizzle-kit` usa. **Nunca vai
+- `DATABASE_ADMIN_URL` — dono do schema. Só migração usa. **Nunca vai
   para a Vercel**; o script de env recusa mandá-la.
 - `DATABASE_URL` — papel de aplicação (`clara_app`), sem `BYPASSRLS` e sem
-  superusuário. É o que os dois projetos recebem. Conectar como `postgres` em
-  produção faria a RLS virar enfeite.
+  superusuário. É o que os dois serviços recebem em runtime.
 
-A constituição não precisa de passo manual: `ensureTenant` a semeia no primeiro
-login de cada pessoa e a atualiza quando a versão do bundle muda.
+A constituição não precisa de passo manual no login: `apps/web/lib/tenant.ts`
+a semeia no primeiro login de cada pessoa pelo caminho TypeScript
+(`packages/db/src/seed-constitution.ts`, ainda não portado — ver
+`docs/ledger-python.md`).
 
-### 3. Preencher os `.env` locais com os valores de produção
+### 3. Preencher o `.env` local com os valores de produção
 
-O sync lê dos arquivos locais. Antes de rodar, ajuste `apps/web/.env` e
-`packages/agent/.env` para os valores reais — em produção, o script recusa o
-env inteiro se algum valor enviado ainda apontar para `localhost`.
+O sync lê de `apps/web/.env`. Antes de rodar, ajuste-o para os valores reais
+— em produção, o script recusa o env inteiro se algum valor enviado ainda
+apontar para `localhost`.
 
-Os dois projetos precisam do **mesmo** `AGENT_TOKEN_SECRET`: é o segredo
-compartilhado que assina e verifica o token (HS256, modo pool).
+`AGENT_TOKEN_SECRET` precisa ser o **mesmo** valor configurado no agente
+Python, onde quer que ele esteja rodando: é o segredo compartilhado que
+assina e verifica o token (HS256, modo pool).
 
 ### 4. Conferir e enviar as variáveis
 
 ```bash
 pnpm env:production --plan          # mostra o que iria, sem tocar na Vercel
-pnpm env:agent:production --plan
-
 pnpm env:production                 # envia
-pnpm env:agent:production
 ```
 
 Para alterar apenas parâmetros operacionais sem copiar banco, origem e
 segredos do arquivo local, restrinja o envio à allowlist desejada:
 
 ```bash
-pnpm env:agent:production --only=CLARA_MODEL,CLARA_MODEL_CONTEXT_WINDOW
+pnpm env:production --only=GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET
 ```
 
-O envio é por **allowlist**: só sai o que está declarado por plano em
-`scripts/sync-vercel-env.ts`. Variável nova no `.env` não vaza sozinha para o
-projeto errado — mas também não sobe sozinha, então acrescente-a à allowlist
-quando ela passar a existir. O `--plan` mostra as três listas: enviadas, não
-enviadas e ausentes.
+O envio é por **allowlist**: só sai o que está declarado em
+`scripts/sync-vercel-env.ts`. Variável nova no `.env` não vaza sozinha — mas
+também não sobe sozinha, então acrescente-a à allowlist quando ela passar a
+existir. O `--plan` mostra as três listas: enviadas, não enviadas e ausentes.
 
 Em `production`, qualquer valor que aponte para localhost interrompe o sync
-antes da primeira escrita. O `--plan` continua exibindo o diagnóstico para que
-o arquivo possa ser corrigido sem tocar na Vercel.
+antes da primeira escrita.
 
-#### O que cada projeto recebe
-
-**Control plane**
+#### O que o control plane recebe
 
 | Variável | Nota |
 | --- | --- |
@@ -139,116 +142,68 @@ o arquivo possa ser corrigido sem tocar na Vercel.
 | `BETTER_AUTH_SECRET` | mínimo 32 caracteres |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | escopos `openid`, `email`, `profile` |
 | `AGENT_TOKEN_SECRET` | **igual** ao do agente |
-| `NEXT_PUBLIC_AGENT_HOST` | URL do projeto do agente |
+| `NEXT_PUBLIC_AGENT_HOST` | URL de onde o agente Python está servindo |
 | `BLOB_READ_WRITE_TOKEN` | **obrigatório em produção** — ver abaixo |
 
 `BETTER_AUTH_URL` e `APP_ORIGIN` não são enviados: `packages/env/src/server.ts`
 os deriva de `VERCEL_URL`.
 
-**Agente**
+#### O que o agente Python precisa (onde quer que ele rode)
+
+Não há projeto Vercel nem script de sync para ele — configure estas
+variáveis diretamente na plataforma de host escolhida, ou via
+`services/agent/docker-compose.yml`/`.env`:
 
 | Variável | Nota |
 | --- | --- |
 | `DATABASE_URL` | mesmo banco, mesmo papel de aplicação |
 | `AGENT_TOKEN_SECRET` | **igual** ao do control plane |
-| `APP_ORIGIN` | URL do control plane; aqui **não** é derivado |
-| `CLARA_MODEL` | sem default no código, por decisão |
-| `CLARA_MODEL_CONTEXT_WINDOW` | o eve exige para compilar a compactação |
-| `CLARA_EXTRACTOR_MODEL` | opcional: modelo do extrator; ausente ou `gpt-5.6-terra` mantém o orçamento do Terra |
-| `OPENAI_API_KEY` | opcional — ver abaixo |
-| `TENANT_ID` | vazio no modo pool; preenchido no silo |
+| `APP_ORIGIN` | URL do control plane; aqui **não** é derivado — é origem de CORS e issuer esperado |
+| `CLARA_MODEL` / `CLARA_EXTRACTOR_MODEL` | default `gpt-5` nos dois, sem Gateway — a chave vai direto |
+| `OPENAI_API_KEY` | obrigatória: sem AI Gateway configurado neste port |
+| `TENANT_ID` | vazio no modo pool; preenchido no modo silo |
 
-Configuração-alvo desta versão em produção:
-
-```dotenv
-CLARA_MODEL=gpt-5.6-terra
-CLARA_MODEL_CONTEXT_WINDOW=200000
-```
-
-O Terra suporta uma janela maior, mas `200000` é um limite operacional
-intencional para compactar antes e controlar custo em conversas longas. O
-esforço de raciocínio fica fixado em `medium` no código de todos os agentes;
-não habilitamos Pro, PTC nem reasoning persistido. Como esta versão cria
-artefatos, objetivos, tarefas, decisões e suporte a extratos, aplique em ordem
-as migrações `0020_foamy_maggott.sql`, `0021_overjoyed_newton_destine.sql` e
-`0022_friendly_silver_surfer.sql` antes de colocar o novo agente no ar. A 0022
-também adiciona os saldos inicial/final dos lotes; não é necessário reprocessar
-documentos existentes.
-
-### 5. Deployar
+### 5. Deployar o control plane
 
 ```bash
-pnpm deploy:agent      # `eve deploy`: instala, builda e sobe o agente
-pnpm deploy:prod       # control plane
+pnpm deploy:prod
 ```
+
+O agente Python: `docker build` + `docker run` a partir de
+`services/agent/Dockerfile`, ou `docker compose up` localmente — ver
+`services/agent/docker-compose.yml`. Onde hospedar em produção é decisão
+ainda em aberto.
 
 ### 6. Verificar
 
-O workflow `agent-behavior-monitor` executa diariamente os fluxos live de
-coordenadora, analista, categorizador e extrator, três vezes cada. Para ativá-lo
-no environment `production`, defina `AGENT_BEHAVIOR_MONITOR_ENABLED=true` e as
-variables `AGENT_BASE_URL`, `APP_ORIGIN`, `PROBE_TENANT`,
-`PROBE_TRANSACTION_ID` e `PROBE_DOCUMENT_ID`; `AGENT_TOKEN_SECRET` permanece
-secret. O tenant de probe deve conter o lançamento e o PDF indicados.
-
 ```bash
-curl https://SEU-AGENTE.vercel.app/eve/v1/health
+curl https://SEU-AGENTE/health
 ```
 
 Depois, no navegador: entre com o Google, abra `/conversa` e envie uma fatura.
 O caminho completo exercita as duas superfícies — token, CORS, extração,
-conferência e gate.
+conferência e o gate de aprovação.
 
-### Estado local órfão do Eve
+## Configuração de projeto que não mora em arquivo (Vercel)
 
-Durante o desenvolvimento, uma interrupção do servidor pode deixar execuções
-locais em `.eve/.workflow-data`. Ao iniciar, o Eve avisa que há *Workflow
-runs* apontando para gerações que já não existem; esses turnos podem voltar a
-ser executados e deixar a conversa presa em “Pensando”. Pare o servidor e faça
-um backup removível do estado antes de iniciar novamente:
+Vale só para o control plane — o agente Python não é um projeto Vercel.
 
-```bash
-mv packages/agent/.eve/.workflow-data /tmp/clara-eve-workflow-data-backup
-pnpm -F @clara-financas/agent dev
-```
-
-Isso limpa apenas a orquestração local do Eve — não remove sessões, faturas ou
-lançamentos do banco. Se precisar investigar um turno antigo, o diretório de
-backup pode ser restaurado com o servidor parado.
-
-Se o deploy usar Deployment Protection, defina `VERCEL_AUTOMATION_BYPASS_SECRET`
-localmente antes de conectar o `eve dev` a ele.
-
-## Configuração de projeto que não mora em arquivo
-
-Três ajustes vivem nas configurações do projeto Vercel, não no repositório, e
-sem eles o build falha de formas que não apontam para a causa:
-
-| Ajuste | control plane | agente |
-| --- | --- | --- |
-| Root Directory | `apps/web` | `packages/agent` |
-| Framework | `nextjs` | `eve` (detectado) |
-| Build/Install Command | padrão do framework | padrão do framework |
+| Ajuste | Valor |
+| --- | --- |
+| Root Directory | `apps/web` |
+| Framework | `nextjs` |
+| Build/Install Command | padrão do framework |
 
 Com Root Directory definido, o `vercel.json` é lido de DENTRO dele — um
-`vercel.json` na raiz do repositório passa a ser ignorado. E o deploy pela CLI
-tem de partir da **raiz do repositório** nos dois casos: rodar `vercel deploy`
-de dentro de `packages/agent` com Root Directory `packages/agent` resolve o
-caminho duas vezes e falha.
+`vercel.json` na raiz do repositório passa a ser ignorado.
 
-Para deployar o agente da raiz, aponte o projeto por variável:
-
-```bash
-VERCEL_ORG_ID=<team> VERCEL_PROJECT_ID=<projeto-do-agente> vercel deploy --prod
-```
-
-## Proteção de deployment precisa sair
+## Proteção de deployment precisa sair (no control plane)
 
 A Vercel liga *Deployment Protection* (SSO) por padrão em `*.vercel.app`. Ela
 **quebra a arquitetura**: o navegador fala com o agente cross-origin com Bearer
 token e não carrega cookie de SSO daquele domínio, então toda conversa falha.
-Desligue nos dois projetos. Quem protege o app é o login Google, o isolamento
-por tenant e a RLS — não um gate da plataforma.
+Desligue. Quem protege o app é o login Google, o isolamento por tenant e a
+RLS — não um gate da plataforma.
 
 ## Armadilhas conhecidas
 
@@ -256,8 +211,8 @@ por tenant e a RLS — não um gate da plataforma.
 direto no Blob, e é este token que assina o token de escrita de curta duração
 (`/api/documents/upload`). Sem ele, `/api/documents/prepare` responde `proxy` e
 o arquivo cai no caminho de desenvolvimento — que grava em `.data/documents`.
-Num runtime serverless o sistema de arquivos é somente-leitura fora de `/tmp`, e
-`/tmp` morre com a invocação. O código falha com uma mensagem explícita
+Num runtime serverless o sistema de arquivos é somente-leitura fora de `/tmp`,
+e `/tmp` morre com a invocação. O código falha com uma mensagem explícita
 (`apps/web/lib/storage.ts`) em vez de um `EROFS` obscuro, mas o token continua
 sendo obrigatório.
 
@@ -268,21 +223,25 @@ deve ser alcançado em produção.
 
 **O papel do banco não é o que o Neon entrega.** A integração injeta
 `DATABASE_URL` com o papel `neondb_owner`, dono do schema. O runtime tem de usar
-`clara_app` — sem superusuário e sem `BYPASSRLS`. Sobrescreva `DATABASE_URL` nos
-dois projetos depois de criar o papel. E note que a migração `0001` fixa
-`PASSWORD 'clara_app'`, que qualquer Postgres gerenciado recusa por fraca: crie
-o papel à mão com senha forte antes de migrar, que o `IF NOT EXISTS` da migração
-a respeita.
+`clara_app` — sem superusuário e sem `BYPASSRLS`. Sobrescreva `DATABASE_URL`
+nos dois serviços depois de criar o papel.
 
-**`OPENAI_API_KEY` presente muda o caminho do modelo.** Com a chave, o AI SDK
-fala direto com a OpenAI. Sem ela, o ID de modelo é roteado pelo Vercel AI
-Gateway, autenticado por OIDC do projeto — que é o caminho preferido em
-produção, porque não põe chave de provedor no ambiente. O gateway exige o
-prefixo (`openai/gpt-5`) e precisa conhecer o modelo; o resolvedor adiciona
-`openai/` automaticamente quando o env contém apenas o slug Terra e preserva
-ids já prefixados.
+**`clara_app` precisa de `CREATE` no banco, não só no schema `agno`.** O
+`PostgresDb` do Agno roda `CREATE SCHEMA IF NOT EXISTS agno` a cada boot do
+agente — e o Postgres exige o privilégio `CREATE` no BANCO para essa
+instrução mesmo quando o schema já existe. A migração `0001` do Alembic já
+concede isso; se você criar `clara_app` por fora dela (num Postgres
+gerenciado que gera o papel sozinho, por exemplo), confira que o grant existe
+— sem ele o agente sobe normalmente, mas nenhuma sessão de conversa
+sobrevive a um reinício do processo, e o único sinal é um `WARNING` no log.
+Detalhes em `docs/ledger-python.md`.
 
-**O `AGENT_TOKEN_SECRET` divergente falha de forma silenciosa-ish.** O agente
+**`OPENAI_API_KEY` ausente derruba o agente no boot.**
+`clara/agents/models.py` falha cedo (`RuntimeError`) se a chave não estiver
+configurada — não há AI Gateway neste port, então não há caminho alternativo
+sem chave.
+
+**`AGENT_TOKEN_SECRET` divergente falha de forma silenciosa-ish.** O agente
 recusa o token e a conversa nunca inicia. Se `/conversa` autentica mas nada
 responde, é o primeiro lugar a olhar.
 
@@ -292,28 +251,25 @@ preflight falha sem erro útil no console.
 
 **Preview deployments têm URL variável.** O `APP_ORIGIN` fixo do agente não vai
 casar com a origem de um preview do control plane. Para exercitar previews,
-aponte o `NEXT_PUBLIC_AGENT_HOST` do preview para um agente de preview cujo
+aponte o `NEXT_PUBLIC_AGENT_HOST` do preview para uma instância de agente cujo
 `APP_ORIGIN` seja aquela URL — ou teste o fluxo completo só em produção.
 
 **Arquivo lido do disco em runtime não entra sozinho na função.** O
 rastreamento do Next só segue `import`; `bundles/constitution` é lido com
 `readdir`, então não era copiado para o deployment. O sintoma foi um 500 em
 `/inicio` logo após o login no Google — `ENOENT: scandir
-'/var/task/bundles/constitution'`, porque `getTenantContext` semeia a
-constituição em toda requisição autenticada. A correção é
-`outputFileTracingIncludes` em `apps/web/next.config.ts`, com
-`outputFileTracingRoot` fixado na raiz do monorepo. Vale para qualquer arquivo
-novo que o app leia do disco: só existe em produção se estiver declarado ali.
+'/var/task/bundles/constitution'`. A correção é `outputFileTracingIncludes`
+em `apps/web/next.config.ts`, com `outputFileTracingRoot` fixado na raiz do
+monorepo. Vale para qualquer arquivo novo que o app leia do disco: só existe
+em produção se estiver declarado ali.
 
 ## Comandos
 
 | Comando | Função |
 | --- | --- |
-| `pnpm deploy:setup` | Vincula a raiz ao projeto do control plane |
-| `pnpm agent:link` | Vincula `packages/agent` ao projeto do agente |
+| `pnpm deploy:setup` | Vincula a raiz ao projeto Vercel do control plane |
 | `pnpm env:production [--plan]` | Variáveis do control plane |
-| `pnpm env:agent:production [--plan]` | Variáveis do agente |
 | `pnpm deploy` | Deploy de preview do control plane |
 | `pnpm deploy:prod` | Deploy de produção do control plane |
-| `pnpm deploy:agent` | Deploy do agente (`eve deploy`) |
 | `pnpm deploy:check` | Dry-run do deploy do control plane |
+| `docker compose up --build` (em `services/agent/`) | Sobe Postgres + o agente localmente |

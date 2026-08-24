@@ -1,0 +1,60 @@
+# Sobe PostgreSQL + o agente para experimentar localmente com Docker, sem
+# instalar Python/uv na máquina. NÃO é a receita de produção — só descreve
+# como as duas peças se conectam; onde hospedar o agente em produção segue
+# em aberto (ver docs/deploy.md).
+#
+# Papéis de aplicação (`clara_app`) e schema (`clara_owner`) exigem
+# CREATEROLE para a migração 0001 se criar sozinha — por isso o serviço
+# `migrate` roda com as credenciais do superusuário `postgres` do próprio
+# contêiner, uma vez, antes do agente subir. O agente nunca se conecta como
+# superusuário: connecta como `clara_app`, que a migração cria.
+#
+# Uso:
+#   docker compose up --build
+#   docker compose run --rm migrate   # só reaplicar migrações
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: clara
+    ports:
+      - "5432:5432"
+    volumes:
+      - clara_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  migrate:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_ADMIN_URL: postgresql+psycopg://postgres:postgres@postgres:5432/clara
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/clara
+    entrypoint: ["alembic", "upgrade", "head"]
+
+  agent:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Papel de aplicação — a migração 0001 o cria com esta senha de
+      # bootstrap. Troque-a antes de expor o serviço fora desta máquina.
+      DATABASE_URL: postgresql+psycopg://clara_app:clara_app@postgres:5432/clara
+      AGENT_TOKEN_SECRET: ${AGENT_TOKEN_SECRET:?defina um segredo de 32+ caracteres, igual ao de apps/web}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?a Clara não responde sem uma chave de modelo}
+      CLARA_MODEL: ${CLARA_MODEL:-gpt-5}
+      CLARA_EXTRACTOR_MODEL: ${CLARA_EXTRACTOR_MODEL:-gpt-5}
+    ports:
+      - "8000:8000"
+
+volumes:
+  clara_postgres_data:
