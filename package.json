@@ -10,7 +10,6 @@
     "build": "turbo run build",
     "check-types": "turbo run check-types",
     "dev:web": "turbo run dev -F web",
-    "dev:agent": "turbo run dev -F @clara-financas/agent",
     "db:push": "turbo run db:push -F @clara-financas/db",
     "db:studio": "turbo run db:studio -F @clara-financas/db",
     "db:generate": "turbo run db:generate -F @clara-financas/db",
@@ -24,11 +23,7 @@
     "deploy:prod": "vercel deploy --prod",
     "deploy:check": "vercel deploy --dry",
     "test": "turbo run test",
-    "test:isolation": "turbo run test:isolation -F @clara-financas/db",
-    "env:agent:preview": "tsx scripts/sync-vercel-env.ts preview --agent",
-    "env:agent:production": "tsx scripts/sync-vercel-env.ts production --agent",
-    "deploy:agent": "pnpm -F @clara-financas/agent exec eve deploy",
-    "agent:link": "pnpm -F @clara-financas/agent exec eve link"
+    "test:isolation": "turbo run test:isolation -F @clara-financas/db"
   },
   "dependencies": {
     "@clara-financas/env": "workspace:*",

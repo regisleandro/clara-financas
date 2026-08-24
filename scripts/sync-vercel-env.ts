@@ -1,10 +1,13 @@
 /**
- * Envia variáveis de ambiente para os projetos Vercel.
+ * Envia variáveis de ambiente para o projeto Vercel do control plane
+ * (`apps/web`).
  *
- * São DOIS projetos, com conjuntos diferentes de variáveis: o control plane
- * (`apps/web`) e a instância do agente (`packages/agent`). Mandar o `.env` de
- * um para o projeto do outro é como o segredo do modelo acaba num bundle de
- * navegador.
+ * A instância do agente (`services/agent`) NÃO é um projeto Vercel — é um
+ * serviço Python (uvicorn/Dockerfile, ver `docs/deploy.md`), então não tem
+ * lugar neste script; a escolha de host para ela segue em aberto. Isto
+ * sincronizava dois projetos Vercel quando o agente ainda era
+ * `packages/agent` (Eve, TypeScript); a rota `--agent` foi removida quando
+ * esse pacote saiu do repositório.
  *
  * ## Por que allowlist, e não "manda tudo menos o que eu lembrei de excluir"
  *
@@ -23,8 +26,6 @@
  * Uso:
  *   pnpm env:preview              # control plane, ambiente preview
  *   pnpm env:production           # control plane, produção
- *   pnpm env:agent:preview        # agente, preview
- *   pnpm env:agent:production     # agente, produção
  *
  *   ... --plan                    # mostra o que iria, sem falar com a Vercel
  *   ... --only=CHAVE_A,CHAVE_B    # envia só estas chaves da allowlist
@@ -37,14 +38,13 @@ import dotenv from "dotenv";
 type Plane = {
   label: string;
   envFile: string;
-  /** Diretório do link Vercel. O agente é outro projeto, com outro `.vercel`. */
   cwd: string;
   allow: string[];
   /** Documenta o que é derivado em runtime, para o relatório não parecer falha. */
   derived: string[];
 };
 
-const PLANES: Record<"web" | "agent", Plane> = {
+const PLANES: Record<"web", Plane> = {
   web: {
     label: "control plane (apps/web)",
     envFile: "apps/web/.env",
@@ -56,7 +56,7 @@ const PLANES: Record<"web" | "agent", Plane> = {
       "GOOGLE_CLIENT_ID",
       "GOOGLE_CLIENT_SECRET",
       // Compartilhado com o agente: é o segredo que assina o token de acesso.
-      // Os dois projetos precisam do MESMO valor.
+      // Os dois serviços precisam do MESMO valor.
       "AGENT_TOKEN_SECRET",
       // Público por construção: o navegador fala com o agente cross-origin.
       "NEXT_PUBLIC_AGENT_HOST",
@@ -67,28 +67,6 @@ const PLANES: Record<"web" | "agent", Plane> = {
     derived: [
       "BETTER_AUTH_URL e APP_ORIGIN — derivados de VERCEL_URL em packages/env/src/server.ts",
     ],
-  },
-  agent: {
-    label: "agente (packages/agent)",
-    envFile: "packages/agent/.env",
-    cwd: "packages/agent",
-    allow: [
-      "DATABASE_URL",
-      "AGENT_TOKEN_SECRET",
-      // Aqui APP_ORIGIN NÃO é derivado: o agente usa como origem do CORS e
-      // como issuer esperado do token. Precisa ser a URL do control plane.
-      "APP_ORIGIN",
-      "CLARA_MODEL",
-      "CLARA_EXTRACTOR_MODEL",
-      "CLARA_MODEL_CONTEXT_WINDOW",
-      // Rollout reversível dos contratos opacos de análise/categorização.
-      // Ausente, o eve roteia pelo AI Gateway autenticado por OIDC do projeto,
-      // que é o caminho preferido em produção.
-      "OPENAI_API_KEY",
-      // Modo silo (Etapa 4): fixa a instância num tenant. Vazio no modo pool.
-      "TENANT_ID",
-    ],
-    derived: [],
   },
 };
 
@@ -105,8 +83,7 @@ const LOCAL_VALUE = /localhost|127\.0\.0\.1|0\.0\.0\.0|^file:/i;
 
 function main() {
   const args = process.argv.slice(2);
-  const planeKey = args.includes("--agent") ? "agent" : "web";
-  const plane = PLANES[planeKey];
+  const plane = PLANES.web;
   const planOnly = args.includes("--plan");
   const onlyArg = args.find((arg) => arg.startsWith("--only="));
   const only =
@@ -122,11 +99,7 @@ function main() {
 
   const environment = args.find((arg) => VALID_ENVIRONMENTS.has(arg)) ?? "preview";
   const passthrough = args.filter(
-    (arg) =>
-      arg !== "--agent" &&
-      arg !== "--plan" &&
-      !arg.startsWith("--only=") &&
-      !VALID_ENVIRONMENTS.has(arg),
+    (arg) => arg !== "--plan" && !arg.startsWith("--only=") && !VALID_ENVIRONMENTS.has(arg),
   );
 
   if (only !== undefined) {

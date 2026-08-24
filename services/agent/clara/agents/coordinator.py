@@ -25,6 +25,7 @@ from clara.tools.compare_periods_tool import compare_periods_tool
 from clara.tools.create_adjustment_tool import create_adjustment_tool
 from clara.tools.deactivate_commitment_tool import deactivate_commitment_tool
 from clara.tools.detect_recurrences_tool import detect_recurrences_tool
+from clara.tools.edit_proposed_batch_tool import edit_proposed_batch_tool
 from clara.tools.list_commitments_tool import list_commitments_tool
 from clara.tools.list_documents_tool import list_documents_tool
 from clara.tools.list_invoices_tool import list_invoices_tool
@@ -64,6 +65,7 @@ def build_coordinator_team() -> Team:
             list_invoices_tool,
             list_documents_tool,
             resolve_invoice_reference_tool,
+            edit_proposed_batch_tool,
             # Analista (US2) — leitura pura, sem gate: nenhuma delas grava
             # nada, então não há razão para isolá-las num subagente à parte
             # (diferente do extrator, que precisa não herdar o contexto do
