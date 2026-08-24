@@ -8,12 +8,12 @@ inventada descartada (nunca gravada), e suspeita de dupla contagem.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
 from clara.db.models import Batch, Concept, Document, Transaction
 from clara.db.tenant_scope import for_tenant
+from clara.tools.edit_proposed_batch import TransactionEdit, edit_proposed_batch
 from clara.tools.write_proposed_batch import (
     ProposedBatchWriteInput,
     ProposedBatchWriteResult,
@@ -140,12 +140,21 @@ def test_edited_draft_is_protected(tenant_id: str) -> None:
         )
     assert isinstance(first, ProposedBatchWriteResult)
 
-    # simula edit_proposed_batch: updated_at > created_at
     with for_tenant(tenant_id) as session:
         batch = session.get(Batch, first.batch_id)
         assert batch is not None
-        batch.created_at = datetime.now(UTC) - timedelta(minutes=5)
-        batch.updated_at = datetime.now(UTC)
+        txn_id = batch.transactions[0].id
+
+    # A correção de verdade, não uma simulação: `edit_proposed_batch` é o
+    # caminho real que bate `updated_at > created_at` — o `onupdate` de
+    # `Batch.updated_at` (clara/db/models.py) é o que faz esta correção ficar
+    # visível para `write_proposed_batch` reproponizar a mesma fatura.
+    with for_tenant(tenant_id) as session:
+        edited = edit_proposed_batch(
+            session, tenant_id, batch_id=first.batch_id,
+            edits=[TransactionEdit(transaction_id=txn_id, amount=1500)],
+        )
+    assert not isinstance(edited, dict)
 
     with for_tenant(tenant_id) as session:
         blocked = write_proposed_batch(

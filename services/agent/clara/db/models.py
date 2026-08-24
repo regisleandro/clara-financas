@@ -60,7 +60,9 @@ class User(Base):
     email_verified: Mapped[bool] = mapped_column(Boolean, server_default=text('false'))
     image: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        TZDateTime, server_default=func.now(), onupdate=func.now()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +84,9 @@ class Tenant(Base):
     provisioned_at: Mapped[datetime | None] = mapped_column(TZDateTime)
     constitution_version: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        TZDateTime, server_default=func.now(), onupdate=func.now()
+    )
 
 
 ProvisioningStatus = Literal["queued", "running", "succeeded", "failed"]
@@ -100,7 +104,9 @@ class ProvisioningJob(Base):
     started_at: Mapped[datetime | None] = mapped_column(TZDateTime)
     finished_at: Mapped[datetime | None] = mapped_column(TZDateTime)
     created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        TZDateTime, server_default=func.now(), onupdate=func.now()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +165,9 @@ class Batch(Base):
     approved_at: Mapped[datetime | None] = mapped_column(TZDateTime)
 
     created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        TZDateTime, server_default=func.now(), onupdate=func.now()
+    )
 
     transactions: Mapped[list[Transaction]] = relationship(back_populates="batch")
 
@@ -218,7 +226,9 @@ class Transaction(Base):
     reviewed_by: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        TZDateTime, server_default=func.now(), onupdate=func.now()
+    )
 
     batch: Mapped[Batch] = relationship(back_populates="transactions")
 
@@ -308,7 +318,9 @@ class Commitment(Base):
     concept_id: Mapped[str | None] = mapped_column(Text)
     active: Mapped[str] = mapped_column(Text, server_default=text("'yes'"))
     created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        TZDateTime, server_default=func.now(), onupdate=func.now()
+    )
 
 
 class Notification(Base):
@@ -350,7 +362,9 @@ class Concept(Base):
     frontmatter: Mapped[dict[str, Any]] = mapped_column(JSONB)
     body: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        TZDateTime, server_default=func.now(), onupdate=func.now()
+    )
 
 
 class ConceptRevision(Base):
