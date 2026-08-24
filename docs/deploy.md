@@ -81,7 +81,16 @@ Isso aplica as tabelas que `apps/web` ainda possui pelo caminho Drizzle
 **O razão em si (documentos, faturas, transações, RLS, triggers de
 imutabilidade) é migrado separadamente, pelo Alembic do agente Python** — ver
 "Banco de dados" em `README.md`. As duas migrações apontam para o MESMO
-banco, tabelas disjuntas; nenhuma delas conhece a outra.
+banco e **criam as MESMAS tabelas do razão** — não são complementares num
+banco novo. Rodar as duas em sequência falha em "relation already exists"
+assim que a segunda alcança uma tabela que a primeira já criou (confirmado
+tentando, não suposto): `packages/db` só é dono exclusivo de
+`user`/`session`/`account`/`verification` daqui para frente. Um banco de
+produção que já rodava esta migração Drizzle antes da reescrita Python
+segue precisando só dela; um banco NOVO que vai rodar `services/agent`
+precisa do Alembic para o razão e só das três tabelas de auth pelo caminho
+Drizzle (ver o SQL em `README.md`) — nunca da migração completa dos dois
+lados.
 
 **Banco que nasceu de `db:push`** (tabelas existem, journal vazio): o
 `db:migrate` morre em "relation already exists" na migração 0000. O caminho é

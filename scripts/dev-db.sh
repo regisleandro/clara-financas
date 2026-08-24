@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 # Sobe um PostgreSQL local com os DOIS papéis que o código exige e aplica as
-# migrações. Sem isto não há como verificar nada de banco: `forTenant` recusa
-# conectar como superuser (a RLS viraria enfeite — packages/db/src/tenant-scope.ts),
-# então testar exige um papel de aplicação de verdade, separado do dono do schema.
+# migrações — as DUAS: a do control plane (Drizzle, `packages/db`) e a do
+# razão (Alembic, `services/agent`), no MESMO banco, tabelas disjuntas. Sem
+# isto não há como verificar nada de banco: `forTenant`/`for_tenant` recusam
+# conectar como superuser (a RLS viraria enfeite), então testar exige um
+# papel de aplicação de verdade, separado do dono do schema.
 #
-#   ./scripts/dev-db.sh          # sobe, cria papéis/banco e migra
+#   ./scripts/dev-db.sh          # sobe, cria papéis/banco e migra os dois lados
 #   ./scripts/dev-db.sh --reset  # apaga o banco antes (recomeça do zero)
 #
-# Escreve as duas URLs em apps/web/.env e packages/agent/.env quando elas ainda
-# não existem — é de lá que os testes e o dev leem.
+# A migração Alembic é pulada, com aviso (não erro), se `services/agent` não
+# tiver `uv` disponível ou dependências sincronizadas — quem só trabalha no
+# control plane não precisa do serviço Python de pé para editar `apps/web`.
+#
+# Escreve as duas URLs em apps/web/.env e services/agent/.env quando elas
+# ainda não existem — é de lá que os testes e o dev leem.
 set -euo pipefail
 
 DB_NAME="${CLARA_DB_NAME:-clara}"
@@ -52,7 +58,7 @@ password_from_env() {
 
 resolve_password() {
   local key="$1" found
-  for file in "$ROOT/apps/web/.env" "$ROOT/packages/agent/.env"; do
+  for file in "$ROOT/apps/web/.env" "$ROOT/services/agent/.env"; do
     if found="$(password_from_env "$file" "$key")" && [ -n "$found" ]; then
       printf '%s' "$found"
       return 0
@@ -91,7 +97,7 @@ END \\\$\\\$;\""
 psql_super -c "\"ALTER ROLE $OWNER_ROLE WITH PASSWORD '$OWNER_PASSWORD';\"" > /dev/null
 psql_super -c "\"ALTER ROLE $APP_ROLE WITH PASSWORD '$APP_PASSWORD';\"" > /dev/null
 
-# A limpeza entre testes (`dropTenant`, packages/agent/tests/helpers/harness.ts)
+# A limpeza entre testes (`dropTenant` no lado TS, ou os fixtures de teste do lado Python)
 # suspende os triggers de imutabilidade por sessão com `session_replication_role`
 # — é o único jeito de apagar um tenant de teste sem afrouxar o guard que
 # protege o razão confirmado, e sem o lock de tabela que o `DISABLE TRIGGER`
@@ -136,11 +142,28 @@ ensure_env() {
 
 ensure_env "$ROOT/apps/web/.env" DATABASE_URL "$APP_URL"
 ensure_env "$ROOT/apps/web/.env" DATABASE_ADMIN_URL "$ADMIN_URL"
-ensure_env "$ROOT/packages/agent/.env" DATABASE_URL "$APP_URL"
-ensure_env "$ROOT/packages/agent/.env" DATABASE_ADMIN_URL "$ADMIN_URL"
+ensure_env "$ROOT/services/agent/.env" DATABASE_URL "$APP_URL"
+ensure_env "$ROOT/services/agent/.env" DATABASE_ADMIN_URL "$ADMIN_URL"
 
 # 5. Migrações ---------------------------------------------------------------
-echo "Aplicando migrações…"
+#
+# ATENÇÃO — as migrações Drizzle (aqui) e a migração Alembic de
+# `services/agent` (Python) NÃO são complementares num banco novo: as duas
+# criam as MESMAS 19 tabelas do razão, e rodar as duas em sequência falha em
+# "relation already exists" assim que a segunda alcança uma tabela que a
+# primeira já criou — confirmado tentando, não suposto. `packages/db` só é
+# dono exclusivo de `user`/`session`/`account`/`verification` (Better Auth)
+# daqui para frente; o resto é território que a Fase de reescrita Python já
+# tomou.
+#
+# Este script aplica só o lado Drizzle. Para um banco que vai rodar
+# `services/agent`, a migração Alembic é um passo SEPARADO — ver "Banco de
+# dados" em README.md — e escolher entre as duas quando ambas colidem exige
+# `pnpm -F @clara-financas/db db:baseline` (relatório do que já existe, e
+# `--apply --through <tag>` para registrar sem reexecutar); não automatizado
+# aqui porque a decisão de qual migração "venceu" cada tabela merece
+# conferência humana, não uma escolha silenciosa do script.
+echo "Aplicando migrações do control plane (Drizzle)…"
 DATABASE_ADMIN_URL="$ADMIN_URL" DATABASE_URL="$APP_URL" \
   node --import tsx "$ROOT/packages/db/src/migrate.ts"
 
@@ -150,4 +173,4 @@ echo "Pronto."
 # terminal com histórico é tão bom lugar para guardá-la quanto um commit.
 echo "  DATABASE_URL        postgres://$APP_ROLE:***@127.0.0.1:$DB_PORT/$DB_NAME"
 echo "  DATABASE_ADMIN_URL  postgres://$OWNER_ROLE:***@127.0.0.1:$DB_PORT/$DB_NAME"
-echo "  As duas foram escritas em apps/web/.env e packages/agent/.env."
+echo "  As duas foram escritas em apps/web/.env e services/agent/.env."

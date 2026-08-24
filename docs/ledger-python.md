@@ -188,13 +188,26 @@ Três tarefas do plano original ficaram documentadas como feitas sem estar:
   que é uma lacuna de verificação a resolver antes de depender dele em
   produção.
 - **T003** (`scripts/dev-db.sh`/`scripts/ci-db.sh` adaptados para Alembic)
-  ficou pela metade: `dev-db.sh` continua chamando só a migração Drizzle
-  antiga (`packages/db/src/migrate.ts`); `ci-db.sh`, por outro lado, já
-  servia — ele só cria papéis/banco/extensões, nunca conheceu Drizzle nem
-  Alembic, e o novo job `verify-agent` do CI (ver T004 abaixo) o reaproveita
-  sem alteração nenhuma. Quem sobe o banco Python em desenvolvimento ainda
-  faz a migração à mão (`README.md` documenta o caminho); só o script de
-  desenvolvimento local ficou sem adaptar, não o de CI.
+  ficou pela metade, e por um motivo mais sério do que "faltou tempo":
+  **as duas migrações não são complementares num banco novo — criam as
+  MESMAS 19 tabelas do razão.** A primeira tentativa desta sessão foi
+  encadear as duas no `dev-db.sh` (Drizzle, depois Alembic); rodando de
+  verdade contra um banco fresco, a segunda falhou em "relation already
+  exists" assim que alcançou uma tabela que a primeira já tinha criado.
+  Revertido — `dev-db.sh` continua chamando só a migração Drizzle antiga
+  (`packages/db/src/migrate.ts`), com um aviso explícito no próprio script
+  sobre a colisão. `ci-db.sh`, por outro lado, já servia — ele só cria
+  papéis/banco/extensões, nunca conheceu Drizzle nem Alembic, e o novo job
+  `verify-agent` do CI (ver T004 abaixo) o reaproveita sem alteração
+  nenhuma. Quem sobe um banco NOVO para rodar `services/agent` hoje faz a
+  migração Alembic e cria as três tabelas de auth à mão (SQL em
+  `README.md`) — o caminho real que este port usou o tempo todo, não uma
+  simplificação de documentação. Automatizar isso de verdade exige o
+  mecanismo de baseline do Drizzle (`pnpm -F @clara-financas/db
+  db:baseline`, que registra migrações como aplicadas sem executá-las) e
+  decidir, com conferência humana, até que tag baselinear — não foi feito
+  aqui porque essa decisão é exatamente o tipo de coisa que um script não
+  deveria escolher sozinho.
 - **T004** (CI do serviço Python) nunca existiu: `.github/workflows/ci.yml`
   só rodava `pnpm test` — a suíte de `services/agent` (então com ~250
   testes, ruff e mypy limpos localmente) nunca tinha sido executada em um

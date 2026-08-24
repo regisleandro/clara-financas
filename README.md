@@ -225,7 +225,31 @@ DATABASE_URL='postgresql+psycopg://clara_app:<senha>@localhost/clara' \
 uv run alembic upgrade head
 ```
 
-Depois disso, `apps/web` continua precisando das próprias tabelas de autenticação (`user`, `session`, `account`, `verification`) — hoje só `user` nasce pela migração Python; as outras três nascem pelo caminho Drizzle de `packages/db` (rode `pnpm db:push` ou `pnpm db:migrate` apontando para o mesmo banco).
+`apps/web` ainda precisa de `session`, `account` e `verification` (Better Auth; `user` a migração Python já cria). **Não rode `pnpm db:migrate` depois do Alembic** — as duas migrações criam as MESMAS 19 tabelas do razão, e a segunda falha em "relation already exists" assim que alcança uma que a outra já criou (confirmado tentando, não suposto). Crie só as três que faltam:
+
+```sql
+-- contra o mesmo banco, como clara_owner (dono do schema)
+CREATE TABLE session (
+  id TEXT PRIMARY KEY, expires_at TIMESTAMPTZ NOT NULL, token TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ip_address TEXT, user_agent TEXT, user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE
+);
+CREATE TABLE account (
+  id TEXT PRIMARY KEY, account_id TEXT NOT NULL, provider_id TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  access_token TEXT, refresh_token TEXT, id_token TEXT,
+  access_token_expires_at TIMESTAMPTZ, refresh_token_expires_at TIMESTAMPTZ,
+  scope TEXT, password TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE verification (
+  id TEXT PRIMARY KEY, identifier TEXT NOT NULL, value TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+GRANT SELECT, INSERT, UPDATE, DELETE ON session, account, verification TO clara_app;
+```
+
+(O schema exato é `packages/db/src/schema/auth.ts`, a fonte da verdade — copie de lá se ele mudar.) Sem isso, `pnpm db:generate`/`db:studio` do Drizzle também não devem ser apontados para este banco: o journal do Drizzle não sabe que o Alembic já criou as tabelas do razão, e qualquer comando que tente aplicar a migração completa esbarra na mesma colisão. Ver `docs/ledger-python.md` para o que falta para as duas migrações conviverem de verdade (o mecanismo existe — `pnpm -F @clara-financas/db db:baseline` — mas não foi automatizado, porque decidir "qual migração venceu cada tabela" merece conferência humana).
 
 Dois papéis de banco, e a distinção é de segurança:
 
@@ -275,7 +299,7 @@ Depois, no navegador: entre, abra `/conversa` e envie uma fatura. O caminho comp
 | `pnpm check-types` | Verifica os tipos em todo o workspace TypeScript |
 | `pnpm test` | Executa os testes dos pacotes TypeScript |
 | `pnpm test:isolation` | Executa os testes de isolamento do banco (TypeScript) |
-| `pnpm db:generate` / `db:migrate` / `db:push` / `db:studio` | Drizzle, para as tabelas que `apps/web` ainda possui |
+| `pnpm db:generate` / `db:migrate` / `db:push` / `db:studio` | Drizzle — journal completo (todo o razão + auth); ver aviso em "Banco de dados" antes de rodar num banco já migrado pelo Alembic |
 | `pnpm db:reset` | Zera o razão preservando login e constituição |
 | `pnpm deploy:setup` / `deploy` / `deploy:prod` / `deploy:check` | Deploy Vercel do control plane |
 | `pnpm env:production [--plan]` | Envia as variáveis do control plane à Vercel |
