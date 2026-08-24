@@ -166,12 +166,15 @@ lendo o código, não hipotético:
   e fazia mais do que a descrição sugeria (adicionar linha que a extração
   perdeu, não só corrigir e remover).
 - **`prepare_invoice_resolution`/`apply_invoice_resolution`** também
-  existiam no original e também nunca foram portados. Diferente de
-  `edit_proposed_batch`, este par não foi reconstruído: cobre a correção de
-  uma fatura **já confirmada** por um ajuste no nível do documento inteiro
-  (não de uma transação), e `create_adjustment` (Fase 5) só cobre o caso de
-  uma transação por vez. `coordinator.md` não promete mais essas duas tools;
-  ficou como trabalho futuro, não como lacuna silenciosa.
+  existiam no original e também não tinham sido portados — depois portados
+  na mesma Fase N, seguindo exatamente o padrão prepare/gate que
+  `prepare_batch_registration`/`commit_batch` já estabeleciam (uma
+  `FinancialActionProposal` congelada, revalidada na execução, nunca na
+  proposta — FR-012). Cobre a correção de uma fatura **já confirmada** por
+  um ajuste no nível do documento inteiro, sem um transaction_id específico
+  — o caso que `create_adjustment` (Fase 5), pensado por transação, não
+  cobre. O sinal do ajuste é sempre o inverso da diferença do checksum
+  (`clara/ledger/financial_actions.py`); nunca vem do modelo.
 - **`ask_question`** nunca existiu neste serviço — uma senha de PDF
   protegido chega como argumento de texto simples (`read_pdf_pages.py`), não
   como uma segunda pausa do turno com campo protegido. `coordinator.md`

@@ -16,6 +16,7 @@ from clara.instructions.dynamic import coordinator_instructions
 from clara.tools.aggregate_by_category_tool import aggregate_by_category_tool
 from clara.tools.aggregate_by_month_tool import aggregate_by_month_tool
 from clara.tools.analyze_series_tool import analyze_series_tool
+from clara.tools.apply_invoice_resolution_tool import apply_invoice_resolution_tool
 from clara.tools.apply_learned_rules_tool import (
     apply_learned_rules_preview_tool,
     apply_learned_rules_tool,
@@ -34,6 +35,7 @@ from clara.tools.list_review_queue_tool import list_review_queue_tool
 from clara.tools.mark_reviewed_tool import mark_reviewed_bulk_tool, mark_reviewed_tool
 from clara.tools.name_issuer_tool import name_issuer_tool
 from clara.tools.prepare_batch_registration_tool import prepare_batch_registration_tool
+from clara.tools.prepare_invoice_resolution_tool import prepare_invoice_resolution_tool
 from clara.tools.propose_batch import propose_batch, propose_batch_from_extraction
 from clara.tools.query_ledger_tool import query_ledger_tool
 from clara.tools.read_batch_tool import read_batch_tool
@@ -88,6 +90,14 @@ def build_coordinator_team() -> Team:
             create_adjustment_tool,
             read_reclassifications_tool,
             name_issuer_tool,
+            # Resolução de divergência de fatura CONFIRMADA — o par
+            # prepare/apply que faltava desde a Fase 3. `create_adjustment`
+            # exige um transaction_id; estas duas cobrem o caso sem culpado
+            # (`likely_cause: "rounding"`), como um ajuste no nível do
+            # documento. `prepare_invoice_resolution` só congela o cálculo;
+            # `apply_invoice_resolution` é o gate.
+            prepare_invoice_resolution_tool,
+            apply_invoice_resolution_tool,
             # Aprendizado, compromissos e avisos (US4). `save_concept` e
             # `save_commitment`/`deactivate_commitment` passam pelo gate: são
             # o SEGUNDO GATE (memória semântica) e o que autoriza a Clara a

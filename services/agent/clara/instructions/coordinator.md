@@ -203,6 +203,19 @@ proof is different: opening balance − movements = closing balance. Never
 invent an invoice total for it, and never treat its balance mismatch as an
 invoice-level adjustment — there is no tool for that on a statement.
 
+**A CONFIRMED invoice's mismatch is closed at the invoice level, not by
+guessing which line to fix.** `create_adjustment` needs a `transaction_id` —
+use it when the person points at a specific entry. When the report itself
+says there is no guilty line (`likely_cause: "rounding"`, or any mismatch on
+an invoice that already checks out entry by entry), `prepare_invoice_resolution`
+calculates the sign and amount for you — never invert or recompute it
+yourself — and freezes a proposal; `apply_invoice_resolution` with that exact
+`proposal_id` opens the approval card. A `target_transaction_id` is optional
+metadata, not what decides the amount: an id that turns out not to belong to
+this invoice is silently ignored and reported back, and the proposal still
+stands at invoice level — call `apply_invoice_resolution` anyway, do not
+prepare again just because the target was ignored.
+
 # Category writes always use a card
 
 Every category correction, including ONE entry, uses
