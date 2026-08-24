@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 
@@ -9,7 +11,7 @@ from clara.db.tenant_scope import for_tenant
 from clara.ledger.types import Confidence, EntryKind
 from clara.tools.analysis_scope import AnalysisScope
 from clara.tools.query_ledger import query_ledger as _query
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 
 
@@ -30,7 +32,7 @@ def query_ledger_tool(
     kinds: list[EntryKind] | None = None,
     confidences: list[Confidence] | None = None,
     reviewed: bool | None = None,
-) -> dict:
+) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         panel = _query(
@@ -45,4 +47,4 @@ def query_ledger_tool(
             confidences=confidences,
             reviewed=reviewed,
         )
-    return to_tool_result(panel)
+    return to_tool_dict(panel)

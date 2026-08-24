@@ -10,13 +10,15 @@ de tools, não hipotético.
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 
 from clara.db.tenant_scope import for_tenant
 from clara.tools.errors import not_found
 from clara.tools.invoice_focus import InvoiceReference, resolve_invoice_focus
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_session_caller
 
 
@@ -34,14 +36,14 @@ from clara.tools.tenant import require_session_caller
 )
 def resolve_invoice_reference_tool(
     run_context: RunContext, reference: InvoiceReference, skip_active: bool = False
-) -> dict:
+) -> dict[str, Any]:
     caller = require_session_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         focus = resolve_invoice_focus(
             session, caller.tenant_id, caller.session_id, reference, skip_active=skip_active
         )
         if focus is None:
-            return to_tool_result(
+            return to_tool_dict(
                 not_found(
                     "referencia_de_fatura_nao_encontrada",
                     "Não encontrei uma fatura para essa referência.",
@@ -51,4 +53,4 @@ def resolve_invoice_reference_tool(
                     ),
                 )
             )
-    return to_tool_result(focus)
+    return to_tool_dict(focus)

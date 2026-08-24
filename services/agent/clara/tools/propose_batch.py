@@ -5,6 +5,8 @@ sobre `write_proposed_batch`. Porta de `agent/tools/propose_batch.ts` e
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 from pydantic import BaseModel
@@ -14,7 +16,7 @@ from clara.db.models import ExtractionStaging
 from clara.db.tenant_scope import for_tenant
 from clara.ledger.types import Confidence, EntryKind
 from clara.tools.errors import not_found
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 from clara.tools.write_proposed_batch import (
     ProposedBatchWriteInput,
@@ -71,7 +73,7 @@ def propose_batch(
     opening_balance: int | None = None,
     closing_balance: int | None = None,
     overwrite_edited_draft: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     write_input = ProposedBatchWriteInput(
         document_id=document_id,
@@ -83,7 +85,7 @@ def propose_batch(
     )
     with for_tenant(caller.tenant_id) as session:
         result = _write(session, caller.tenant_id, write_input)
-    return to_tool_result(result)
+    return to_tool_dict(result)
 
 
 @tool(
@@ -98,7 +100,7 @@ def propose_batch_from_extraction(
     run_context: RunContext,
     extraction_id: str,
     overwrite_edited_draft: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
 
     with for_tenant(caller.tenant_id) as session:
@@ -110,7 +112,7 @@ def propose_batch_from_extraction(
         ).scalar_one_or_none()
 
         if staging is None:
-            return to_tool_result(
+            return to_tool_dict(
                 not_found(
                     "extracao_nao_encontrada", f"Nenhuma extração com o id {extraction_id}.",
                     hint="Chame save_extraction de novo, ou confira o extraction_id do recibo.",
@@ -143,4 +145,4 @@ def propose_batch_from_extraction(
             ],
         )
         result = _write(session, caller.tenant_id, write_input)
-    return to_tool_result(result)
+    return to_tool_dict(result)

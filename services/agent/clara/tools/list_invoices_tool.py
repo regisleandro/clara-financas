@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 
 from clara.db.tenant_scope import for_tenant
 from clara.tools.list_invoices import list_invoices as _list
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 
 
@@ -22,8 +24,8 @@ from clara.tools.tenant import require_tenant_caller
 )
 def list_invoices_tool(
     run_context: RunContext, limit: int = 20, oldest_first: bool = False
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         rows = _list(session, caller.tenant_id, limit=limit, oldest_first=oldest_first)
-    return [to_tool_result(r) for r in rows]
+    return [to_tool_dict(r) for r in rows]

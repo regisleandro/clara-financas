@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 
 from clara.db.tenant_scope import for_tenant
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.set_proactivity import set_proactivity as _set
 from clara.tools.tenant import require_tenant_caller
 
@@ -21,8 +23,10 @@ from clara.tools.tenant import require_tenant_caller
         "them back."
     ),
 )
-def set_proactivity_tool(run_context: RunContext, enabled: bool, reason: str | None = None) -> dict:
+def set_proactivity_tool(
+    run_context: RunContext, enabled: bool, reason: str | None = None
+) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         result = _set(session, caller.tenant_id, caller.user_id, enabled=enabled, reason=reason)
-    return to_tool_result(result)
+    return to_tool_dict(result)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 from pydantic import BaseModel
@@ -9,7 +11,7 @@ from pydantic import BaseModel
 from clara.db.tenant_scope import for_tenant
 from clara.tools.recategorize_transactions import CategoryChange
 from clara.tools.recategorize_transactions import recategorize_transactions as _recategorize
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 
 
@@ -32,7 +34,7 @@ def recategorize_transactions_tool(
     changes: list[CategoryChangeInput],
     reason: str | None = None,
     by_concept_id: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         result = _recategorize(
@@ -43,4 +45,4 @@ def recategorize_transactions_tool(
             reason=reason,
             by_concept_id=by_concept_id,
         )
-    return to_tool_result(result)
+    return to_tool_dict(result)

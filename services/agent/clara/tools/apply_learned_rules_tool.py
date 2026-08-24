@@ -8,13 +8,15 @@ bate com a simulação mais recente.
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 
 from clara.db.tenant_scope import for_tenant
 from clara.tools.apply_learned_rules import apply_learned_rules as _apply
 from clara.tools.apply_learned_rules import preview_learned_rules as _preview
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 
 
@@ -26,11 +28,11 @@ from clara.tools.tenant import require_tenant_caller
         "exact transaction_ids from this preview to open the approval card."
     ),
 )
-def apply_learned_rules_preview_tool(run_context: RunContext) -> dict:
+def apply_learned_rules_preview_tool(run_context: RunContext) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         result = _preview(session, caller.tenant_id)
-    return to_tool_result(result)
+    return to_tool_dict(result)
 
 
 @tool(
@@ -43,7 +45,9 @@ def apply_learned_rules_preview_tool(run_context: RunContext) -> dict:
         "a fresh preview."
     ),
 )
-def apply_learned_rules_tool(run_context: RunContext, expected_transaction_ids: list[str]) -> dict:
+def apply_learned_rules_tool(
+    run_context: RunContext, expected_transaction_ids: list[str]
+) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         result = _apply(
@@ -52,4 +56,4 @@ def apply_learned_rules_tool(run_context: RunContext, expected_transaction_ids: 
             caller.user_id,
             expected_transaction_ids=expected_transaction_ids,
         )
-    return to_tool_result(result)
+    return to_tool_dict(result)

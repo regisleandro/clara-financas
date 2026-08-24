@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 
 from clara.db.tenant_scope import for_tenant
 from clara.tools.create_adjustment import create_adjustment as _create
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 
 
@@ -28,7 +30,7 @@ def create_adjustment_tool(
     amount_cents: int,
     reason: str,
     date: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         result = _create(
@@ -40,4 +42,4 @@ def create_adjustment_tool(
             reason=reason,
             date=date,
         )
-    return to_tool_result(result)
+    return to_tool_dict(result)

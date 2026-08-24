@@ -211,8 +211,16 @@ class ProvenanceError(ValueError):
     """Painel sem proveniência — falha fechado, antes de alcançar a interface."""
 
 
-def check_provenance(panel: MetricPanel | BreakdownPanel | ComparisonPanel | TransactionsPanel
-                      | CommitmentsPanel | ProposalPanel | SeriesPanel | RecurrencesPanel) -> list[str]:
+def check_provenance(
+    panel: MetricPanel
+    | BreakdownPanel
+    | ComparisonPanel
+    | TransactionsPanel
+    | CommitmentsPanel
+    | ProposalPanel
+    | SeriesPanel
+    | RecurrencesPanel,
+) -> list[str]:
     """As regras semânticas de proveniência, fora do schema — para poderem se
     explicar. Devolve mensagens acionáveis em vez de recusar em silêncio."""
     issues: list[str] = []

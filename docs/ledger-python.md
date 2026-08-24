@@ -180,21 +180,45 @@ lendo o código, não hipotético:
 
 ## Infraestrutura que a Fase 1 não deixou pronta
 
-Duas tarefas do plano original ficaram documentadas como feitas sem estar:
+Três tarefas do plano original ficaram documentadas como feitas sem estar:
 
 - **T002** (Dockerfile + docker-compose) só foi escrito na polida final
   (`services/agent/Dockerfile`, `docker-compose.yml`) — não foi possível
   testar o build neste ambiente (o daemon Docker do sandbox não inicia), o
   que é uma lacuna de verificação a resolver antes de depender dele em
   produção.
-- **T003** (`scripts/dev-db.sh`/`ci-db.sh` adaptados para Alembic) nunca
-  aconteceu — o script continua chamando a migração Drizzle antiga
-  (`packages/db/src/migrate.ts`) para tudo. Quem sobe o banco Python hoje faz
-  isso à mão: cria os papéis `clara_owner`/`clara_app`, cria o banco, e roda
-  `alembic upgrade head` com `DATABASE_ADMIN_URL` apontando para um
-  superusuário (a migração `0001` cria os papéis sozinha, `IF NOT EXISTS`).
-  `README.md` documenta o caminho manual; adaptar os scripts continua como
-  trabalho futuro.
+- **T003** (`scripts/dev-db.sh`/`scripts/ci-db.sh` adaptados para Alembic)
+  ficou pela metade: `dev-db.sh` continua chamando só a migração Drizzle
+  antiga (`packages/db/src/migrate.ts`); `ci-db.sh`, por outro lado, já
+  servia — ele só cria papéis/banco/extensões, nunca conheceu Drizzle nem
+  Alembic, e o novo job `verify-agent` do CI (ver T004 abaixo) o reaproveita
+  sem alteração nenhuma. Quem sobe o banco Python em desenvolvimento ainda
+  faz a migração à mão (`README.md` documenta o caminho); só o script de
+  desenvolvimento local ficou sem adaptar, não o de CI.
+- **T004** (CI do serviço Python) nunca existiu: `.github/workflows/ci.yml`
+  só rodava `pnpm test` — a suíte de `services/agent` (então com ~250
+  testes, ruff e mypy limpos localmente) nunca tinha sido executada em um
+  PR. Corrigido com um segundo job (`verify-agent`), paralelo ao `verify`
+  original, com Postgres próprio. `ruff` e a suíte são gates reais (ambos
+  limpos); `mypy` roda como passo informativo
+  (`continue-on-error: true`) — 31 erros pré-existentes, nenhum em código
+  tocado por este port, continuam sem correção (majoritariamente em
+  `write_proposed_batch.py` e `ledger/{analysis,series}.py`; ver
+  `git log` para o antes/depois). Tornar isso um gate bloqueante exigiria
+  corrigi-los primeiro — o que, feito às pressas só para "ligar o CI",
+  seria exatamente o tipo de mudança apressada em código financeiro que
+  este projeto existe para evitar.
+
+  A limpeza que FOI feita, e que reduziu esse número de 106 para 31: as
+  ~33 tools de fronteira (`clara/tools/*_tool.py`) declaravam `-> dict:`
+  sem argumento de tipo e devolviam `to_tool_result(...)` — que
+  deliberadamente retorna `Any`, porque aceita dataclass, `BaseModel`,
+  `ToolError` ou um dict já pronto. Cada uma dessas fronteiras SABE, pelo
+  próprio contrato, que o resultado é um objeto; a lacuna era não haver
+  onde declarar essa garantia. `to_tool_dict()` (`clara/tools/serialize.py`)
+  é esse ponto — um `cast` documentado — e as ~33 tools passaram a
+  devolver `dict[str, Any]` de verdade, sem tocar em `to_tool_result` em
+  si, que continua genérico porque genuinely precisa ser.
 
 ## O que ainda depende dos pacotes TypeScript antigos
 

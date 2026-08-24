@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 
 from clara.db.tenant_scope import for_tenant
 from clara.tools.deactivate_commitment import deactivate_commitment as _deactivate
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 
 
@@ -21,8 +23,8 @@ from clara.tools.tenant import require_tenant_caller
         "reactivate it — do not recreate a reminder the person just turned off."
     ),
 )
-def deactivate_commitment_tool(run_context: RunContext, commitment_id: str) -> dict:
+def deactivate_commitment_tool(run_context: RunContext, commitment_id: str) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         result = _deactivate(session, caller.tenant_id, commitment_id)
-    return to_tool_result(result)
+    return to_tool_dict(result)

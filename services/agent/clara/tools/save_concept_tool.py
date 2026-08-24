@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 
 from clara.db.tenant_scope import for_tenant
 from clara.tools.save_concept import LearnedType
 from clara.tools.save_concept import save_concept as _save
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 
 
@@ -32,7 +34,7 @@ def save_concept_tool(
     merchant: str | None = None,
     aliases: list[str] | None = None,
     reason: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         result = _save(
@@ -48,4 +50,4 @@ def save_concept_tool(
             aliases=aliases,
             reason=reason,
         )
-    return to_tool_result(result)
+    return to_tool_dict(result)

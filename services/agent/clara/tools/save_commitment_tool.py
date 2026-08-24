@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 
 from clara.db.tenant_scope import for_tenant
 from clara.tools.save_commitment import CommitmentKind
 from clara.tools.save_commitment import save_commitment as _save
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 
 
@@ -32,7 +34,7 @@ def save_commitment_tool(
     recurrence_day_of_month: int | None = None,
     expected_amount: int | None = None,
     remind_days_before: int = 3,
-) -> dict:
+) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         result = _save(
@@ -46,4 +48,4 @@ def save_commitment_tool(
             expected_amount=expected_amount,
             remind_days_before=remind_days_before,
         )
-    return to_tool_result(result)
+    return to_tool_dict(result)

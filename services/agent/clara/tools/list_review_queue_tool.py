@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 
 from clara.db.queries.review import ReviewReason
 from clara.db.tenant_scope import for_tenant
 from clara.tools.list_review_queue import list_review_queue as _list
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 
 
@@ -30,7 +32,7 @@ def list_review_queue_tool(
     batch_id: str | None = None,
     include_reviewed: bool = False,
     limit: int = 100,
-) -> dict:
+) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         result = _list(
@@ -41,4 +43,4 @@ def list_review_queue_tool(
             include_reviewed=include_reviewed,
             limit=limit,
         )
-    return to_tool_result(result)
+    return to_tool_dict(result)

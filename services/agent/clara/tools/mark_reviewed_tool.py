@@ -8,6 +8,8 @@ devolver itens à fila é a direção segura, então segue sempre pela primeira.
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 
@@ -15,7 +17,7 @@ from clara.db.tenant_scope import for_tenant
 from clara.tools.errors import refused
 from clara.tools.mark_reviewed import NO_CARD_LIMIT
 from clara.tools.mark_reviewed import mark_reviewed as _mark
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 
 
@@ -30,10 +32,10 @@ from clara.tools.tenant import require_tenant_caller
 )
 def mark_reviewed_tool(
     run_context: RunContext, transaction_ids: list[str], reopen: bool = False
-) -> dict:
+) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     if not reopen and len(transaction_ids) > NO_CARD_LIMIT:
-        return to_tool_result(
+        return to_tool_dict(
             refused(
                 "operacao_nao_permitida",
                 f"Atestar mais de {NO_CARD_LIMIT} lançamentos de uma vez precisa de aprovação.",
@@ -42,7 +44,7 @@ def mark_reviewed_tool(
         )
     with for_tenant(caller.tenant_id) as session:
         result = _mark(session, caller.tenant_id, caller.user_id, transaction_ids, reopen=reopen)
-    return to_tool_result(result)
+    return to_tool_dict(result)
 
 
 @tool(
@@ -54,8 +56,8 @@ def mark_reviewed_tool(
         "any amount, use mark_reviewed instead (no card)."
     ),
 )
-def mark_reviewed_bulk_tool(run_context: RunContext, transaction_ids: list[str]) -> dict:
+def mark_reviewed_bulk_tool(run_context: RunContext, transaction_ids: list[str]) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         result = _mark(session, caller.tenant_id, caller.user_id, transaction_ids, reopen=False)
-    return to_tool_result(result)
+    return to_tool_dict(result)

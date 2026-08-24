@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 
 from clara.db.tenant_scope import for_tenant
 from clara.tools.aggregate_by_month import aggregate_by_month as _aggregate
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 
 
@@ -28,11 +30,11 @@ def aggregate_by_month_tool(
     to_date: str | None = None,
     issuer: str | None = None,
     months: int | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         series_panel, issuer_panel = _aggregate(
             session, caller.tenant_id, from_=from_date, to=to_date, issuer=issuer, months=months
         )
     panels = [series_panel] + ([issuer_panel] if issuer_panel is not None else [])
-    return [to_tool_result(p) for p in panels]
+    return [to_tool_dict(p) for p in panels]

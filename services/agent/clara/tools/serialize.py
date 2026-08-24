@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import date, datetime
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel
 
@@ -49,3 +49,12 @@ def to_tool_result(value: Any) -> Any:
     if isinstance(value, dict):
         return json.loads(json.dumps(value, default=_default))
     return value
+
+
+def to_tool_dict(value: Any) -> dict[str, Any]:
+    """`to_tool_result` para o caso comum de fronteira: uma tool cujo próprio
+    domínio já garante retorno em formato de objeto (dataclass, `BaseModel`
+    ou `ToolError`) — o `cast` documenta essa garantia em vez de deixar cada
+    `@tool` declarar `-> dict` sem tipar o conteúdo (o que faria toda leitura
+    de campo do retorno valer como `Any`, silenciosamente)."""
+    return cast(dict[str, Any], to_tool_result(value))

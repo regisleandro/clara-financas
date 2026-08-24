@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 
 from clara.db.tenant_scope import for_tenant
 from clara.tools.list_documents import list_documents as _list
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 
 
@@ -21,8 +23,8 @@ from clara.tools.tenant import require_tenant_caller
 )
 def list_documents_tool(
     run_context: RunContext, without_batch: bool = False, limit: int = 20
-) -> dict:
+) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         result = _list(session, caller.tenant_id, without_batch=without_batch, limit=limit)
-    return to_tool_result(result)
+    return to_tool_dict(result)

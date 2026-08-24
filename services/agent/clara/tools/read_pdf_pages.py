@@ -13,6 +13,8 @@ descuido; a fronteira onde ela deveria ser reintroduzida é aqui.
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 from sqlalchemy import select
@@ -21,7 +23,7 @@ from clara.db.models import Document
 from clara.db.tenant_scope import for_tenant
 from clara.tools.errors import not_found, tool_error
 from clara.tools.pdf import PdfPasswordRequiredError, extract_pdf_text
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 
 
@@ -39,7 +41,7 @@ def read_pdf_pages(
     password: str | None = None,
     from_page: int | None = None,
     to_page: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
 
     with for_tenant(caller.tenant_id) as session:
@@ -52,7 +54,7 @@ def read_pdf_pages(
     if document is None:
         # Não distinguimos "não existe" de "é de outro tenant": a diferença
         # vazaria a existência de documentos alheios.
-        return to_tool_result(
+        return to_tool_dict(
             not_found(
                 "documento_nao_encontrado", "Nenhum documento com esse id.",
                 hint="Use o document_id exatamente como veio na requisição da coordenadora.",
@@ -64,14 +66,14 @@ def read_pdf_pages(
             document.blob_key, password=password, from_page=from_page, to_page=to_page
         )
     except PdfPasswordRequiredError:
-        return to_tool_result(
+        return to_tool_dict(
             tool_error(
                 "senha_necessaria", "Este PDF é protegido por senha.",
                 hint="Peça a senha à pessoa e repita a chamada com password preenchido.",
             )
         )
 
-    return to_tool_result(
+    return to_tool_dict(
         {
             "document_id": document.id,
             "filename": document.filename,

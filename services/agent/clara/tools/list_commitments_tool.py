@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 
 from clara.db.tenant_scope import for_tenant
 from clara.tools.list_commitments import list_commitments as _list
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 
 
@@ -18,8 +20,10 @@ from clara.tools.tenant import require_tenant_caller
         "coming due."
     ),
 )
-def list_commitments_tool(run_context: RunContext, within_days: int | None = None) -> dict:
+def list_commitments_tool(
+    run_context: RunContext, within_days: int | None = None
+) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         result = _list(session, caller.tenant_id, within_days=within_days)
-    return to_tool_result(result)
+    return to_tool_dict(result)

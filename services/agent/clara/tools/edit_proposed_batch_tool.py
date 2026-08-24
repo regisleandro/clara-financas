@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 from pydantic import BaseModel
@@ -10,7 +12,7 @@ from clara.db.tenant_scope import for_tenant
 from clara.ledger.types import Confidence, EntryKind
 from clara.tools.edit_proposed_batch import NewTransaction, TransactionEdit
 from clara.tools.edit_proposed_batch import edit_proposed_batch as _edit
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 
 
@@ -53,7 +55,7 @@ def edit_proposed_batch_tool(
     edits: list[TransactionEditInput] | None = None,
     remove_transaction_ids: list[str] | None = None,
     add: list[NewTransactionInput] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         result = _edit(
@@ -87,4 +89,4 @@ def edit_proposed_batch_tool(
                 for n in (add or [])
             ],
         )
-    return to_tool_result(result)
+    return to_tool_dict(result)

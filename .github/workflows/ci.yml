@@ -94,3 +94,82 @@ jobs:
 
       - name: Rodar a suíte
         run: pnpm test
+
+  # O gate que faltava para o outro lado do monorepo: `services/agent`
+  # (Python/Agno) tinha suíte, ruff e mypy limpos localmente e nenhuma
+  # execução em CI — a mesma lacuna que o job `verify` fechou para o lado
+  # TypeScript, só que never fechada aqui. Job separado, e não passo a mais
+  # no `verify`: runner e Postgres próprios, sem a suíte Python esperar o
+  # `pnpm install` do lado TypeScript nem competir pela mesma porta 5432.
+  verify-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    defaults:
+      run:
+        working-directory: services/agent
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinado por hash de commit, não por tag de major — a partir da v8 o
+      # projeto parou de publicar tags móveis (`@v10`), só releases imutáveis.
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Instalar dependências
+        run: uv sync --all-extras --frozen
+
+      # Reaproveita o mesmo script de papéis do job `verify` — ele não
+      # conhece Drizzle nem Alembic, só cria `clara_owner`/`clara_app`, o
+      # banco e as extensões. `working-directory` é sobrescrito aqui porque
+      # o script vive na raiz do repositório, não em `services/agent`.
+      - name: Preparar o banco
+        working-directory: .
+        env:
+          CLARA_SUPERUSER_URL: postgres://postgres@127.0.0.1:5432/postgres
+        run: ./scripts/ci-db.sh
+
+      # `DATABASE_URL`/`DATABASE_ADMIN_URL` já estão no ambiente do job desde
+      # o passo anterior (`ci-db.sh` os grava em `$GITHUB_ENV`). A migração
+      # 0001 cria `clara_owner`/`clara_app` com `IF NOT EXISTS` caso ainda não
+      # existam — aqui já existem, então ela só aplica schema, RLS, triggers
+      # e o schema `agno`.
+      - name: Aplicar migrações
+        run: uv run alembic upgrade head
+
+      - name: Lint (ruff)
+        run: uv run ruff check clara/ tests/
+
+      # Informativo, não bloqueante: 31 erros pré-existentes (nenhum em
+      # arquivo tocado por esta suíte de mudanças) continuam sem correção —
+      # sobretudo em `write_proposed_batch.py`, `ledger/analysis.py` e
+      # `ledger/series.py`. Bloquear o PR nisso agora tornaria o gate
+      # permanentemente vermelho por um motivo que ninguém tocou, o que
+      # ensina a ignorar CI em vez de confiar nela. Ver `docs/ledger-python.md`.
+      - name: Tipos (mypy) — informativo
+        continue-on-error: true
+        run: uv run mypy clara/
+
+      # Nenhum teste chama a OpenAI de verdade — a suíte testa tools como
+      # funções contra Postgres real, nunca através de um run de modelo.
+      # `OPENAI_API_KEY` só precisa existir para `clara.agents.models`
+      # resolver o nome do modelo na hora de montar o Team em memória.
+      - name: Rodar a suíte
+        env:
+          AGENT_TOKEN_SECRET: ci-secret-not-for-production-use-only
+          APP_ORIGIN: http://localhost:3000
+          OPENAI_API_KEY: sk-ci-placeholder-never-called
+        run: uv run pytest

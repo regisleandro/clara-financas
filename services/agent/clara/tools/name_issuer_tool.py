@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from agno.run.base import RunContext
 from agno.tools import tool
 
 from clara.db.tenant_scope import for_tenant
 from clara.tools.name_issuer import name_issuer as _name
-from clara.tools.serialize import to_tool_result
+from clara.tools.serialize import to_tool_dict
 from clara.tools.tenant import require_tenant_caller
 
 
@@ -20,8 +22,8 @@ from clara.tools.tenant import require_tenant_caller
         "no financial value."
     ),
 )
-def name_issuer_tool(run_context: RunContext, document_id: str, issuer: str) -> dict:
+def name_issuer_tool(run_context: RunContext, document_id: str, issuer: str) -> dict[str, Any]:
     caller = require_tenant_caller(run_context)
     with for_tenant(caller.tenant_id) as session:
         result = _name(session, caller.tenant_id, document_id, issuer)
-    return to_tool_result(result)
+    return to_tool_dict(result)
